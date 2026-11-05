@@ -176,7 +176,7 @@ A graphical file browser inside a running container, so users do not have to run
 
 - Monaco YAML editor with validation and autocompletion from the cluster's OpenAPI v3 schema, CRDs included.
 - Before saving, a server-side dry run shows the diff against the live object and any admission errors.
-- Saving uses server-side apply with field manager `kubelook`. Optimistic concurrency uses `resourceVersion`.
+- Saving replaces the whole object with an update (`PUT`, as `kubectl edit` does), with field manager `kubelook`, so the saved object matches the editor exactly, including deleted fields. The update carries the `resourceVersion` the editor loaded, so it fails instead of overwriting if the object changed since.
 - While the editor is open, the object stays watched. If someone else changes it, a banner offers "reload" or "diff against mine" instead of silently overwriting.
 - Create from YAML, multi-document apply, and "copy as kubectl" for every action.
 
