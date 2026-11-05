@@ -258,6 +258,7 @@ Each module follows the same rules: it appears only when the cluster serves the 
 
 Notes:
 
+- Any CRD without a module, for example Argo CD, Argo Rollouts and Argo Workflows, is handled by the generic Custom Resources browser: a list using `additionalPrinterColumns`, schema-aware details, and edit, delete and create. It has no Argo-specific actions such as sync or promote.
 - The Trivy module never shows the text that matched a secret finding. Export neutralises spreadsheet formulas in titles.
 - A network reachability simulator and a policy "lab" (testing draft NetworkPolicy, Kyverno and Gatekeeper policies before applying them) are possible later additions and are not part of v1.
 
