@@ -97,7 +97,7 @@ flowchart TB
     ops["Helm, Flux, audit"]
   end
   vault["Vault<br/>token lookup, mounts, creds, cluster config"]
-  store["Session store<br/>Redis, encrypted credentials"]
+  store["Session store<br/>Valkey, encrypted credentials"]
   clusters["Kubernetes clusters<br/>API servers, reached directly"]
   s3["S3 bucket<br/>audit records"]
   browser -- "HTTPS REST + one multiplexed WebSocket" --> backend
@@ -114,7 +114,7 @@ The browser talks only to the backend. The backend talks to Vault for identity a
 - **Watch hub:** one upstream watch per user, cluster, kind and namespace, fanned out to every open view. It's closed after an idle timeout and resumed from the last `resourceVersion` on reconnect.
 - **One WebSocket per tab** carries watch events, log lines, exec frames and file-transfer chunks as tagged channels, with a heartbeat.
 - **Network placement:** the console runs inside the same network as the clusters and connects to each API server directly. There is no agent or tunnel: a cluster the console's network can't reach stays out of reach, so a private cluster stays private.
-- **Deployment:** one image and a Helm chart, two or more replicas behind a load balancer with sticky WebSockets, plus a highly available Redis for sessions.
+- **Deployment:** one image and a Helm chart, two or more replicas behind a load balancer with sticky WebSockets, plus a highly available [Valkey](https://valkey.io) (BSD-3-Clause, Redis-protocol compatible) for sessions.
 
 ## Functional requirements
 
