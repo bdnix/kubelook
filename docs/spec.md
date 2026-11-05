@@ -14,7 +14,7 @@ Kubelook is a browser-based Kubernetes console. Users sign in with a Vault token
 - A Vault token loads every cluster the token's policies can get credentials for. A kubeconfig loads every context in the file.
 - Day-2 operations in the browser: logs, container shells, live manifest editing, Helm releases, FluxCD objects, CRDs, and status and editing for all core workload, storage and networking objects.
 - Troubleshooting tools: a debug toolkit, a pod file browser and a live resource map.
-- Ecosystem modules for Karpenter, Argo CD and Argo Rollouts, KEDA, External Secrets, cert-manager, the Gateway API and security reports. Each module appears only on clusters that have the matching CRDs.
+- Ecosystem modules for Karpenter, KEDA, External Secrets, cert-manager, the Gateway API and security reports. Each module appears only on clusters that have the matching CRDs.
 - Everything runs under the user's own Kubernetes identity, so cluster RBAC stays the only authority on what they can do.
 - Vault stays the single place where access is defined. The console reads from Vault but never creates or changes its policies, roles or secrets engines; Vault admins keep owning those.
 - No user management or authorization inside the console. Vault decides who can reach which cluster, and cluster RBAC decides what they can do there. The console has no admin role, user records or permission settings; operators configure it only through its deployment settings.
@@ -250,9 +250,6 @@ Each module follows the same rules: it appears only when the cluster serves the 
 | Module | What it shows | Actions |
 | --- | --- | --- |
 | **Gateway API** | An overview with the number of Ready, Not Ready, In Progress and Unknown objects per kind and the events of those objects; one list per kind for every kind served by the `gateway.networking.k8s.io` and `gateway.networking.x-k8s.io` groups; details with status conditions, spec fields and links to the referenced objects | Edit, delete |
-| **Argo CD** | An overview, lists of Applications, ApplicationSets and AppProjects, a Config page, and application details (see Argo CD below) | Refresh, hard refresh, sync (with options), terminate a running operation, change the sync policy, roll back from history, edit Argo CD configuration |
-| **Argo Rollouts** | Rollouts, AnalysisRuns, Experiments, AnalysisTemplates and ClusterAnalysisTemplates | Promote, promote fully, promote skipping the current step, promote skipping all steps, abort (also while paused at a step or waiting for analysis), retry |
-| **Argo Workflows** | Workflows, CronWorkflows, WorkflowTemplates and ClusterWorkflowTemplates, read-only | None in v1 |
 | **KEDA** | ScaledObjects with the columns of `kubectl get so`, every trigger and its authentication reference, conditions, and scaling events | Pause and resume autoscaling |
 | **External Secrets** | ExternalSecrets, SecretStores and ClusterSecretStores with sync status, the target Secret, the store and the refresh interval | Force sync of an ExternalSecret |
 | **cert-manager** | Certificates, Issuers, ClusterIssuers and CertificateRequests with status and expiry | Edit, delete |
@@ -261,13 +258,6 @@ Each module follows the same rules: it appears only when the cluster serves the 
 
 Notes:
 
-- **Argo CD** works only from the Argo CD objects in the cluster (`argoproj.io`), under the user's Kubernetes identity. The Freelens Argo extension can also connect to a remote Argo CD server with a saved URL and bearer token; Kubelook does not do this in v1. Such a token would be a second credential outside Vault and Kubernetes RBAC, kept by the console, and the extension's own documentation says mutations in that mode use the token instead of Kubernetes RBAC.
-- **Argo CD overview:** application health and sync status as charts, summary cards, and recent cluster events.
-- **Argo CD lists:** Applications, ApplicationSets and AppProjects, with namespace, project, sync status and health status filters and sortable columns (including age), and status signals for ApplicationSets and AppProjects.
-- **Argo CD application details:** sync and health status; a drift hotspots table with a diagnostics summary; the operation timeline; a resource diff that groups OutOfSync resources by namespace and kind; and sync history with rollback, which is disabled when automated sync is on. The diff and relationship views are summaries built from the Application object. A line-level diff and a full resource tree, as in the Argo CD web UI, are not part of v1.
-- **Argo CD sync and sync policy:** a sync dialog with prune, dry run, force, sync strategy and target revision. A sync-policy toggle for automated sync with prune, self-heal and allow-empty, as in the Argo CD web UI. Refresh, hard refresh and terminate are in the object menu, and terminate is offered only while an operation is running.
-- **Argo CD Config page:** the Argo CD ConfigMaps and Secrets, including repository, repository-credential and cluster Secrets. ConfigMap data is edited as key and value rows with a JSON fallback. Credential fields that are left blank keep their stored values, so editing one field does not wipe the others, and clearing a credential is an explicit, confirmed choice. Repository details show the Helm OCI flags added in Argo CD 3.5 (`enableOCI`, `insecureOCIForceHttp`) and warn when `insecure` and `insecureOCIForceHttp` conflict. Secret values are masked and revealing one is audited like any other Secret reveal. Testing a repository or cluster connection, as the Argo CD web UI can, is not part of v1.
-- **Argo CD versions:** the Freelens extension is validated against Argo CD 3.4 and 3.5 and says other versions likely work. Kubelook has not chosen a supported range yet and reads the API versions each cluster serves.
 - The Trivy module never shows the text that matched a secret finding. Export neutralises spreadsheet formulas in titles.
 - A network reachability simulator and a policy "lab" (testing draft NetworkPolicy, Kyverno and Gatekeeper policies before applying them) are possible later additions and are not part of v1.
 
@@ -286,7 +276,7 @@ Notes:
 The layout is a cluster rail, a resource sidebar, a main list, and a details drawer, with a dock for terminals and logs.
 
 - **Cluster rail (far left):** clusters grouped by source (Vault, or the name of each uploaded kubeconfig). Each shows connection status, and favourites are pinned.
-- **Resource sidebar:** Overview, Workloads, Config, Network, Storage, Access Control, Helm, FluxCD, Resource Map, Pod Files, the ecosystem modules (Karpenter, Argo, KEDA, External Secrets, cert-manager, Gateway API, Security), Custom Resources (grouped by API group), Events. Sections the user can't list, and modules the cluster doesn't have, are hidden.
+- **Resource sidebar:** Overview, Workloads, Config, Network, Storage, Access Control, Helm, FluxCD, Resource Map, Pod Files, the ecosystem modules (Karpenter, KEDA, External Secrets, cert-manager, Gateway API, Security), Custom Resources (grouped by API group), Events. Sections the user can't list, and modules the cluster doesn't have, are hidden.
 - **Main list:** a sortable, filterable table with live status badges and multi-select. Column presets are saved per kind.
 - **Details drawer:** opens on the right with tabs for Overview, YAML, Events, Logs, Files (pods) and Related. Related shows owners, children, a map of related objects, and the Flux source if any.
 - **Bottom dock:** tabs for terminals, log streams and editors, which survive navigation between clusters. It docks or pops out to its own browser window.
@@ -334,7 +324,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | `fileBrowser.enabled` | `true` | Turns the pod file browser on or off |
 | `fileBrowser.maxTransferBytes` | `26214400` (25 MiB, proposed) | Largest single upload or download |
 | `logs.historyMaxLines` | `200000` (proposed) | Most lines the log viewer loads when scrolling back |
-| `modules.<name>.enabled` | `auto` | `auto` shows a module only when its CRDs exist, `false` hides it. Names: `karpenter`, `argo`, `keda`, `externalSecrets`, `certManager`, `gatewayApi`, `trivy`, `permissions` |
+| `modules.<name>.enabled` | `auto` | `auto` shows a module only when its CRDs exist, `false` hides it. Names: `karpenter`, `keda`, `externalSecrets`, `certManager`, `gatewayApi`, `trivy`, `permissions` |
 
 **Vault policy users need.** For each cluster they may use: `read` on `kubernetes/<cluster>/config`, and `create` or `update` on `kubernetes/<cluster>/creds/<role>`. Discovery also calls `sys/capabilities-self`, which Vault's default policy usually grants, and `sys/internal/ui/mounts`, which is unauthenticated. Vault admins should confirm both against their own policies.
 
@@ -363,7 +353,7 @@ We ship in four phases, and each phase must pass a gate before the next starts. 
 | --- | --- | --- |
 | 0. Spike | Vault login and cluster discovery; pods list and logs on one cluster | Auth design holds |
 | 1. Core | All core kinds with live watches; YAML edit with dry run; exec shells; kubeconfig upload; structured logs; debug toolkit; pod file browser; bulk node actions; field filter; certificate details; image-tag edit | Pilot team signs off |
-| 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser and forms; resource map; Karpenter; Argo CD and Rollouts, KEDA, External Secrets, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | Security review |
+| 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser and forms; resource map; Karpenter; KEDA, External Secrets, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | Security review |
 | 3. Harden | Audit log to S3; metrics and tracing; load and penetration tests | — |
 
 The phases aren't dated yet. We'll size them once the spike shows how hard the Vault and network questions are.
@@ -382,14 +372,9 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 - No port-forwarding and no feature that needs it. Operator consoles that depend on a forwarded port (PostgreSQL, Kafka and RabbitMQ) are out of scope, and the earlier port-forward action on Services and Pods is removed.
 - An AI assistant is deferred to a possible future version.
 - No pod or workload duplication. A debug copy could still match a Service selector or be recreated by its controller, so the feature needs care that v1 does not take on. The ephemeral debug container is the only debug tool.
-- Argo CD is read and changed through the cluster's own Argo CD objects only. Connecting to an Argo CD server's API is not supported in v1, because it would add a second credential outside Vault and Kubernetes RBAC.
 - Karpenter versions are not pinned.
 - Ecosystem features are built-in modules that hide themselves when a cluster lacks the CRDs, not plugins.
 - Features borrowed from Freelens extensions are reimplemented from their documented behaviour. No extension code is copied.
-
-**Open questions for the spike**
-
-- How Argo CD sync, refresh, terminate and rollback, and Argo Rollouts promote and abort, are best expressed as changes to the objects in the cluster. The Freelens Argo extension's documentation says what it offers but not how it does each action in this mode.
 
 ## Sources
 
@@ -403,7 +388,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 - [Freelens Resource Filter](https://github.com/mojish/freelens-resource-filter-extension): the field filter
 - [Certificate Info](https://github.com/jkroepke/lens-extension-certificate-info) and [Freelens Power](https://github.com/64mb/freelens-power): certificate details, bulk node actions and diagnostics
 - [Deployment Image Update](https://github.com/ottimis/freelens-version-update): the image-tag edit
-- Ecosystem modules: [Gateway API](https://github.com/freelensapp/freelens-gateway-api-extension), [Argo](https://github.com/Sebastian-Prokesch/freelens-argocd-extension), [KEDA](https://github.com/nidiodolfini/freelens-keda-extension), [External Secrets](https://github.com/nidiodolfini/freelens-eso-extension), [cert-manager](https://github.com/maifeeulasad/freelens-cert-manager), [Trivy Operator](https://github.com/hellboyhha/freelens-trivy-operator-extension), [Governance](https://github.com/flavius-dinu/lens-governance)
+- Ecosystem modules: [Gateway API](https://github.com/freelensapp/freelens-gateway-api-extension), [KEDA](https://github.com/nidiodolfini/freelens-keda-extension), [External Secrets](https://github.com/nidiodolfini/freelens-eso-extension), [cert-manager](https://github.com/maifeeulasad/freelens-cert-manager), [Trivy Operator](https://github.com/hellboyhha/freelens-trivy-operator-extension), [Governance](https://github.com/flavius-dinu/lens-governance)
 - [Headlamp repository](https://github.com/kubernetes-sigs/headlamp): the README and the backend multiplexer and stateless kubeconfig code
 - [Headlamp installation docs](https://headlamp.pages.dev/docs/latest/installation)
 - [Rancher: communicating with downstream clusters](https://ranchermanager.docs.rancher.com/reference-guides/rancher-manager-architecture/communicating-with-downstream-user-clusters)
