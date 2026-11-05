@@ -124,7 +124,7 @@ Every list and detail view is backed by a live watch, so status changes appear w
 
 | Area | Kinds | Views | Actions |
 | --- | --- | --- | --- |
-| Workloads | Pods, Deployments, StatefulSets, DaemonSets, ReplicaSets, Jobs, CronJobs | List with status, restarts, age and readiness; detail with containers, conditions, events and owner chain | Edit, delete, scale, rollout restart, pause or resume, rollback (Deployments); set the image tag of containers and init containers (Deployments, StatefulSets, DaemonSets); trigger a Job now, suspend or resume (CronJobs); evict and delete pods; debug and duplicate pods (see Debug toolkit) |
+| Workloads | Pods, Deployments, StatefulSets, DaemonSets, ReplicaSets, Jobs, CronJobs | List with status, restarts, age and readiness; detail with containers, conditions, events and owner chain | Edit, delete, scale, rollout restart, pause or resume, rollback (Deployments); set the image tag of containers and init containers (Deployments, StatefulSets, DaemonSets); trigger a Job now, suspend or resume (CronJobs); evict and delete pods; debug pods (see Debug toolkit) |
 | Configuration | ConfigMaps, Secrets, ResourceQuotas, LimitRanges, HPAs, PodDisruptionBudgets, PriorityClasses | Detail with keys; Secret values hidden until the user reveals them; certificate details for Secrets that hold PEM certificates | Edit, delete; revealing a Secret is audited |
 | Networking | Services, Endpoints, EndpointSlices, Ingresses, IngressClasses, NetworkPolicies, Gateway API when installed (see Ecosystem modules) | Service-to-pod and Ingress-to-service links | Edit, delete |
 | Storage | PersistentVolumeClaims, PersistentVolumes, StorageClasses, VolumeSnapshots when installed | Phase, capacity, bound volume, and pods using the claim | Edit, delete, expand a PVC (when the StorageClass allows it) |
@@ -158,11 +158,7 @@ Everything here runs through the Kubernetes API under the user's own identity. E
 
 - **Debug a pod:** from a pod's menu, add an ephemeral debug container to the pod. A container picker chooses the target container when the pod has several. This needs `pods/ephemeralcontainers`.
 - **Configurable debug container:** the image and shell come from the deployment settings (`debug.image`, `debug.shell`). The default image is `nicolaka/netshoot:latest`, which is the default the Freelens debug-pod extension uses. A named list of debug profiles (`debug.profiles`) sets extra options such as the `kubectl debug` profile and whether the debug container shares the process namespace of the target.
-- **Duplicate for debugging:** "Don't debug in live workloads, duplicate instead." From the menu of a Pod, Deployment or StatefulSet, create a copy in the same namespace under a new name, with an optional override of the command, the image and the replica count. Requirements for the copy:
-  - It must not receive production traffic or be reconciled by the original's controller. Labels that a Service selector uses are removed or replaced, and owner references are dropped. How to do this safely for each kind is to be settled in the spike.
-  - It carries a label that names the original and the user who created it, so copies can be found and deleted from the list.
-  - Creating it needs `create` on the kind in question and is audited.
-- Opening a shell in the debug container, the duplicate or the original uses the normal shell feature above.
+- Opening a shell in the debug container uses the normal shell feature above.
 
 ### Pod file browser
 
@@ -173,7 +169,7 @@ A graphical file browser inside a running container, so users do not have to run
 - **View and edit:** text files open in the Monaco editor with syntax highlighting, and can be saved back to the container. The save fails with a clear message if the file changed after it was opened. Binary files are detected and offered for download only.
 - **Transfer:** upload by button or drag and drop (including several files and directories), and download of files and directories. Transfers use `tar` in the container where it exists, with a fallback to basic shell utilities (`ls`, `cat`, `stat`, `head`, `rm`) for single files. The size limit is the deployment setting `fileBrowser.maxTransferBytes`.
 - **Delete:** a file or directory, after a confirmation.
-- **Limits:** the container needs a shell or `tar`. A distroless image without them is not supported by the browser itself. Whether the browser can run inside an ephemeral debug container for such pods is an open question for the spike.
+- **Limits:** the container needs a shell or `tar`. Images without them, such as distroless images, are not supported.
 - **Safety:** the user's own RBAC is the only authority. Every view, save, upload, download and delete is audited with the path and size, never the content. Files that come from Secret volumes can be read like any other file, so the audit trail matters here.
 
 ### Real-time manifest editing
@@ -237,7 +233,7 @@ A live graph of the objects in the selected namespaces and the links between the
 
 ### Karpenter
 
-A module for clusters that run Karpenter, shown only when the cluster serves its CRDs. The console reads the API versions the cluster serves, as it does for Flux. The supported Karpenter versions are to be confirmed in the spike.
+A module for clusters that run Karpenter, shown only when the cluster serves its CRDs. The console reads the API versions the cluster serves, as it does for Flux, and does not pin a Karpenter version.
 
 - **Overview:** total, Karpenter-managed and other nodes; NodePools and their readiness; NodeClaims still waiting for a node. One card per NodePool shows its node class, status, instance types, limits against current CPU and memory use, `expireAfter`, the NodeOverlays that apply to it (and those Karpenter rejected), its nodes and its recent events. A filter works by name, node status, instance type and NodePool status.
 - **Topology:** a treemap of nodes grouped by NodePool, zone, instance type or node class, sized by CPU, memory, pods or equally, showing node status and capacity type (spot or on-demand).
@@ -254,8 +250,8 @@ Each module follows the same rules: it appears only when the cluster serves the 
 | Module | What it shows | Actions |
 | --- | --- | --- |
 | **Gateway API** | An overview with the number of Ready, Not Ready, In Progress and Unknown objects per kind and the events of those objects; one list per kind for every kind served by the `gateway.networking.k8s.io` and `gateway.networking.x-k8s.io` groups; details with status conditions, spec fields and links to the referenced objects | Edit, delete |
-| **Argo CD** | Applications, ApplicationSets and AppProjects with sync and health status, sync history, resource diff and the operation timeline | Refresh, hard refresh, sync (with options), terminate a running operation, toggle automated sync, roll back from history when automated sync is off |
-| **Argo Rollouts** | Rollouts, AnalysisRuns, Experiments, AnalysisTemplates and ClusterAnalysisTemplates | Promote, promote fully, abort, retry |
+| **Argo CD** | An overview, lists of Applications, ApplicationSets and AppProjects, a Config page, and application details (see Argo CD below) | Refresh, hard refresh, sync (with options), terminate a running operation, change the sync policy, roll back from history, edit Argo CD configuration |
+| **Argo Rollouts** | Rollouts, AnalysisRuns, Experiments, AnalysisTemplates and ClusterAnalysisTemplates | Promote, promote fully, promote skipping the current step, promote skipping all steps, abort (also while paused at a step or waiting for analysis), retry |
 | **Argo Workflows** | Workflows, CronWorkflows, WorkflowTemplates and ClusterWorkflowTemplates, read-only | None in v1 |
 | **KEDA** | ScaledObjects with the columns of `kubectl get so`, every trigger and its authentication reference, conditions, and scaling events | Pause and resume autoscaling |
 | **External Secrets** | ExternalSecrets, SecretStores and ClusterSecretStores with sync status, the target Secret, the store and the refresh interval | Force sync of an ExternalSecret |
@@ -265,7 +261,13 @@ Each module follows the same rules: it appears only when the cluster serves the 
 
 Notes:
 
-- Argo CD in v1 works only from the Argo CD objects in the cluster. Connecting to an Argo CD server's own API is not supported.
+- **Argo CD** works only from the Argo CD objects in the cluster (`argoproj.io`), under the user's Kubernetes identity. The Freelens Argo extension can also connect to a remote Argo CD server with a saved URL and bearer token; Kubelook does not do this in v1. Such a token would be a second credential outside Vault and Kubernetes RBAC, kept by the console, and the extension's own documentation says mutations in that mode use the token instead of Kubernetes RBAC.
+- **Argo CD overview:** application health and sync status as charts, summary cards, and recent cluster events.
+- **Argo CD lists:** Applications, ApplicationSets and AppProjects, with namespace, project, sync status and health status filters and sortable columns (including age), and status signals for ApplicationSets and AppProjects.
+- **Argo CD application details:** sync and health status; a drift hotspots table with a diagnostics summary; the operation timeline; a resource diff that groups OutOfSync resources by namespace and kind; and sync history with rollback, which is disabled when automated sync is on. The diff and relationship views are summaries built from the Application object. A line-level diff and a full resource tree, as in the Argo CD web UI, are not part of v1.
+- **Argo CD sync and sync policy:** a sync dialog with prune, dry run, force, sync strategy and target revision. A sync-policy toggle for automated sync with prune, self-heal and allow-empty, as in the Argo CD web UI. Refresh, hard refresh and terminate are in the object menu, and terminate is offered only while an operation is running.
+- **Argo CD Config page:** the Argo CD ConfigMaps and Secrets, including repository, repository-credential and cluster Secrets. ConfigMap data is edited as key and value rows with a JSON fallback. Credential fields that are left blank keep their stored values, so editing one field does not wipe the others, and clearing a credential is an explicit, confirmed choice. Repository details show the Helm OCI flags added in Argo CD 3.5 (`enableOCI`, `insecureOCIForceHttp`) and warn when `insecure` and `insecureOCIForceHttp` conflict. Secret values are masked and revealing one is audited like any other Secret reveal. Testing a repository or cluster connection, as the Argo CD web UI can, is not part of v1.
+- **Argo CD versions:** the Freelens extension is validated against Argo CD 3.4 and 3.5 and says other versions likely work. Kubelook has not chosen a supported range yet and reads the API versions each cluster serves.
 - The Trivy module never shows the text that matched a secret finding. Export neutralises spreadsheet formulas in titles.
 - A network reachability simulator and a policy "lab" (testing draft NetworkPolicy, Kyverno and Gatekeeper policies before applying them) are possible later additions and are not part of v1.
 
@@ -305,12 +307,11 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | SSRF through user-supplied server URLs | Egress policy on every outbound connection: block link-local and metadata addresses, and CIDR allow and deny lists from the deployment settings |
 | Abuse of shells | Exec goes through the Kubernetes API, never a shell on the console host. Sessions are audited; idle shells time out (proposed 15 min). |
 | Data theft or tampering through the file browser | Uses the `exec` subresource under the user's own RBAC. Size limit from the deployment settings. Every view, save, upload, download and delete is audited with path and size, never content. The feature can be switched off. |
-| Debug copies reaching production traffic | A duplicate drops Service-selector labels and owner references, carries a label naming the original and its creator, and is audited. |
 | Tunnels into the cluster network | Not offered. The console has no port-forward or TCP tunnel feature. |
 | Cross-site request forgery | SameSite cookies plus a CSRF token on REST calls; WebSocket upgrades check the Origin header |
 | Secret exposure in the UI | Secret values are masked until revealed; each reveal is audited |
 
-**Audit log.** We record sign-in and sign-out, every Vault credential issued (path and lease ID, never the token), every mutating Kubernetes call (verb, resource, cluster, namespace, outcome), every Helm and Flux action, every Secret reveal and certificate view, exec start and stop, every file-browser action (path and size, never content), every debug container and pod duplicate created, and every bulk node action. Each record names the Vault identity behind the action. This is the only place the person, the cluster and the action appear together: each cluster's own audit log shows the temporary service account Vault minted, not the person.
+**Audit log.** We record sign-in and sign-out, every Vault credential issued (path and lease ID, never the token), every mutating Kubernetes call (verb, resource, cluster, namespace, outcome), every Helm and Flux action, every Secret reveal and certificate view, exec start and stop, every file-browser action (path and size, never content), every debug container created, and every bulk node action. Each record names the Vault identity behind the action. This is the only place the person, the cluster and the action appear together: each cluster's own audit log shows the temporary service account Vault minted, not the person.
 
 **Audit storage.** Records are written as newline-delimited JSON to an S3 bucket, or any S3-compatible store. The console buffers records briefly and uploads them as objects under a date-based prefix. It flushes on shutdown so a clean restart loses nothing. Retention is set by whoever deploys the console: the console deletes its own objects older than the configured number of days, and `0` keeps them forever. Shipping records to an Elasticsearch endpoint is a planned future option.
 
@@ -380,15 +381,15 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 - The oldest supported cluster runs Flux v2.2.2 on Kubernetes v1.35.6.
 - No port-forwarding and no feature that needs it. Operator consoles that depend on a forwarded port (PostgreSQL, Kafka and RabbitMQ) are out of scope, and the earlier port-forward action on Services and Pods is removed.
 - An AI assistant is deferred to a possible future version.
+- No pod or workload duplication. A debug copy could still match a Service selector or be recreated by its controller, so the feature needs care that v1 does not take on. The ephemeral debug container is the only debug tool.
+- Argo CD is read and changed through the cluster's own Argo CD objects only. Connecting to an Argo CD server's API is not supported in v1, because it would add a second credential outside Vault and Kubernetes RBAC.
+- Karpenter versions are not pinned.
 - Ecosystem features are built-in modules that hide themselves when a cluster lacks the CRDs, not plugins.
 - Features borrowed from Freelens extensions are reimplemented from their documented behaviour. No extension code is copied.
 
 **Open questions for the spike**
 
-- Which Karpenter versions and API versions to support.
-- Whether the file browser can work for distroless pods through an ephemeral debug container.
-- How a pod duplicate is made safe for each workload kind.
-- How Argo CD sync and Argo Rollouts promote are best expressed as changes to the objects in the cluster.
+- How Argo CD sync, refresh, terminate and rollback, and Argo Rollouts promote and abort, are best expressed as changes to the objects in the cluster. The Freelens Argo extension's documentation says what it offers but not how it does each action in this mode.
 
 ## Sources
 
@@ -397,7 +398,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 - [Freelens Karpenter extension](https://github.com/freelensapp/freelens-karpenter-extension): the Karpenter pages and details
 - [Freelens Pod File Browser](https://github.com/masoudei/freelens-pod-filebrowser): the file browser features and limits
 - [Freelens Multi Pod Logs](https://github.com/andrea-falco/freelens-multi-pod-logs) and [Better Logs Reader](https://github.com/maksimkurb/lens-better-logs-reader): merged and structured log viewing
-- [Freelens Debug Pod](https://github.com/rguleryuz/freelens-debug-pod-extension) and [Duplicate](https://github.com/omarluq/freelens-duplicate-extension): the debug image, profile and duplicate workflows
+- [Freelens Debug Pod](https://github.com/rguleryuz/freelens-debug-pod-extension): the debug image, shell and extra options
 - [Freelens Resource Map](https://github.com/freelensapp/freelens-resource-map-extension): the objects and links in the map
 - [Freelens Resource Filter](https://github.com/mojish/freelens-resource-filter-extension): the field filter
 - [Certificate Info](https://github.com/jkroepke/lens-extension-certificate-info) and [Freelens Power](https://github.com/64mb/freelens-power): certificate details, bulk node actions and diagnostics

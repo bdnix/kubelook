@@ -17,7 +17,7 @@ Engineers need to investigate and operate many Kubernetes clusters whose access 
   - Live lists and details for workloads, config, networking, storage, cluster, access-control objects and CRDs
   - Log streaming (follow, search, multi-container / multi-pod merge, structured JSON logs with level colouring and field filters, NDJSON export)
   - In-browser container shells
-  - Debug toolkit: ephemeral debug containers with a configurable image, and duplicate a pod or workload to debug a copy
+  - Debug toolkit: ephemeral debug containers with a configurable image and shell
   - Pod file browser: browse, view, edit, upload, download and delete files in a running container
   - Live YAML editing with OpenAPI-based validation, server-side dry run and server-side apply
   - Helm releases (list, install, upgrade with diff, rollback, uninstall)
