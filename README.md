@@ -24,7 +24,7 @@ Engineers need to investigate and operate many Kubernetes clusters whose access 
   - FluxCD objects (dashboard, reconcile, suspend/resume, dependency graph)
   - Live resource map linking pods, workloads, Services, Ingresses, routes, config, claims and Helm releases
   - Karpenter module: NodePools, NodeClaims, NodeOverlays, node classes, topology and scaling decisions
-  - Ecosystem modules, shown only when a cluster has the CRDs: KEDA, External Secrets, cert-manager, Gateway API, Trivy Operator reports, and ServiceAccount permissions and policy status
+  - Ecosystem modules, shown only when a cluster has the CRDs: KEDA, External Secrets, Vault Secrets Operator, cert-manager, Gateway API, Trivy Operator reports, and ServiceAccount permissions and policy status
   - Field filter on any kind (CRDs included), bulk node cordon and drain, certificate details for TLS Secrets, and quick image-tag edits
 - **Your identity, your RBAC.** All Kubernetes calls run with the user's own credentials, so cluster RBAC remains the only authority. The console has no users, roles or permission settings of its own, and never changes Vault policies, roles or secrets engines.
 - **Audit log** of sign-ins, credential issuance, mutating calls, Helm/Flux actions, Secret reveals and shell sessions, written to S3 (or an S3-compatible store). Shell keystroke recording is optional and off by default.
@@ -44,7 +44,7 @@ See the [spec](docs/spec.md) for the full discovery flow, security model, Helm s
 | --- | --- |
 | 0. Spike | Vault login and cluster discovery; pods list and logs on one cluster |
 | 1. Core | Core kinds with live watches; YAML edit with dry run; exec shells; kubeconfig upload; structured logs; debug toolkit; pod file browser; bulk node actions; field filter; certificate details; image-tag edit |
-| 2. Platform | Helm; Flux; CRD browser and forms; resource map; Karpenter; KEDA, External Secrets, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage |
+| 2. Platform | Helm; Flux; CRD browser and forms; resource map; Karpenter; KEDA, External Secrets, Vault Secrets Operator, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage |
 | 3. Harden | Audit log to S3; metrics and tracing; load and penetration tests |
 
 Phases are not dated yet.

@@ -14,7 +14,7 @@ Kubelook is a browser-based Kubernetes console. Users sign in with a Vault token
 - A Vault token loads every cluster the token's policies can get credentials for. A kubeconfig loads every context in the file.
 - Day-2 operations in the browser: logs, container shells, live manifest editing, Helm releases, FluxCD objects, CRDs, and status and editing for all core workload, storage and networking objects.
 - Troubleshooting tools: a debug toolkit, a pod file browser and a live resource map.
-- Ecosystem modules for Karpenter, KEDA, External Secrets, cert-manager, the Gateway API and security reports. Each module appears only on clusters that have the matching CRDs.
+- Ecosystem modules for Karpenter, KEDA, External Secrets, Vault Secrets Operator, cert-manager, the Gateway API and security reports. Each module appears only on clusters that have the matching CRDs.
 - Everything runs under the user's own Kubernetes identity, so cluster RBAC stays the only authority on what they can do.
 - Vault stays the single place where access is defined. The console reads from Vault but never creates or changes its policies, roles or secrets engines; Vault admins keep owning those.
 - No user management or authorization inside the console. Vault decides who can reach which cluster, and cluster RBAC decides what they can do there. The console has no admin role, user records or permission settings; operators configure it only through its deployment settings.
@@ -250,6 +250,7 @@ Each module follows the same rules: it appears only when the cluster serves the 
 | Module | What it shows | Actions |
 | --- | --- | --- |
 | **Gateway API** | An overview with the number of Ready, Not Ready, In Progress and Unknown objects per kind and the events of those objects; one list per kind for every kind served by the `gateway.networking.k8s.io` and `gateway.networking.x-k8s.io` groups; details with status conditions, spec fields and links to the referenced objects | Edit, delete |
+| **Vault Secrets Operator** | The `VaultSecret` resources of the [ricoberger operator](https://github.com/ricoberger/vault-secrets-operator) (`ricoberger.de`), with the `SecretCreated` condition (status, reason, message, last transition), the Vault path or paths, the engine (KV or PKI) and the generated Secret. A resource is marked stale when the condition's `observedGeneration` is behind `metadata.generation`. | Open the generated Secret; restart the workloads that use it |
 | **KEDA** | ScaledObjects with the columns of `kubectl get so`, every trigger and its authentication reference, conditions, and scaling events | Pause and resume autoscaling |
 | **External Secrets** | ExternalSecrets, SecretStores and ClusterSecretStores with sync status, the target Secret, the store and the refresh interval | Force sync of an ExternalSecret |
 | **cert-manager** | Certificates, Issuers, ClusterIssuers and CertificateRequests with status and expiry | Edit, delete |
@@ -259,6 +260,12 @@ Each module follows the same rules: it appears only when the cluster serves the 
 Notes:
 
 - Any CRD without a module, for example Argo CD, Argo Rollouts and Argo Workflows, is handled by the generic Custom Resources browser: a list using `additionalPrinterColumns`, schema-aware details, and edit, delete and create. It has no Argo-specific actions such as sync or promote.
+- **Vault Secrets Operator** details:
+  - **Generated Secret:** a VaultSecret links to the Secret of the same name, with the usual masked values, audited reveal and certificate details. A Secret that carries the label `created-by: vault-secrets-operator` links back to its VaultSecret and warns that edits will be overwritten, because the operator's default `Replace` strategy replaces the whole Secret.
+  - **Restart consumers:** the module lists the Deployments, StatefulSets and DaemonSets whose pods use the generated Secret (through `envFrom`, `secretKeyRef` or a volume, as in the resource map) and offers a rollout restart, because Kubernetes does not restart pods when a Secret changes. The restart is confirmed first and audited like any other.
+  - **Health:** the cluster overview counts VaultSecrets whose `SecretCreated` condition is false.
+  - **No Vault reads:** the module only reads cluster objects. It never reads secret data from Vault, because the user's Vault token is used only to discover clusters and mint cluster credentials.
+  - The module applies only to the `ricoberger.de` operator. HashiCorp's Vault Secrets Operator uses different CRDs and is handled by the generic Custom Resources browser.
 - The Trivy module never shows the text that matched a secret finding. Export neutralises spreadsheet formulas in titles.
 - A network reachability simulator and a policy "lab" (testing draft NetworkPolicy, Kyverno and Gatekeeper policies before applying them) are possible later additions and are not part of v1.
 
@@ -277,7 +284,7 @@ Notes:
 The layout is a cluster rail, a resource sidebar, a main list, and a details drawer, with a dock for terminals and logs.
 
 - **Cluster rail (far left):** clusters grouped by source (Vault, or the name of each uploaded kubeconfig). Each shows connection status, and favourites are pinned.
-- **Resource sidebar:** Overview, Workloads, Config, Network, Storage, Access Control, Helm, FluxCD, Resource Map, Pod Files, the ecosystem modules (Karpenter, KEDA, External Secrets, cert-manager, Gateway API, Security), Custom Resources (grouped by API group), Events. Sections the user can't list, and modules the cluster doesn't have, are hidden.
+- **Resource sidebar:** Overview, Workloads, Config, Network, Storage, Access Control, Helm, FluxCD, Resource Map, Pod Files, the ecosystem modules (Karpenter, KEDA, External Secrets, Vault Secrets Operator, cert-manager, Gateway API, Security), Custom Resources (grouped by API group), Events. Sections the user can't list, and modules the cluster doesn't have, are hidden.
 - **Main list:** a sortable, filterable table with live status badges and multi-select. Column presets are saved per kind.
 - **Details drawer:** opens on the right with tabs for Overview, YAML, Events, Logs, Files (pods) and Related. Related shows owners, children, a map of related objects, and the Flux source if any.
 - **Bottom dock:** tabs for terminals, log streams and editors, which survive navigation between clusters. It docks or pops out to its own browser window.
@@ -325,7 +332,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | `fileBrowser.enabled` | `true` | Turns the pod file browser on or off |
 | `fileBrowser.maxTransferBytes` | `26214400` (25 MiB, proposed) | Largest single upload or download |
 | `logs.historyMaxLines` | `200000` (proposed) | Most lines the log viewer loads when scrolling back |
-| `modules.<name>.enabled` | `auto` | `auto` shows a module only when its CRDs exist, `false` hides it. Names: `karpenter`, `keda`, `externalSecrets`, `certManager`, `gatewayApi`, `trivy`, `permissions` |
+| `modules.<name>.enabled` | `auto` | `auto` shows a module only when its CRDs exist, `false` hides it. Names: `karpenter`, `keda`, `externalSecrets`, `vaultSecrets`, `certManager`, `gatewayApi`, `trivy`, `permissions` |
 
 **Vault policy users need.** For each cluster they may use: `read` on `kubernetes/<cluster>/config`, and `create` or `update` on `kubernetes/<cluster>/creds/<role>`. Discovery also calls `sys/capabilities-self`, which Vault's default policy usually grants, and `sys/internal/ui/mounts`, which is unauthenticated. Vault admins should confirm both against their own policies.
 
@@ -354,7 +361,7 @@ We ship in four phases, and each phase must pass a gate before the next starts. 
 | --- | --- | --- |
 | 0. Spike | Vault login and cluster discovery; pods list and logs on one cluster | Auth design holds |
 | 1. Core | All core kinds with live watches; YAML edit with dry run; exec shells; kubeconfig upload; structured logs; debug toolkit; pod file browser; bulk node actions; field filter; certificate details; image-tag edit | Pilot team signs off |
-| 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser and forms; resource map; Karpenter; KEDA, External Secrets, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | Security review |
+| 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser and forms; resource map; Karpenter; KEDA, External Secrets, Vault Secrets Operator, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | Security review |
 | 3. Harden | Audit log to S3; metrics and tracing; load and penetration tests | — |
 
 The phases aren't dated yet. We'll size them once the spike shows how hard the Vault and network questions are.
@@ -374,6 +381,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 - An AI assistant is deferred to a possible future version.
 - No pod or workload duplication. A debug copy could still match a Service selector or be recreated by its controller, so the feature needs care that v1 does not take on. The ephemeral debug container is the only debug tool.
 - Karpenter versions are not pinned.
+- The user's Vault token is used only to discover clusters and mint cluster credentials. The console never reads secret data from Vault, so there is no Vault secret browser, no comparison of Vault and cluster values, and no Vault-side secret editing.
 - Ecosystem features are built-in modules that hide themselves when a cluster lacks the CRDs, not plugins.
 - Features borrowed from Freelens extensions are reimplemented from their documented behaviour. No extension code is copied.
 
@@ -389,7 +397,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 - [Freelens Resource Filter](https://github.com/mojish/freelens-resource-filter-extension): the field filter
 - [Certificate Info](https://github.com/jkroepke/lens-extension-certificate-info) and [Freelens Power](https://github.com/64mb/freelens-power): certificate details, bulk node actions and diagnostics
 - [Deployment Image Update](https://github.com/ottimis/freelens-version-update): the image-tag edit
-- Ecosystem modules: [Gateway API](https://github.com/freelensapp/freelens-gateway-api-extension), [KEDA](https://github.com/nidiodolfini/freelens-keda-extension), [External Secrets](https://github.com/nidiodolfini/freelens-eso-extension), [cert-manager](https://github.com/maifeeulasad/freelens-cert-manager), [Trivy Operator](https://github.com/hellboyhha/freelens-trivy-operator-extension), [Governance](https://github.com/flavius-dinu/lens-governance)
+- Ecosystem modules: [Gateway API](https://github.com/freelensapp/freelens-gateway-api-extension), [KEDA](https://github.com/nidiodolfini/freelens-keda-extension), [External Secrets](https://github.com/nidiodolfini/freelens-eso-extension), [Vault Secrets Operator](https://github.com/ricoberger/vault-secrets-operator), [cert-manager](https://github.com/maifeeulasad/freelens-cert-manager), [Trivy Operator](https://github.com/hellboyhha/freelens-trivy-operator-extension), [Governance](https://github.com/flavius-dinu/lens-governance)
 - [Headlamp repository](https://github.com/kubernetes-sigs/headlamp): the README and the backend multiplexer and stateless kubeconfig code
 - [Headlamp installation docs](https://headlamp.pages.dev/docs/latest/installation)
 - [Rancher: communicating with downstream clusters](https://ranchermanager.docs.rancher.com/reference-guides/rancher-manager-architecture/communicating-with-downstream-user-clusters)
