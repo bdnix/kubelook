@@ -27,7 +27,7 @@ Kubelook is a browser-based Kubernetes console. Users sign in with a Vault token
 
 **Target users**
 
-- Application engineers who need logs, shells and restarts on the namespaces they own.
+- Application engineers who need logs, shells and restarts.
 - Platform and SRE engineers who manage Helm, Flux and cluster-wide objects across many clusters.
 - On-call responders who need fast access from any machine without setting up a kubeconfig.
 
@@ -51,7 +51,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 1. `GET kubernetes/<cluster>/config` gives the API server URL and CA.
 2. `POST kubernetes/<cluster>/creds/<role>` with `kubernetes_namespace` and `cluster_role_binding` from the Helm values returns `service_account_name` and `service_account_token` ([Vault API](https://developer.hashicorp.com/vault/api-docs/v1.16.x/secret/kubernetes)). `cluster_role_binding=true` requires the Vault role to use `kubernetes_role_type=ClusterRole`.
 3. The backend builds an in-memory client config from the URL, CA and token. Nothing is written to disk.
-4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it revokes the lease, which removes the service account objects Vault created.
+4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the credentials from the session store and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created.
 
 **Helm chart settings for Vault**
 
@@ -90,7 +90,7 @@ flowchart TB
   browser["Browser<br/>React SPA: lists, details, Monaco YAML<br/>xterm.js terminals, log viewer"]
   subgraph backend["Kubelook backend (Go, client-go, Helm SDK), stateless replicas"]
     auth["Auth and sessions"]
-    broker["Credential broker<br/>re-mints before expiry, revokes"]
+    broker["Credential broker<br/>re-mints before expiry"]
     discovery["Cluster discovery<br/>kubernetes/* mounts filtered by sys/capabilities-self"]
     proxy["API proxy and watch hub<br/>user's own creds per call"]
     streams["Stream gateway<br/>logs, exec, file transfer"]
@@ -300,7 +300,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Threat | Mitigation |
 | --- | --- |
 | Credential theft from the browser | Credentials stay server-side. The browser holds only an HttpOnly session cookie, and every page has a strict CSP. |
-| Backend or session store compromise | Credentials are encrypted at rest (Vault Transit or KMS), short-lived Vault tokens (6 h TTL today), revocation on logout, and no persistence of uploaded kubeconfigs |
+| Backend or session store compromise | Credentials are encrypted at rest (Vault Transit or KMS), short-lived Vault tokens (6 h TTL today) and cluster credentials that expire at their TTL, and no persistence of uploaded kubeconfigs |
 | Privilege escalation through the console | All Kubernetes calls use the user's own credential. The console has no cluster rights of its own. |
 | SSRF through user-supplied server URLs | Egress policy on every outbound connection: block link-local and metadata addresses, and CIDR allow and deny lists from the deployment settings |
 | Abuse of shells | Exec goes through the Kubernetes API, never a shell on the console host. Sessions are audited; idle shells time out (proposed 15 min). |
@@ -360,15 +360,14 @@ We ship in four phases, and each phase must pass a gate before the next starts. 
 | Phase | Scope | Gate to the next phase |
 | --- | --- | --- |
 | 0. Spike | Vault login and cluster discovery; pods list and logs on one cluster | Auth design holds |
-| 1. Core | All core kinds with live watches; YAML edit with dry run; exec shells; kubeconfig upload; structured logs; debug toolkit; pod file browser; bulk node actions; field filter; certificate details; image-tag edit | Pilot team signs off |
+| 1. Core | All core kinds with live watches; YAML edit with dry run; exec shells; kubeconfig upload; structured logs; debug toolkit; pod file browser; bulk node actions; field filter; certificate details; image-tag edit | — |
 | 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser and forms; resource map; Karpenter; KEDA, External Secrets, Vault Secrets Operator, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | Security review |
 | 3. Harden | Audit log to S3; metrics and tracing; load and penetration tests | — |
 
 The phases aren't dated yet. We'll size them once the spike shows how hard the Vault and network questions are.
 
-- **Gate 1, auth design holds:** a real user's Vault token lists exactly the clusters their policies allow, and credentials are re-minted before expiry and revoked on logout.
-- **Gate 2, pilot team signs off:** one platform team uses the console for logs, shells and edits as their main tool for two weeks.
-- **Gate 3, security review:** penetration test findings are fixed, and the audit trail is accepted by the security team.
+- **Gate 1, auth design holds:** a real user's Vault token lists exactly the clusters their policies allow, and credentials are re-minted before expiry, and logout closes every open connection for the session.
+- **Gate 2, security review:** penetration test findings are fixed, and the audit trail is accepted by the security team.
 
 ## Decisions
 
