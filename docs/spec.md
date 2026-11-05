@@ -237,7 +237,7 @@ A module for clusters that run Karpenter, shown only when the cluster serves its
 
 - **Overview:** total, Karpenter-managed and other nodes; NodePools and their readiness; NodeClaims still waiting for a node. One card per NodePool shows its node class, status, instance types, limits against current CPU and memory use, `expireAfter`, the NodeOverlays that apply to it (and those Karpenter rejected), its nodes and its recent events. A filter works by name, node status, instance type and NodePool status.
 - **Topology:** a treemap of nodes grouped by NodePool, zone, instance type or node class, sized by CPU, memory, pods or equally, showing node status and capacity type (spot or on-demand).
-- **Scaling decisions:** Karpenter's events over time grouped as scale up, scale down, drift, errors and other, for the last hour, 6 hours, 24 hours or all; node counts per NodePool over time; and the pod and node decisions as tables.
+- **Scaling decisions:** Karpenter's events grouped as scale up, scale down, drift, errors and other, and the pod and node decisions as tables. The console stores no history, so this covers only the events the cluster still holds (1 hour with the default kube-apiserver `--event-ttl`).
 - **Lists and details:** NodeClaims, NodePools and NodeOverlays, each with the columns of the matching `kubectl get -o wide` output, sortable and searchable, and a details view that explains why an object is not ready, with links between related objects. NodeClaim details cover launch, registration and initialization state, drift, instance type, capacity type, zone, provider and image IDs, node capacity and spec.
 - **Provider node classes:** the page reads only the node classes of the provider the cluster runs: EC2NodeClass on AWS, AKSNodeClass on Azure, and GCENodeClass and GCECustomMachineType on GCP.
 - **Node details:** a Karpenter section on the details of a node it manages: NodePool and NodeClaim links, instance and capacity type, zone, registration and initialization state, and whether Karpenter is disrupting it or must not.
@@ -291,7 +291,7 @@ The layout is a cluster rail, a resource sidebar, a main list, and a details dra
 - **Deep links:** every view has a stable URL (`/c/<cluster>/ns/<ns>/<kind>/<name>`), so links can be shared in incidents.
 - **Themes and access:** light and dark themes, full keyboard navigation, and screen-reader labels on status icons.
 - **Screen size:** designed for desktop browsers. Phone layouts are not supported, because terminals, YAML editing and wide resource tables need the room.
-- **Cluster overview:** a page with node health, failing pods, recent warning events, and Flux and Helm failure counts. It also lists Pending pods with the scheduler's message from their `FailedScheduling` event, pods that are running but not ready with the failing condition, and a timeline of warning events. A Karpenter summary appears when the module is active.
+- **Cluster overview:** a page with node health, failing pods, recent warning events, and Flux and Helm failure counts. It also lists Pending pods with the scheduler's message from their `FailedScheduling` event, pods that are running but not ready with the failing condition, and a timeline of the warning events the cluster still holds. A Karpenter summary appears when the module is active.
 
 ## Security model
 
