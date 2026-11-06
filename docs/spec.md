@@ -70,7 +70,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 2. Every context becomes a cluster in the sidebar, named `<file label>/<context>`.
 3. Supported auth: embedded client certificates, bearer tokens, and OIDC `auth-provider` refresh tokens.
 4. Rejected with a clear message: file-path references (`client-certificate`, `certificate-authority` by path), and any user entry that uses an `exec` credential plugin. The console never runs commands from a kubeconfig; `exec` plugins are not supported.
-5. Server URLs pass an egress policy before any request goes out. By default it blocks link-local and cloud metadata addresses, plus any ranges listed in the deployment settings, to prevent server-side request forgery (SSRF).
+5. The console does not filter server URLs itself. It connects to whatever address a kubeconfig names, so whoever deploys it must restrict its outbound traffic with a firewall or network policy, for example to the cluster API servers, Vault and the audit bucket.
 
 ### Sessions
 
@@ -302,7 +302,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Credential theft from the browser | Credentials stay server-side. The browser holds only an HttpOnly session cookie, and every page has a strict CSP. |
 | Backend or session store compromise | Credentials are encrypted at rest (Vault Transit or KMS), short-lived Vault tokens (6 h TTL today) and cluster credentials that expire at their TTL, and no persistence of uploaded kubeconfigs |
 | Privilege escalation through the console | All Kubernetes calls use the user's own credential. The console has no cluster rights of its own. |
-| SSRF through user-supplied server URLs | Egress policy on every outbound connection: block link-local and metadata addresses, and CIDR allow and deny lists from the deployment settings |
+| SSRF through user-supplied server URLs | Left to the deployment: whoever deploys the console restricts its outbound traffic with a firewall or network policy. The console has no egress filter of its own. |
 | Abuse of shells | Exec goes through the Kubernetes API, never a shell on the console host. Sessions are audited; idle shells time out (proposed 15 min). |
 | Data theft or tampering through the file browser | Uses the `exec` subresource under the user's own RBAC. Size limit from the deployment settings. Every view, save, upload, download and delete is audited with path and size, never content. The feature can be switched off. |
 | Tunnels into the cluster network | Not offered. The console has no port-forward or TCP tunnel feature. |
