@@ -4,20 +4,20 @@ Last updated: 2026-11-05
 
 ## Overview
 
-Kubelook is a browser-based Kubernetes console. Users sign in with a Vault token or an uploaded kubeconfig and get full day-2 operations on every cluster that credential reaches, with no desktop install.
+Kubelook is a browser-based Kubernetes console. Users sign in with Google or GitHub, then add a Vault token or an uploaded kubeconfig, and get full day-2 operations on every cluster that credential reaches, with no desktop install.
 
 **Problem.** Engineers need to investigate and operate many Kubernetes clusters, and cluster access is brokered through Vault. They need one place in the browser where a Vault token, or a kubeconfig, opens exactly the clusters they are allowed to see. No credentials should be stored on their own machines.
 
 **Goals**
 
-- Two sign-in paths: a Vault token, or a kubeconfig file.
+- Sign-in with a Google or GitHub account, which identifies the user and keeps their settings. Then two ways to reach clusters: a Vault token, or a kubeconfig file.
 - A Vault token loads every cluster the token's policies can get credentials for. A kubeconfig loads every context in the file.
 - Day-2 operations in the browser: logs, container shells, live manifest editing, Helm releases, FluxCD objects, CRDs, and status and editing for all core workload, storage and networking objects.
 - Troubleshooting tools: a debug toolkit, a pod file browser and a live resource map.
 - Ecosystem modules for Karpenter, KEDA, External Secrets, Vault Secrets Operator, cert-manager, the Gateway API and security reports. Each module appears only on clusters that have the matching CRDs.
 - Everything runs under the user's own Kubernetes identity, so cluster RBAC stays the only authority on what they can do.
 - Vault stays the single place where access is defined. The console reads from Vault but never creates or changes its policies, roles or secrets engines; Vault admins keep owning those.
-- No user management or authorization inside the console. Vault decides who can reach which cluster, and cluster RBAC decides what they can do there. The console has no admin role, user records or permission settings; operators configure it only through its deployment settings.
+- No user management or authorization inside the console. Vault decides who can reach which cluster, and cluster RBAC decides what they can do there. The console has no admin role or permission settings; operators configure it only through its deployment settings. It keeps a record per signed-in account only to store that user's settings.
 
 **Non-goals for v1**
 
@@ -33,7 +33,21 @@ Kubelook is a browser-based Kubernetes console. Users sign in with a Vault token
 
 ## Authentication and cluster discovery
 
-Both sign-in paths end in the same state: a server-side session that holds short-lived Kubernetes credentials per cluster. The browser only ever gets a session cookie.
+Sign-in has two steps. First the user signs in with Google or GitHub, which says who they are. Then they add a Vault token (Path A) or a kubeconfig (Path B), which says which clusters they can reach. Both paths end in the same state: a server-side session that holds short-lived Kubernetes credentials per cluster. The browser only ever gets a session cookie.
+
+### Step 1: Google or GitHub sign-in
+
+1. The user picks Google or GitHub and signs in through that provider's OAuth 2.0 / OpenID Connect flow, with the authorization code flow and PKCE.
+2. The console checks that the account is allowed. For Google, the ID token's email must be verified and its hosted domain (`hd` claim) must be in `auth.google.allowedDomains`. For GitHub, the user must be a member of an organization in `auth.github.allowedOrgs`, which needs the `read:org` scope. Sign-in is refused when the account doesn't match, or when neither list is set.
+3. The account becomes the user's identity in the console: a user record keyed by provider and the provider's stable account ID (Google `sub`, GitHub numeric user ID), not by email.
+4. The console never uses the Google or GitHub token to reach clusters or Vault. It is used only to sign in and to check domain or organization membership.
+
+| Setting | Default | Purpose |
+| --- | --- | --- |
+| `auth.google.clientId`, `auth.google.clientSecretRef` | none | OAuth client for Google sign-in; Google is offered only when set |
+| `auth.google.allowedDomains` | none | Google Workspace domains allowed to sign in |
+| `auth.github.clientId`, `auth.github.clientSecretRef` | none | OAuth app for GitHub sign-in; GitHub is offered only when set |
+| `auth.github.allowedOrgs` | none | GitHub organizations whose members may sign in |
 
 ### Path A: Vault token
 
@@ -51,7 +65,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 1. `GET kubernetes/<cluster>/config` gives the API server URL and CA.
 2. `POST kubernetes/<cluster>/creds/<role>` with `kubernetes_namespace` and `cluster_role_binding` from the Helm values returns `service_account_name` and `service_account_token` ([Vault API](https://developer.hashicorp.com/vault/api-docs/v1.16.x/secret/kubernetes)). `cluster_role_binding=true` requires the Vault role to use `kubernetes_role_type=ClusterRole`.
 3. The backend builds an in-memory client config from the URL, CA and token. Nothing is written to disk.
-4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the credentials from the session store and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created.
+4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the credentials from the database and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created.
 
 **Helm chart settings for Vault**
 
@@ -75,7 +89,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 ### Sessions
 
 - **Cookie:** an HttpOnly, Secure, SameSite=Lax cookie holds an opaque session ID. Mutating requests carry a CSRF token.
-- **Storage:** credentials live in a session store, encrypted with a key from Vault Transit or a KMS. They are deleted when the session ends.
+- **Storage:** sessions, credentials and user settings live in a relational database: SQLite for a single-replica deployment, PostgreSQL for more than one replica. Credentials are encrypted with a key from Vault Transit or a KMS and deleted when the session ends. User settings (favourite clusters, saved filter sets, column presets, namespace filters) stay with the user record across sessions and machines.
 - **Renewal:** while the session is active, the backend silently renews the user's Vault token with `auth/token/renew-self` before it expires, and re-mints each cluster's Kubernetes token the same way. The user is told nothing while renewal works.
 - **When renewal stops:** renewal fails once the token isn't renewable or reaches its maximum TTL. Only then does the console tell the user, with the time left and a box to paste a new token without closing open terminals, log streams or editors.
 - **Idle sessions:** renewal stops after an idle timeout (proposed 30 min with no interaction and no open stream), so an abandoned tab doesn't keep a token alive.
@@ -97,24 +111,26 @@ flowchart TB
     ops["Helm, Flux, audit"]
   end
   vault["Vault<br/>token lookup, mounts, creds, cluster config"]
-  store["Session store<br/>Valkey, encrypted credentials"]
+  store["Database<br/>SQLite or PostgreSQL: sessions, encrypted credentials, user settings"]
+  idp["Google or GitHub<br/>user sign-in"]
   clusters["Kubernetes clusters<br/>API servers, reached directly"]
   s3["S3 bucket<br/>audit records"]
   browser -- "HTTPS REST + one multiplexed WebSocket" --> backend
   backend --> vault
   backend --> store
+  backend --> idp
   backend -- "as the user" --> clusters
   backend --> s3
 ```
 
-The browser talks only to the backend. The backend talks to Vault for identity and credentials, to the session store for encrypted state, and to each cluster's API server as the user.
+The browser talks only to the backend. The backend talks to Google or GitHub to sign the user in, to Vault for cluster credentials, to the database for sessions, encrypted credentials and user settings, and to each cluster's API server as the user.
 
 - **Backend language: Go.** client-go, the Helm SDK and the Flux APIs are all Go.
 - **Frontend:** React and TypeScript, Monaco for YAML, xterm.js for shells.
 - **Watch hub:** one upstream watch per user, cluster, kind and namespace, fanned out to every open view. It's closed after an idle timeout and resumed from the last `resourceVersion` on reconnect.
 - **One WebSocket per tab** carries watch events, log lines, exec frames and file-transfer chunks as tagged channels, with a heartbeat.
 - **Network placement:** the console runs inside the same network as the clusters and connects to each API server directly. There is no agent or tunnel: a cluster the console's network can't reach stays out of reach, so a private cluster stays private.
-- **Deployment:** one image and a Helm chart, two or more replicas behind a load balancer with sticky WebSockets, plus a highly available [Valkey](https://valkey.io) (BSD-3-Clause, Redis-protocol compatible) for sessions.
+- **Deployment:** one image and a Helm chart. A single replica can use SQLite on a persistent volume. Two or more replicas run behind a load balancer with sticky WebSockets and share a PostgreSQL database, which should be highly available.
 
 ## Functional requirements
 
@@ -272,10 +288,10 @@ Notes:
 ### Cross-cutting
 
 - Global search across kinds and clusters, and a command palette.
-- **Field filter on any kind, CRDs included:** filter a list with rows of field, operator and value, joined by AND or OR, for example `spec.state = pending OR spec.state = ready`. Operators include `=`, `!=`, `contains`, `regex`, `in`, `exists`, and `older than` or `newer than` (durations such as `7d`, or timestamps). A query bar compiles into the rows. Field paths come from the live objects. Filter sets can be saved, and the matching objects can be downloaded as YAML or JSON. "Copy as kubectl" gives the equivalent `kubectl … | yq` or `| jq` command.
+- **Field filter on any kind, CRDs included:** filter a list with rows of field, operator and value, joined by AND or OR, for example `spec.state = pending OR spec.state = ready`. Operators include `=`, `!=`, `contains`, `regex`, `in`, `exists`, and `older than` or `newer than` (durations such as `7d`, or timestamps). A query bar compiles into the rows. Field paths come from the live objects. Filter sets can be saved to the user's settings, and the matching objects can be downloaded as YAML or JSON. "Copy as kubectl" gives the equivalent `kubectl … | yq` or `| jq` command.
 - **Certificate details:** for a Secret that holds PEM certificates, show each certificate's subject, issuer, serial number, validity dates and time to expiry, for the whole chain. The backend parses the certificate and sends only this metadata to the browser, never the private key. Viewing it is audited as a Secret read.
 - **Export:** every list can be exported as CSV or JSON, with sensitive values left out.
-- Namespace filter per cluster, remembered per user.
+- Namespace filter per cluster, saved with the user's settings.
 - RBAC-aware UI from `SelfSubjectAccessReview` and `SelfSubjectRulesReview`: actions the user can't perform are hidden, or disabled with the missing verb shown.
 - Bulk actions on list selections: delete, restart, label. On a selection of nodes: cordon, uncordon and drain. A drain handles one node at a time and uses the eviction API, so PodDisruptionBudgets are respected. Every bulk action names the objects it will change and asks for confirmation first.
 
@@ -283,9 +299,9 @@ Notes:
 
 The layout is a cluster rail, a resource sidebar, a main list, and a details drawer, with a dock for terminals and logs.
 
-- **Cluster rail (far left):** clusters grouped by source (Vault, or the name of each uploaded kubeconfig). Each shows connection status, and favourites are pinned.
+- **Cluster rail (far left):** clusters grouped by source (Vault, or the name of each uploaded kubeconfig). Each shows connection status, and favourites are pinned and saved with the user's settings.
 - **Resource sidebar:** Overview, Workloads, Config, Network, Storage, Access Control, Helm, FluxCD, Resource Map, Pod Files, the ecosystem modules (Karpenter, KEDA, External Secrets, Vault Secrets Operator, cert-manager, Gateway API, Security), Custom Resources (grouped by API group), Events. Sections the user can't list, and modules the cluster doesn't have, are hidden.
-- **Main list:** a sortable, filterable table with live status badges and multi-select. Column presets are saved per kind.
+- **Main list:** a sortable, filterable table with live status badges and multi-select. Column presets are saved per kind in the user's settings.
 - **Details drawer:** opens on the right with tabs for Overview, YAML, Events, Logs, Files (pods) and Related. Related shows owners, children, a map of related objects, and the Flux source if any.
 - **Bottom dock:** tabs for terminals, log streams and editors, which survive navigation between clusters. It docks or pops out to its own browser window.
 - **Deep links:** every view has a stable URL (`/c/<cluster>/ns/<ns>/<kind>/<name>`), so links can be shared in incidents.
@@ -300,7 +316,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Threat | Mitigation |
 | --- | --- |
 | Credential theft from the browser | Credentials stay server-side. The browser holds only an HttpOnly session cookie, and every page has a strict CSP. |
-| Backend or session store compromise | Credentials are encrypted at rest (Vault Transit or KMS), short-lived Vault tokens (6 h TTL today) and cluster credentials that expire at their TTL, and no persistence of uploaded kubeconfigs |
+| Backend or database compromise | Credentials are encrypted at rest (Vault Transit or KMS), short-lived Vault tokens (6 h TTL today) and cluster credentials that expire at their TTL, and no persistence of uploaded kubeconfigs |
 | Privilege escalation through the console | All Kubernetes calls use the user's own credential. The console has no cluster rights of its own. |
 | SSRF through user-supplied server URLs | Left to the deployment: whoever deploys the console restricts its outbound traffic with a firewall or network policy. The console has no egress filter of its own. |
 | Abuse of shells | Exec goes through the Kubernetes API, never a shell on the console host. Sessions are audited; idle shells time out (proposed 15 min). |
@@ -309,7 +325,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Cross-site request forgery | SameSite cookies plus a CSRF token on REST calls; WebSocket upgrades check the Origin header |
 | Secret exposure in the UI | Secret values are masked until revealed; each reveal is audited |
 
-**Audit log.** We record sign-in and sign-out, every Vault credential issued (path and lease ID, never the token), every mutating Kubernetes call (verb, resource, cluster, namespace, outcome), every Helm and Flux action, every Secret reveal and certificate view, exec start and stop, every file-browser action (path and size, never content), every debug container created, and every bulk node action. Each record names the Vault identity behind the action. This is the only place the person, the cluster and the action appear together: each cluster's own audit log shows the temporary service account Vault minted, not the person.
+**Audit log.** We record sign-in and sign-out, every Vault credential issued (path and lease ID, never the token), every mutating Kubernetes call (verb, resource, cluster, namespace, outcome), every Helm and Flux action, every Secret reveal and certificate view, exec start and stop, every file-browser action (path and size, never content), every debug container created, and every bulk node action. Each record names both the signed-in Google or GitHub account and the Vault identity behind the action, since a user could paste someone else's Vault token. This is the only place the person, the cluster and the action appear together: each cluster's own audit log shows the temporary service account Vault minted, not the person.
 
 **Audit storage.** Records are written as newline-delimited JSON to an S3 bucket, or any S3-compatible store. The console buffers records briefly and uploads them as objects under a date-based prefix. It flushes on shutdown so a clean restart loses nothing. Retention is set by whoever deploys the console: the console deletes its own objects older than the configured number of days, and `0` keeps them forever. Shipping records to an Elasticsearch endpoint is a planned future option.
 
@@ -346,7 +362,7 @@ The targets below are proposed starting points, to be confirmed after the spike.
 | Watch event to UI update | Under 1 s end to end |
 | Concurrent users per backend replica | 200 active sessions |
 | Watches per user | Shared per user, cluster and kind; idle watches closed after 60 s |
-| Availability | 99.9% monthly; stateless replicas behind a load balancer, with the session store highly available |
+| Availability | 99.9% monthly; stateless replicas behind a load balancer, with the PostgreSQL database highly available |
 | Clusters per Vault user | 100+ in the sidebar, with credentials fetched lazily |
 | Supported Kubernetes | Kubernetes 1.35 and newer |
 | Browsers | Current Chrome, Edge, Firefox and Safari |
@@ -359,7 +375,7 @@ We ship in four phases, and each phase must pass a gate before the next starts. 
 
 | Phase | Scope | Gate to the next phase |
 | --- | --- | --- |
-| 0. Spike | Vault login and cluster discovery; pods list and logs on one cluster | Auth design holds |
+| 0. Spike | Google and GitHub sign-in; Vault login and cluster discovery; pods list and logs on one cluster | Auth design holds |
 | 1. Core | All core kinds with live watches; YAML edit with dry run; exec shells; kubeconfig upload; structured logs; debug toolkit; pod file browser; bulk node actions; field filter; certificate details; image-tag edit | — |
 | 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser and forms; resource map; Karpenter; KEDA, External Secrets, Vault Secrets Operator, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | Security review |
 | 3. Harden | Audit log to S3; metrics and tracing; load and penetration tests | — |
@@ -372,7 +388,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 ## Decisions
 
 - Vault layout: one Kubernetes secrets engine mount per cluster (`kubernetes/<cluster-name>/`); the mounts are the cluster registry.
-- Sign-in: users paste a Vault token. There is no SSO integration, so the console needs no changes to Vault or Duo configuration.
+- Sign-in: users sign in with Google or GitHub, limited to allowed Workspace domains or GitHub organizations, then paste a Vault token or upload a kubeconfig. Vault itself has no SSO integration, so the console needs no changes to Vault or Duo configuration.
 - Audit: records go to an S3 bucket, with retention set in the Helm values by whoever deploys the console. Elasticsearch shipping comes later.
 - Shell keystroke recording is optional, off by default, and stored with the other audit records when enabled.
 - The oldest supported cluster runs Flux v2.2.2 on Kubernetes v1.35.6.
