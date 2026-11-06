@@ -91,9 +91,10 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 
 - **Cookie:** an HttpOnly, Secure, SameSite=Lax cookie holds an opaque session ID. Mutating requests carry a CSRF token.
 - **Storage:** sessions, credentials and user settings live in a relational database: SQLite for a single-replica deployment, PostgreSQL for more than one replica. All credentials are encrypted with a key from Vault Transit or a KMS. The user's Vault token and uploaded kubeconfigs are saved to their account until they expire or the user removes them; the Kubernetes credentials minted from Vault belong to a session and are deleted when it ends. A user can see and remove their saved Vault token and kubeconfigs from their account settings. User settings (favourite clusters, saved filter sets, column presets, namespace filters) stay with the user record across sessions and machines.
-- **Renewal:** while the session is active, the backend silently renews the user's Vault token with `auth/token/renew-self` before it expires, and re-mints each cluster's Kubernetes token the same way. The user is told nothing while renewal works.
-- **When renewal stops:** renewal fails once the token isn't renewable or reaches its maximum TTL. Only then does the console tell the user, with the time left and a box to paste a new token without closing open terminals, log streams or editors.
-- **Idle sessions:** renewal stops after an idle timeout (proposed 30 min with no interaction and no open stream), so an abandoned tab doesn't keep a token alive.
+- **Vault token renewal:** the backend renews each saved Vault token with `auth/token/renew-self` before its TTL runs out, whether or not the user is signed in, until Vault refuses because the token reached its maximum TTL (7 days in the current Vault setup). The console reads the limit from Vault rather than assuming it. The user is told nothing while renewal works.
+- **Cluster credential renewal:** while a session is active, the backend re-mints each open cluster's Kubernetes token shortly before it expires.
+- **When renewal stops:** renewal fails once the token isn't renewable or reaches its maximum TTL. Only then does the console tell the user (at their next sign-in if they are away), with the time left and a box to paste a new token without closing open terminals, log streams or editors.
+- **Idle sessions:** a session ends after an idle timeout (proposed 30 min with no interaction and no open stream), which stops cluster credential re-minting and closes its connections. The saved Vault token keeps being renewed.
 - **Sources:** a user can hold a Vault token and uploaded kubeconfigs at the same time. The sidebar groups clusters by source.
 
 ## Architecture
@@ -317,7 +318,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Threat | Mitigation |
 | --- | --- |
 | Credential theft from the browser | Credentials stay server-side. The browser holds only an HttpOnly session cookie, and every page has a strict CSP. |
-| Backend or database compromise | Credentials are encrypted at rest (Vault Transit or KMS), short-lived Vault tokens (6 h TTL today) and cluster credentials that expire at their TTL. Saved kubeconfigs are a known exposure: their certificates and tokens can be long-lived, so a database leak together with the encryption key exposes them until they are rotated. |
+| Backend or database compromise | Credentials are encrypted at rest (Vault Transit or KMS), Vault tokens that last at most their maximum TTL (7 days today, through renewal) and cluster credentials that expire at their TTL. Saved kubeconfigs are a known exposure: their certificates and tokens can be long-lived, so a database leak together with the encryption key exposes them until they are rotated. |
 | Privilege escalation through the console | All Kubernetes calls use the user's own credential. The console has no cluster rights of its own. |
 | SSRF through user-supplied server URLs | Left to the deployment: whoever deploys the console restricts its outbound traffic with a firewall or network policy. The console has no egress filter of its own. |
 | Abuse of shells | Exec goes through the Kubernetes API, never a shell on the console host. Sessions are audited; idle shells time out (proposed 15 min). |
