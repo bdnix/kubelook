@@ -292,6 +292,12 @@ Notes:
 - Global search across kinds and clusters, and a command palette.
 - **Field filter on any kind, CRDs included:** filter a list with rows of field, operator and value, joined by AND or OR, for example `spec.state = pending OR spec.state = ready`. Operators include `=`, `!=`, `contains`, `regex`, `in`, `exists`, and `older than` or `newer than` (durations such as `7d`, or timestamps). A query bar compiles into the rows. Field paths come from the live objects. Filter sets can be saved to the user's settings, and the matching objects can be downloaded as YAML or JSON. "Copy as kubectl" gives the equivalent `kubectl … | yq` or `| jq` command.
 - **Certificate details:** for a Secret that holds PEM certificates, show each certificate's subject, issuer, serial number, validity dates and time to expiry, for the whole chain. The backend parses the certificate and sends only this metadata to the browser, never the private key. Viewing it is audited as a Secret read.
+- **Secret handling:** the backend removes the values of `data` and `stringData` from every Secret before anything reaches the browser, so the only way to see a value is the audited reveal. This applies to:
+  - **Lists and live updates:** keys are shown, values are not.
+  - **YAML tab and editor:** values appear masked. Saving leaves a masked value as it is stored. To change a value, the user reveals it first, which is audited, then edits it.
+  - **Field filter and downloads:** filters can't match on Secret values, and downloads and exports leave them out.
+  - **Helm:** the release storage Secrets (`sh.helm.release.v1.*`) are never sent. Rendered manifests have the values of any Secret in them removed. User-supplied and computed values can hold passwords in any field, so they are hidden as a whole until revealed, and that reveal is audited like a Secret reveal.
+  - **Resource map and other modules:** names and links only, as the Resource Map already does.
 - **Export:** every list can be exported as CSV or JSON, with sensitive values left out.
 - Namespace filter per cluster, saved with the user's settings.
 - RBAC-aware UI from `SelfSubjectAccessReview` and `SelfSubjectRulesReview`: actions the user can't perform are hidden, or disabled with the missing verb shown.
@@ -325,7 +331,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Data theft or tampering through the file browser | Uses the `exec` subresource under the user's own RBAC. Size limit from the deployment settings. Every view, save, upload, download and delete is audited with path and size, never content. The feature can be switched off. |
 | Tunnels into the cluster network | Not offered. The console has no port-forward or TCP tunnel feature. |
 | Cross-site request forgery | SameSite cookies plus a CSRF token on REST calls; WebSocket upgrades check the Origin header |
-| Secret exposure in the UI | Secret values are masked until revealed; each reveal is audited |
+| Secret exposure in the UI | The server removes Secret values from every response (lists, watch events, YAML, filters, exports, Helm output) and sends them only through the audited reveal. See Secret handling. |
 
 **Audit log.** We record sign-in and sign-out, every Vault credential issued (path and lease ID, never the token), every mutating Kubernetes call (verb, resource, cluster, namespace, outcome), every Helm and Flux action, every Secret reveal and certificate view, exec start and stop, every file-browser action (path and size, never content), every debug container created, and every bulk node action. Each record names both the signed-in Google or GitHub account and the Vault identity behind the action, since a user could paste someone else's Vault token. This is the only place the person, the cluster and the action appear together: each cluster's own audit log shows the temporary service account Vault minted, not the person.
 
