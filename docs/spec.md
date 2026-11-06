@@ -78,6 +78,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 | `vault.clusterRoleBinding` | `true` | `cluster_role_binding` sent when minting tokens |
 | `vault.candidateRoles` | none | Roles to check per cluster, in order of preference (for example `devops-role`, `platform-hub-role`) |
 | `vault.tokenTTL` | unset (role default) | Optional `ttl` sent when minting tokens |
+| `vault.expiryWarning` | `24h` (proposed) | How long before a saved Vault token's maximum TTL the console starts warning the user |
 
 ### Path B: kubeconfig upload
 
@@ -93,7 +94,8 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 - **Storage:** sessions, credentials and user settings live in a relational database: SQLite for a single-replica deployment, PostgreSQL for more than one replica. All credentials are encrypted with a key from Vault Transit or a KMS. The user's Vault token and uploaded kubeconfigs are saved to their account until they expire or the user removes them; the Kubernetes credentials minted from Vault belong to a session and are deleted when it ends. A user can see and remove their saved Vault token and kubeconfigs from their account settings. User settings (favourite clusters, saved filter sets, column presets, namespace filters) stay with the user record across sessions and machines.
 - **Vault token renewal:** the backend renews each saved Vault token with `auth/token/renew-self` before its TTL runs out, whether or not the user is signed in, until Vault refuses because the token reached its maximum TTL (7 days in the current Vault setup). The console reads the limit from Vault rather than assuming it. The user is told nothing while renewal works.
 - **Cluster credential renewal:** while a session is active, the backend re-mints each open cluster's Kubernetes token shortly before it expires.
-- **When renewal stops:** renewal fails once the token isn't renewable or reaches its maximum TTL. Only then does the console tell the user (at their next sign-in if they are away), with the time left and a box to paste a new token without closing open terminals, log streams or editors.
+- **Expiry warnings:** when a saved Vault token can no longer be renewed (it isn't renewable, or it is within `vault.expiryWarning` of its maximum TTL), the console shows a banner on every page. The banner gives the time left and tells the user to get a new token from Vault (for example by logging in to Vault again) and paste it into their Kubelook settings. Renewing in Vault doesn't help at that point, because no token can be renewed past its maximum TTL. The settings page has a box to paste the new token without closing open terminals, log streams or editors.
+- **After expiry:** once the token has expired, the banner says so, its Vault clusters show as disconnected in the cluster rail, and the user sees the same instructions at every sign-in until they paste a new token or remove the old one.
 - **Idle sessions:** a session ends after an idle timeout (proposed 30 min with no interaction and no open stream), which stops cluster credential re-minting and closes its connections. The saved Vault token keeps being renewed.
 - **Sources:** a user can hold a Vault token and uploaded kubeconfigs at the same time. The sidebar groups clusters by source.
 
