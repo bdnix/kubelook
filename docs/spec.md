@@ -56,7 +56,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 
 **Discovery (at sign-in)**
 
-1. The user pastes a Vault token. The backend validates it with `auth/token/lookup-self` and records its TTL and policies.
+1. The user pastes a Vault token. The backend validates it with `auth/token/lookup-self`, records its TTL and policies, and saves it, encrypted, to the user's account, so it is still there at the next sign-in until it expires or the user removes it. An expired token is dropped and the user is asked for a new one.
 2. The backend calls `GET sys/internal/ui/mounts` with the user's token and keeps the mounts of type `kubernetes` under the configured prefix (default `kubernetes/`). This needs no `sys/mounts` permission: with a token, the response includes every mount the token has path capabilities on, which covers each cluster the user can read config or mint creds for. Vault documents it as [an internal endpoint with no backwards-compatibility guarantee](https://developer.hashicorp.com/vault/api-docs/system/internal-ui-mounts), so every Vault upgrade must be tested against it before rollout.
 3. For each mount, the backend checks the configured candidate roles with `POST sys/capabilities-self` on `kubernetes/<cluster>/creds/<role>` and `kubernetes/<cluster>/config` ([Vault API](https://developer.hashicorp.com/vault/api-docs/system/capabilities-self)).
 4. A cluster appears in the sidebar if the token can `read` its config and `create` or `update` at least one role's creds path. If more than one role is allowed, the user picks one when opening the cluster; the first allowed role in the configured order is the default.
@@ -66,7 +66,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 1. `GET kubernetes/<cluster>/config` gives the API server URL and CA.
 2. `POST kubernetes/<cluster>/creds/<role>` with `kubernetes_namespace` and `cluster_role_binding` from the Helm values returns `service_account_name` and `service_account_token` ([Vault API](https://developer.hashicorp.com/vault/api-docs/v1.16.x/secret/kubernetes)). `cluster_role_binding=true` requires the Vault role to use `kubernetes_role_type=ClusterRole`.
 3. The backend builds an in-memory client config from the URL, CA and token. Nothing is written to disk.
-4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the credentials from the database and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created.
+4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the minted cluster credentials and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created.
 
 **Helm chart settings for Vault**
 
@@ -81,7 +81,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 
 ### Path B: kubeconfig upload
 
-1. The user uploads or pastes a kubeconfig. It is parsed server-side and never written to disk.
+1. The user uploads or pastes a kubeconfig. It is parsed server-side and saved, encrypted, to the user's account until the user removes it, so its clusters are there at the next sign-in.
 2. Every context becomes a cluster in the sidebar, named `<file label>/<context>`.
 3. Supported auth: embedded client certificates, bearer tokens, and OIDC `auth-provider` refresh tokens.
 4. Rejected with a clear message: file-path references (`client-certificate`, `certificate-authority` by path), and any user entry that uses an `exec` credential plugin. The console never runs commands from a kubeconfig; `exec` plugins are not supported.
@@ -90,11 +90,11 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 ### Sessions
 
 - **Cookie:** an HttpOnly, Secure, SameSite=Lax cookie holds an opaque session ID. Mutating requests carry a CSRF token.
-- **Storage:** sessions, credentials and user settings live in a relational database: SQLite for a single-replica deployment, PostgreSQL for more than one replica. Credentials are encrypted with a key from Vault Transit or a KMS and deleted when the session ends. User settings (favourite clusters, saved filter sets, column presets, namespace filters) stay with the user record across sessions and machines.
+- **Storage:** sessions, credentials and user settings live in a relational database: SQLite for a single-replica deployment, PostgreSQL for more than one replica. All credentials are encrypted with a key from Vault Transit or a KMS. The user's Vault token and uploaded kubeconfigs are saved to their account until they expire or the user removes them; the Kubernetes credentials minted from Vault belong to a session and are deleted when it ends. A user can see and remove their saved Vault token and kubeconfigs from their account settings. User settings (favourite clusters, saved filter sets, column presets, namespace filters) stay with the user record across sessions and machines.
 - **Renewal:** while the session is active, the backend silently renews the user's Vault token with `auth/token/renew-self` before it expires, and re-mints each cluster's Kubernetes token the same way. The user is told nothing while renewal works.
 - **When renewal stops:** renewal fails once the token isn't renewable or reaches its maximum TTL. Only then does the console tell the user, with the time left and a box to paste a new token without closing open terminals, log streams or editors.
 - **Idle sessions:** renewal stops after an idle timeout (proposed 30 min with no interaction and no open stream), so an abandoned tab doesn't keep a token alive.
-- **Sources:** a user can hold a Vault session and uploaded kubeconfigs at the same time. The sidebar groups clusters by source.
+- **Sources:** a user can hold a Vault token and uploaded kubeconfigs at the same time. The sidebar groups clusters by source.
 
 ## Architecture
 
@@ -317,7 +317,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Threat | Mitigation |
 | --- | --- |
 | Credential theft from the browser | Credentials stay server-side. The browser holds only an HttpOnly session cookie, and every page has a strict CSP. |
-| Backend or database compromise | Credentials are encrypted at rest (Vault Transit or KMS), short-lived Vault tokens (6 h TTL today) and cluster credentials that expire at their TTL, and no persistence of uploaded kubeconfigs |
+| Backend or database compromise | Credentials are encrypted at rest (Vault Transit or KMS), short-lived Vault tokens (6 h TTL today) and cluster credentials that expire at their TTL. Saved kubeconfigs are a known exposure: their certificates and tokens can be long-lived, so a database leak together with the encryption key exposes them until they are rotated. |
 | Privilege escalation through the console | All Kubernetes calls use the user's own credential. The console has no cluster rights of its own. |
 | SSRF through user-supplied server URLs | Left to the deployment: whoever deploys the console restricts its outbound traffic with a firewall or network policy. The console has no egress filter of its own. |
 | Abuse of shells | Exec goes through the Kubernetes API, never a shell on the console host. Sessions are audited; idle shells time out (proposed 15 min). |
