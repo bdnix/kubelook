@@ -85,7 +85,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 1. The user uploads or pastes a kubeconfig. It is parsed server-side and saved, encrypted, to the user's account until the user removes it, so its clusters are there at the next sign-in.
 2. Every context becomes a cluster in the sidebar, named `<file label>/<context>`.
 3. Supported auth: embedded client certificates, bearer tokens, and OIDC `auth-provider` refresh tokens.
-4. Rejected with a clear message: file-path references (`client-certificate`, `certificate-authority` by path), and any user entry that uses an `exec` credential plugin. The console never runs commands from a kubeconfig; `exec` plugins are not supported.
+4. Rejected with a clear message: file-path references (`client-certificate`, `certificate-authority` by path), and any user entry that uses an `exec` credential plugin. The console never runs commands from a kubeconfig; `exec` plugins are not supported. This rules out the kubeconfigs that EKS, GKE and AKS generate, because they use `exec` plugins and would also need cloud credentials on the server. Those clusters are reached through Vault, or through a kubeconfig with an embedded token, such as one built from a Vault-minted service account token.
 5. The console does not filter server URLs itself. It connects to whatever address a kubeconfig names, so whoever deploys it must restrict its outbound traffic with a firewall or network policy, for example to the cluster API servers, Vault and the audit bucket.
 
 ### Sessions
