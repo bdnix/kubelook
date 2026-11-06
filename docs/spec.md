@@ -38,12 +38,13 @@ Sign-in has two steps. First the user signs in with Google or GitHub, which says
 ### Step 1: Google or GitHub sign-in
 
 1. The user picks Google or GitHub and signs in through that provider's OAuth 2.0 / OpenID Connect flow, with the authorization code flow and PKCE.
-2. The console checks that the account is allowed. For Google, the ID token's email must be verified and its hosted domain (`hd` claim) must be in `auth.google.allowedDomains`. For GitHub, the user must be a member of an organization in `auth.github.allowedOrgs`, which needs the `read:org` scope. Sign-in is refused when the account doesn't match, or when neither list is set.
+2. Whoever deploys the console chooses who may sign in with `auth.restrictSignIn`. When it is `true` (the default), the account must match an allowlist: for Google, the ID token's email must be verified and its hosted domain (`hd` claim) must be in `auth.google.allowedDomains`; for GitHub, the user must be a member of an organization in `auth.github.allowedOrgs`, which needs the `read:org` scope. Sign-in is refused when the account doesn't match, or when no list is set. When it is `false`, any Google or GitHub account can sign in, and the Vault token or kubeconfig alone decides which clusters it reaches.
 3. The account becomes the user's identity in the console: a user record keyed by provider and the provider's stable account ID (Google `sub`, GitHub numeric user ID), not by email.
 4. The console never uses the Google or GitHub token to reach clusters or Vault. It is used only to sign in and to check domain or organization membership.
 
 | Setting | Default | Purpose |
 | --- | --- | --- |
+| `auth.restrictSignIn` | `true` | `true` allows only accounts in the domain and organization lists below; `false` allows any Google or GitHub account |
 | `auth.google.clientId`, `auth.google.clientSecretRef` | none | OAuth client for Google sign-in; Google is offered only when set |
 | `auth.google.allowedDomains` | none | Google Workspace domains allowed to sign in |
 | `auth.github.clientId`, `auth.github.clientSecretRef` | none | OAuth app for GitHub sign-in; GitHub is offered only when set |
@@ -388,7 +389,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 ## Decisions
 
 - Vault layout: one Kubernetes secrets engine mount per cluster (`kubernetes/<cluster-name>/`); the mounts are the cluster registry.
-- Sign-in: users sign in with Google or GitHub, limited to allowed Workspace domains or GitHub organizations, then paste a Vault token or upload a kubeconfig. Vault itself has no SSO integration, so the console needs no changes to Vault or Duo configuration.
+- Sign-in: users sign in with Google or GitHub (whoever deploys the console can limit this to allowed Workspace domains or GitHub organizations with `auth.restrictSignIn`), then paste a Vault token or upload a kubeconfig. Vault itself has no SSO integration, so the console needs no changes to Vault or Duo configuration.
 - Audit: records go to an S3 bucket, with retention set in the Helm values by whoever deploys the console. Elasticsearch shipping comes later.
 - Shell keystroke recording is optional, off by default, and stored with the other audit records when enabled.
 - The oldest supported cluster runs Flux v2.2.2 on Kubernetes v1.35.6.
