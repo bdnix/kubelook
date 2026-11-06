@@ -86,7 +86,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 2. Every context becomes a cluster in the sidebar, named `<file label>/<context>`.
 3. Supported auth: embedded client certificates, bearer tokens, and OIDC `auth-provider` refresh tokens.
 4. Rejected with a clear message: file-path references (`client-certificate`, `certificate-authority` by path), and any user entry that uses an `exec` credential plugin. The console never runs commands from a kubeconfig; `exec` plugins are not supported. This rules out the kubeconfigs that EKS, GKE and AKS generate, because they use `exec` plugins and would also need cloud credentials on the server. Those clusters are reached through Vault, or through a kubeconfig with an embedded token, such as one built from a Vault-minted service account token.
-5. The console does not filter server URLs itself. It connects to whatever address a kubeconfig names, so whoever deploys it must restrict its outbound traffic with a firewall or network policy, for example to the cluster API servers, Vault and the audit bucket.
+5. The console does not filter server URLs itself. It connects to whatever address a kubeconfig names, so whoever deploys it must restrict its outbound traffic with a firewall or network policy, for example to the cluster API servers, Vault and the database.
 
 ### Sessions
 
@@ -115,16 +115,14 @@ flowchart TB
     ops["Helm, Flux, audit"]
   end
   vault["Vault<br/>token lookup, mounts, creds, cluster config"]
-  store["Database<br/>SQLite or PostgreSQL: sessions, encrypted credentials, user settings"]
+  store["Database<br/>SQLite or PostgreSQL: sessions, encrypted credentials, user settings, audit records"]
   idp["Google or GitHub<br/>user sign-in"]
   clusters["Kubernetes clusters<br/>API servers, reached directly"]
-  s3["S3 bucket<br/>audit records"]
   browser -- "HTTPS REST + one multiplexed WebSocket" --> backend
   backend --> vault
   backend --> store
   backend --> idp
   backend -- "as the user" --> clusters
-  backend --> s3
 ```
 
 The browser talks only to the backend. The backend talks to Google or GitHub to sign the user in, to Vault for cluster credentials, to the database for sessions, encrypted credentials and user settings, and to each cluster's API server as the user.
@@ -170,7 +168,7 @@ Metrics (CPU and memory per pod and node) come from metrics-server when it is pr
 - Container picker, window resize, copy and paste, and reconnect after a network blip.
 - Ephemeral debug container (`kubectl debug` style) for distroless images, gated by RBAC on `pods/ephemeralcontainers`.
 - Optional node shell through a privileged debug pod, off by default in the deployment settings, and usable only by users whose RBAC allows creating privileged pods.
-- Session start, stop, user, pod and container are always audited. **Keystroke recording** is optional and off by default (`audit.shellRecording.enabled`). When it's on, every keystroke sent to the shell is recorded with a timestamp and stored with the other audit records in the same S3 bucket, under the same retention. The terminal shows a notice that the session is recorded. Anything typed is captured, passwords included.
+- Session start, stop, user, pod and container are always audited. **Keystroke recording** is optional and off by default (`audit.shellRecording.enabled`). When it's on, every keystroke sent to the shell is recorded with a timestamp and stored in the database with the other audit records, linked to the shell session's audit record and under the same retention. The terminal shows a notice that the session is recorded. Anything typed is captured, passwords included.
 
 ### Debug toolkit
 
@@ -331,18 +329,12 @@ The backend is a credential broker, so a compromise of the backend exposes every
 
 **Audit log.** We record sign-in and sign-out, every Vault credential issued (path and lease ID, never the token), every mutating Kubernetes call (verb, resource, cluster, namespace, outcome), every Helm and Flux action, every Secret reveal and certificate view, exec start and stop, every file-browser action (path and size, never content), every debug container created, and every bulk node action. Each record names both the signed-in Google or GitHub account and the Vault identity behind the action, since a user could paste someone else's Vault token. This is the only place the person, the cluster and the action appear together: each cluster's own audit log shows the temporary service account Vault minted, not the person.
 
-**Audit storage.** Records are written as newline-delimited JSON to an S3 bucket, or any S3-compatible store. The console buffers records briefly and uploads them as objects under a date-based prefix. It flushes on shutdown so a clean restart loses nothing. Retention is set by whoever deploys the console: the console deletes its own objects older than the configured number of days, and `0` keeps them forever. Shipping records to an Elasticsearch endpoint is a planned future option.
+**Audit storage.** Records are stored in the console's database (SQLite or PostgreSQL) in an `audit_events` table with one column per field: time, signed-in account, Vault identity, cluster, namespace, verb, resource kind and name, outcome, and a JSON column for action-specific details. Each record is written when the action happens, with no in-memory buffer, so a crash or restart loses nothing. Retention is set by whoever deploys the console: the console deletes records older than the configured number of days, and `0` keeps them forever. Shipping records to an Elasticsearch endpoint is a planned future option.
 
 | Helm setting | Default | Purpose |
 | --- | --- | --- |
-| `audit.s3.bucket` | none | Bucket that receives audit objects |
-| `audit.s3.prefix` | `audit/` | Key prefix; objects go under `<prefix>/<yyyy>/<mm>/<dd>/` |
-| `audit.s3.region` | none | Bucket region |
-| `audit.s3.endpoint` | AWS default | Override for S3-compatible stores |
-| `audit.s3.credentialsSecret` | none | Kubernetes Secret with access keys, if the pod has no cloud identity of its own |
-| `audit.flushInterval` | `60s` (proposed) | Longest time a record waits before upload |
-| `audit.retentionDays` | `0` | Days to keep audit objects; `0` keeps them forever |
-| `audit.shellRecording.enabled` | `false` | Record shell keystrokes; stored under `<prefix>/sessions/<yyyy>/<mm>/<dd>/<session-id>` |
+| `audit.retentionDays` | `0` | Days to keep audit records; `0` keeps them forever |
+| `audit.shellRecording.enabled` | `false` | Record shell keystrokes; stored in the database, linked to the shell session's audit record |
 
 | Helm setting | Default | Purpose |
 | --- | --- | --- |
@@ -382,7 +374,7 @@ We ship in four phases, and each phase must pass a gate before the next starts. 
 | 0. Spike | Google and GitHub sign-in; Vault login and cluster discovery; pods list and logs on one cluster | Auth design holds |
 | 1. Core | All core kinds with live watches; YAML edit with dry run; exec shells; kubeconfig upload; structured logs; debug toolkit; pod file browser; bulk node actions; field filter; certificate details; image-tag edit | — |
 | 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser and forms; resource map; Karpenter; KEDA, External Secrets, Vault Secrets Operator, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | Security review |
-| 3. Harden | Audit log to S3; metrics and tracing; load and penetration tests | — |
+| 3. Harden | Audit log; metrics and tracing; load and penetration tests | — |
 
 The phases aren't dated yet. We'll size them once the spike shows how hard the Vault and network questions are.
 
@@ -393,7 +385,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 
 - Vault layout: one Kubernetes secrets engine mount per cluster (`kubernetes/<cluster-name>/`); the mounts are the cluster registry.
 - Sign-in: users sign in with Google or GitHub (whoever deploys the console can limit this to allowed Workspace domains or GitHub organizations with `auth.restrictSignIn`), then paste a Vault token or upload a kubeconfig. Vault itself has no SSO integration, so the console needs no changes to Vault or Duo configuration.
-- Audit: records go to an S3 bucket, with retention set in the Helm values by whoever deploys the console. Elasticsearch shipping comes later.
+- Audit: records are stored in the console's database (SQLite or PostgreSQL), not S3, with retention set in the Helm values by whoever deploys the console. Elasticsearch shipping comes later.
 - Shell keystroke recording is optional, off by default, and stored with the other audit records when enabled.
 - The oldest supported cluster runs Flux v2.2.2 on Kubernetes v1.35.6.
 - No port-forwarding and no feature that needs it. Operator consoles that depend on a forwarded port (PostgreSQL, Kafka and RabbitMQ) are out of scope, and the earlier port-forward action on Services and Pods is removed.
