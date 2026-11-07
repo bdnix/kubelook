@@ -401,6 +401,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 - The user's Vault token is used only to discover clusters and mint cluster credentials. The console never reads secret data from Vault, so there is no Vault secret browser, no comparison of Vault and cluster values, and no Vault-side secret editing.
 - Ecosystem features are built-in modules that hide themselves when a cluster lacks the CRDs, not plugins.
 - Features borrowed from Freelens extensions are reimplemented from their documented behaviour. No extension code is copied.
+- Kubelook is built from scratch, with [Headlamp](https://github.com/kubernetes-sigs/headlamp) as a reference, not a fork. Kubelook's core differs from Headlamp's (Vault sign-in and per-user cluster discovery, Google and GitHub login, a database for saved credentials and settings, the audit log), so a fork would soon stop taking upstream fixes while keeping Headlamp's code to maintain. Headlamp is Apache 2.0, so specific pieces can be reused with attribution where they fit.
 
 ## Sources
 
