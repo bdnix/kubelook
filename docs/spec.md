@@ -56,7 +56,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 
 **Discovery (at sign-in)**
 
-1. The user pastes a Vault token. The backend validates it with `auth/token/lookup-self`, records its TTL and policies, and saves it, encrypted, to the user's account, so it is still there at the next sign-in until it expires or the user removes it. An expired token is dropped and the user is asked for a new one.
+1. The user pastes a Vault token. The backend validates it with `auth/token/lookup-self`, records its TTL and policies, and gives the browser an encrypted copy to keep (see Storage under Sessions), so it is still there at the next sign-in in that browser until it expires or the user removes it. An expired token is dropped and the user is asked for a new one.
 2. The backend calls `GET sys/internal/ui/mounts` with the user's token and keeps the mounts of type `kubernetes` under the configured prefix (default `kubernetes/`). This needs no `sys/mounts` permission: with a token, the response includes every mount the token has path capabilities on, which covers each cluster the user can read config or mint creds for. Vault documents it as [an internal endpoint with no backwards-compatibility guarantee](https://developer.hashicorp.com/vault/api-docs/system/internal-ui-mounts), so every Vault upgrade must be tested against it before rollout.
 3. For each mount, the backend checks the configured candidate roles with `POST sys/capabilities-self` on `kubernetes/<cluster>/creds/<role>` and `kubernetes/<cluster>/config` ([Vault API](https://developer.hashicorp.com/vault/api-docs/system/capabilities-self)).
 4. A cluster appears in the sidebar if the token can `read` its config and `create` or `update` at least one role's creds path. If more than one role is allowed, the user picks one when opening the cluster; the first allowed role in the configured order is the default.
@@ -73,7 +73,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `vault.address` | none | Vault URL |
-| `encryption.keySecret` | none (required) | Name of the Kubernetes Secret holding the key that encrypts saved credentials in the database |
+| `encryption.keySecret` | none (required) | Name of the Kubernetes Secret holding the key that encrypts the credential copies kept in browsers and active-session credentials in the database |
 | `vault.kubernetesMountPrefix` | `kubernetes/` | Where cluster mounts live |
 | `vault.credsNamespace` | `itops` | `kubernetes_namespace` sent when minting tokens, where Vault creates the temporary service account |
 | `vault.clusterRoleBinding` | `true` | `cluster_role_binding` sent when minting tokens |
@@ -83,7 +83,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 
 ### Path B: kubeconfig upload
 
-1. The user uploads or pastes a kubeconfig. It is parsed server-side and saved, encrypted, to the user's account until the user removes it, so its clusters are there at the next sign-in.
+1. The user uploads or pastes a kubeconfig. It is parsed server-side, and the browser keeps an encrypted copy until the user removes it (see Storage under Sessions), so its clusters are there at the next sign-in in that browser.
 2. Every context becomes a cluster in the sidebar, named `<file label>/<context>`.
 3. Supported auth: embedded client certificates, bearer tokens, and OIDC `auth-provider` refresh tokens.
 4. Rejected with a clear message: file-path references (`client-certificate`, `certificate-authority` by path), and any user entry that uses an `exec` credential plugin. The console never runs commands from a kubeconfig; `exec` plugins are not supported. This rules out the kubeconfigs that EKS, GKE and AKS generate, because they use `exec` plugins and would also need cloud credentials on the server. Those clusters are reached through Vault, or through a kubeconfig with an embedded token, such as one built from a Vault-minted service account token.
@@ -92,7 +92,11 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 ### Sessions
 
 - **Cookie:** an HttpOnly, Secure, SameSite=Lax cookie holds an opaque session ID. Mutating requests carry a CSRF token.
-- **Storage:** sessions, credentials and user settings live in a relational database: SQLite for a single-replica deployment, PostgreSQL for more than one replica. All credentials are encrypted with a key that whoever deploys the console provides as a Kubernetes Secret (`encryption.keySecret`). How that Secret is created or where the key comes from is up to the deployer, not Kubelook. The user's Vault token and uploaded kubeconfigs are saved to their account until they expire or the user removes them; the Kubernetes credentials minted from Vault belong to a session and are deleted when it ends. A user can see and remove their saved Vault token and kubeconfigs from their account settings. User settings (favourite clusters, saved filter sets, column presets, namespace filters) stay with the user record across sessions and machines.
+- **Storage:** sessions, active-session credentials and user settings live in a relational database: SQLite for a single-replica deployment, PostgreSQL for more than one replica.
+- **Saved credentials stay in the browser:** the user's Vault token and uploaded kubeconfigs are not stored in the database. The server encrypts each one and the browser keeps only that encrypted copy (in IndexedDB), which page scripts can't decrypt. At sign-in the browser sends the copies back, and the server decrypts them into the session. A database leak alone therefore exposes no saved credentials; an attacker needs both a browser's copy and the server's key. Saved credentials stay in the browser that saved them, so on another machine, or after the user clears site data, they paste them again. The user can see and remove them from the settings page.
+- **Encryption key:** all encryption uses a key that whoever deploys the console provides as a Kubernetes Secret (`encryption.keySecret`). How that Secret is created or where the key comes from is up to the deployer, not Kubelook.
+- **Session credentials:** while a session is active, its decrypted Vault token, kubeconfig credentials and the Kubernetes credentials minted from Vault are held in the database, encrypted, so any replica can serve the session. They are deleted when the session ends.
+- **User settings:** favourite clusters, saved filter sets, column presets and namespace filters stay with the user record across sessions and machines.
 - **Vault token renewal:** the console never renews a Vault token on its own. The user renews it with a **Renew** button, which calls `auth/token/renew-self`. Each renewal extends the token's TTL, but never past its maximum TTL as set in the user's Vault. Vault can't report that limit in advance in the usual case, because it works out the maximum at each renewal ([Vault token TTLs](https://developer.hashicorp.com/vault/docs/concepts/tokens)), so the console learns it has been reached when a renewal no longer extends the TTL. An expired token can't be renewed: Vault revokes it when its TTL runs out.
 - **Cluster credential renewal:** while a session is active, the backend re-mints each open cluster's Kubernetes token shortly before it expires.
 - **Expiry warnings:** when a saved Vault token has less than `vault.expiryWarning` left, the console shows a banner on every page with the time left and the **Renew** button. If the token isn't renewable, or a renewal no longer extends its TTL, the banner drops the button and tells the user to get a new token from Vault (for example by logging in to Vault again) and paste it into their Kubelook settings. The settings page has a box to paste the new token without closing open terminals, log streams or editors.
@@ -116,7 +120,7 @@ flowchart TB
     ops["Helm, Flux, audit"]
   end
   vault["Vault<br/>token lookup, mounts, creds, cluster config"]
-  store["Database<br/>SQLite or PostgreSQL: sessions, encrypted credentials, user settings, audit records"]
+  store["Database<br/>SQLite or PostgreSQL: sessions, encrypted session credentials, user settings, audit records"]
   idp["Google or GitHub<br/>user sign-in"]
   clusters["Kubernetes clusters<br/>API servers, reached directly"]
   browser -- "HTTPS REST + one multiplexed WebSocket" --> backend
@@ -325,7 +329,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Threat | Mitigation |
 | --- | --- |
 | Credential theft from the browser | Credentials stay server-side. The browser holds only an HttpOnly session cookie, and every page has a strict CSP. |
-| Backend or database compromise | Credentials are encrypted at rest with the deployer-provided key in `encryption.keySecret`; anyone who can read that Secret and the database can decrypt them, Vault tokens that expire at their TTL unless the user renews them, and never outlive the maximum TTL set in Vault, and cluster credentials that expire at their TTL. Saved kubeconfigs are a known exposure: their certificates and tokens can be long-lived, so a database leak together with the encryption key exposes them until they are rotated. |
+| Backend or database compromise | Saved Vault tokens and kubeconfigs are kept only as encrypted copies in each user's browser, never in the database. Active-session credentials in the database are encrypted with the deployer-provided key in `encryption.keySecret`, so reading them needs both the database and that Secret. Vault tokens that expire at their TTL unless the user renews them, and never outlive the maximum TTL set in Vault, and cluster credentials that expire at their TTL. Saved kubeconfigs are a known exposure: their certificates and tokens can be long-lived, so a stolen browser copy together with the encryption key exposes them until they are rotated. |
 | Privilege escalation through the console | All Kubernetes calls use the user's own credential. The console has no cluster rights of its own. |
 | SSRF through user-supplied server URLs | Left to the deployment: whoever deploys the console restricts its outbound traffic with a firewall or network policy. The console has no egress filter of its own. |
 | Abuse of shells | Exec goes through the Kubernetes API, never a shell on the console host. Sessions are audited; idle shells time out (proposed 15 min). |
