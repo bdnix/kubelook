@@ -68,6 +68,13 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 3. The backend builds an in-memory client config from the URL, CA and token. Nothing is written to disk.
 4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the minted cluster credentials and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created.
 
+**When Vault is unreachable**
+
+- Clusters that are already open keep working until their current Kubernetes credentials expire, because those credentials were minted before the outage. They can't be re-minted until Vault is back.
+- Opening a new Vault cluster fails with a clear message ("Vault is unreachable, so this cluster can't be opened right now"). The console can't open it without Vault, because the Kubernetes credentials come from `kubernetes/<cluster>/creds/<role>`.
+- Kubeconfig clusters keep working, since they don't use Vault.
+- A banner says Vault is unreachable. The console retries in the background, and when Vault answers again it removes the banner and lets the user open clusters again.
+
 **Helm chart settings for Vault**
 
 | Setting | Default | Purpose |
