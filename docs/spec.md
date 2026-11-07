@@ -251,7 +251,7 @@ A live graph of the objects in the selected namespaces and the links between the
 
 ### Karpenter
 
-A module for clusters that run Karpenter, shown only when the cluster serves its CRDs. The console reads the API versions the cluster serves, as it does for Flux, and does not pin a Karpenter version.
+A module for clusters that run Karpenter 1.0 or newer, shown only when the cluster serves the `karpenter.sh/v1` API. On a cluster with an older Karpenter (0.x), the module is hidden and its objects appear in the generic Custom Resources browser instead. Releases are tested against 1.0 and the newest 1.x.
 
 - **Overview:** total, Karpenter-managed and other nodes; NodePools and their readiness; NodeClaims still waiting for a node. One card per NodePool shows its node class, status, instance types, limits against current CPU and memory use, `expireAfter`, the NodeOverlays that apply to it (and those Karpenter rejected), its nodes and its recent events. A filter works by name, node status, instance type and NodePool status.
 - **Topology:** a treemap of nodes grouped by NodePool, zone, instance type or node class, sized by CPU, memory, pods or equally, showing node status and capacity type (spot or on-demand).
@@ -397,7 +397,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 - No port-forwarding and no feature that needs it. Operator consoles that depend on a forwarded port (PostgreSQL, Kafka and RabbitMQ) are out of scope, and the earlier port-forward action on Services and Pods is removed.
 - An AI assistant is deferred to a possible future version.
 - No pod or workload duplication. A debug copy could still match a Service selector or be recreated by its controller, so the feature needs care that v1 does not take on. The ephemeral debug container is the only debug tool.
-- Karpenter versions are not pinned.
+- Supported Karpenter: 1.0 and newer (the `karpenter.sh/v1` API). Older clusters get the generic Custom Resources browser only.
 - The user's Vault token is used only to discover clusters and mint cluster credentials. The console never reads secret data from Vault, so there is no Vault secret browser, no comparison of Vault and cluster values, and no Vault-side secret editing.
 - Ecosystem features are built-in modules that hide themselves when a cluster lacks the CRDs, not plugins.
 - Features borrowed from Freelens extensions are reimplemented from their documented behaviour. No extension code is copied.
