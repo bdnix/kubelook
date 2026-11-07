@@ -113,12 +113,12 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 
 ## Architecture
 
-A stateless Go backend sits between the browser and every cluster. It holds credentials, proxies API calls under the user's identity, and multiplexes watches and streams over one WebSocket per browser tab.
+A Go backend sits between the browser and every cluster. Its replicas share one database for sessions, settings and audit records, so any replica can serve any request; the only state a replica holds itself is its open connections (watches, log streams, shells), which is why WebSockets are sticky. It holds credentials, proxies API calls under the user's identity, and multiplexes watches and streams over one WebSocket per browser tab.
 
 ```mermaid
 flowchart TB
   browser["Browser<br/>React SPA: lists, details, Monaco YAML<br/>xterm.js terminals, log viewer"]
-  subgraph backend["Kubelook backend (Go, client-go, Helm SDK), stateless replicas"]
+  subgraph backend["Kubelook backend (Go, client-go, Helm SDK), replicas sharing one database"]
     auth["Auth and sessions"]
     broker["Credential broker<br/>re-mints before expiry"]
     discovery["Cluster discovery<br/>kubernetes/* mounts filtered by sys/capabilities-self"]
@@ -172,7 +172,7 @@ Metrics (CPU and memory per pod and node) come from metrics-server when it is pr
 - **Structured logs:** lines that are JSON are parsed into fields. The viewer colours the level (`ERROR`, `WARN`, `INFO`, `DEBUG`), highlights timestamps, logger names, UUIDs and URLs, and filters by level and by field value. Plain-text lines still show as they are.
 - **History:** scrolling to the top loads earlier lines, with the tail growing in steps up to a configured maximum, so a user can read back past the first screenful without restarting the stream.
 - **Export:** download the current buffer as plain text or as newline-delimited JSON (one record per line, with pod, container and timestamp).
-- Back-pressure: the server caps each stream's rate and drops old lines in the UI buffer (proposed cap 10,000 lines).
+- Back-pressure: the server caps each stream's rate. While following a live stream, the viewer keeps the newest 10,000 lines (proposed) and drops older ones. When the user pauses and scrolls back, it can load older lines up to `logs.historyMaxLines`.
 
 ### Shell into containers
 
@@ -310,7 +310,7 @@ Notes:
   - **Field filter and downloads:** filters can't match on Secret values, and downloads and exports leave them out.
   - **Helm:** the release storage Secrets (`sh.helm.release.v1.*`) are never sent. Rendered manifests have the values of any Secret in them removed. User-supplied and computed values can hold passwords in any field, so they are hidden as a whole until revealed, and that reveal is audited like a Secret reveal.
   - **Resource map and other modules:** names and links only, as the Resource Map already does.
-- **Export:** every list can be exported as CSV or JSON, with sensitive values left out.
+- **Export:** every list can be exported as CSV or JSON, with sensitive values left out. Every CSV export neutralises spreadsheet formulas (cells starting with `=`, `+`, `-` or `@`), not only the Trivy export.
 - Namespace filter per cluster, saved with the user's settings.
 - RBAC-aware UI from `SelfSubjectAccessReview` and `SelfSubjectRulesReview`: actions the user can't perform are hidden, or disabled with the missing verb shown.
 - Bulk actions on list selections: delete, restart, label. On a selection of nodes: cordon, uncordon and drain. A drain handles one node at a time and uses the eviction API, so PodDisruptionBudgets are respected. Every bulk action names the objects it will change and asks for confirmation first.
@@ -324,7 +324,7 @@ The layout is a cluster rail, a resource sidebar, a main list, and a details dra
 - **Main list:** a sortable, filterable table with live status badges and multi-select. Column presets are saved per kind in the user's settings.
 - **Details drawer:** opens on the right with tabs for Overview, YAML, Events, Logs, Files (pods) and Related. Related shows owners, children, a map of related objects, and the Flux source if any.
 - **Bottom dock:** tabs for terminals, log streams and editors, which survive navigation between clusters. It docks or pops out to its own browser window.
-- **Deep links:** every view has a stable URL (`/c/<cluster>/ns/<ns>/<kind>/<name>`), so links can be shared in incidents.
+- **Deep links:** every view has a stable URL, so users can share a page by copying the browser address. The form is `/c/<cluster>/ns/<ns>/<group>/<kind>/<name>`, with the namespace part left out for cluster-scoped objects and the API group included so kinds with the same name (such as two `Certificate` kinds) can't be confused. Cluster names are URL-encoded, since kubeconfig cluster names contain `/`. A link to a Vault cluster opens for anyone whose own Vault access includes that cluster, and shows a "no access" page otherwise. A link to an uploaded-kubeconfig cluster only works for the user who uploaded it, in the browser holding it; anyone else sees "This cluster was uploaded by another user and isn't available to you."
 - **Themes and access:** light and dark themes, full keyboard navigation, and screen-reader labels on status icons.
 - **Screen size:** designed for desktop browsers. Phone layouts are not supported, because terminals, YAML editing and wide resource tables need the room.
 - **Cluster overview:** a page with node health, failing pods, recent warning events, and Flux and Helm failure counts. It also lists Pending pods with the scheduler's message from their `FailedScheduling` event, pods that are running but not ready with the failing condition, and a timeline of the warning events the cluster still holds. A Karpenter summary appears when the module is active.
@@ -357,7 +357,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Helm setting | Default | Purpose |
 | --- | --- | --- |
 | `debug.image` | `nicolaka/netshoot:latest` | Image of the ephemeral debug container |
-| `debug.shell` | `/bin/bash` | Shell started in the debug container |
+| `debug.shell` | `/bin/bash` | Shell started in the debug container; falls back to `/bin/sh` if it isn't there, as normal shells do |
 | `debug.profiles` | none | Named sets of debug options (profile, shared process namespace) users can pick |
 | `fileBrowser.enabled` | `true` | Turns the pod file browser on or off |
 | `fileBrowser.maxTransferBytes` | `26214400` (25 MiB, proposed) | Largest single upload or download |
@@ -375,8 +375,8 @@ The targets below are proposed starting points, to be confirmed after the spike.
 | First list render after opening a cluster | Under 2 s for 1,000 pods |
 | Watch event to UI update | Under 1 s end to end |
 | Concurrent users per backend replica | 200 active sessions |
-| Watches per user | Shared per user, cluster and kind; idle watches closed after 30 s by default (app setting) |
-| Availability | 99.9% monthly; stateless replicas behind a load balancer, with the PostgreSQL database highly available |
+| Watches per user | One per user, cluster, kind and namespace, shared by that user's open views; idle watches closed after 30 s by default (app setting) |
+| Availability | 99.9% monthly; replicas sharing one database behind a load balancer, with the PostgreSQL database highly available |
 | Clusters per Vault user | 100+ in the sidebar, with credentials fetched lazily |
 | Supported Kubernetes | Kubernetes 1.35 and newer |
 | Browsers | Current Chrome, Edge, Firefox and Safari |
