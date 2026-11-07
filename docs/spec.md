@@ -127,7 +127,7 @@ flowchart TB
 
 The browser talks only to the backend. The backend talks to Google or GitHub to sign the user in, to Vault for cluster credentials, to the database for sessions, encrypted credentials and user settings, and to each cluster's API server as the user.
 
-- **Backend language: Go.** client-go, the Helm SDK and the Flux APIs are all Go.
+- **Backend language: Go.** client-go, the Helm 3 SDK and the Flux APIs are all Go.
 - **Frontend:** React and TypeScript, Monaco for YAML, xterm.js for shells.
 - **Watch hub:** one upstream watch per user, cluster, kind and namespace, fanned out to every open view. It's closed after an idle timeout and resumed from the last `resourceVersion` on reconnect. The browser reports when a tab is hidden (the Page Visibility API), and a watch that only hidden tabs or closed views use is closed once the idle timeout passes. The timeout is 30 seconds by default and is an app setting, changed on the settings page, not a deployment setting. When the user returns to the view, the list reloads and goes live again.
 - **One WebSocket per tab** carries watch events, log lines, exec frames and file-transfer chunks as tagged channels, with a heartbeat.
@@ -200,7 +200,7 @@ A graphical file browser inside a running container, so users do not have to run
 
 ### Helm
 
-- Releases live in the cluster as storage objects prefixed `sh.helm.release.v1` ([Helm SDK](https://pkg.go.dev/helm.sh/helm/v3/pkg/storage)). The backend runs the Helm Go SDK under the user's credentials, so Helm can do only what the user's RBAC allows.
+- Releases live in the cluster as storage objects prefixed `sh.helm.release.v1` ([Helm SDK](https://pkg.go.dev/helm.sh/helm/v3/pkg/storage)). The backend runs the Helm 3 Go SDK (`helm.sh/helm/v3`) under the user's credentials, so Helm can do only what the user's RBAC allows. Helm 3 matches the Helm CLI teams use today, so releases made from the console and from the CLI stay interchangeable. Moving to Helm 4 is a later decision, made when teams move their CLI.
 - List releases across namespaces with status, chart, app version and revision.
 - Detail: user-supplied values, computed values, rendered manifest, notes, hooks and revision history.
 - Actions: install from an HTTP repo or OCI registry, upgrade with edited values (shown as a diff first), rollback to a revision, uninstall, and test.
