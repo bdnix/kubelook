@@ -54,22 +54,9 @@ Sign-in has two steps. First the user signs in with Google or GitHub, which says
 
 Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster-name>/`. The mount holds everything needed to build a client: `GET kubernetes/<cluster>/config` returns the API server URL (`kubernetes_host`) and CA (`kubernetes_ca_cert`), and `POST kubernetes/<cluster>/creds/<role>` mints a short-lived service account token. So there is no separate cluster registry: the mounts *are* the registry.
 
-**Getting the Vault token.** The user gets a Vault token into the console in one of two ways:
-
-- **Paste a token.** Always available. The user logs in to Vault elsewhere (for example `vault login`) and pastes the token.
-- **Sign in with Vault.** Available when the deployer sets `vault.oidc.mount` and `vault.oidc.role`. The console runs the same flow as `vault login -method=oidc`, with its own callback address in place of the CLI's `localhost:8250` listener:
-  1. The console calls `POST auth/<mount>/oidc/auth_url` with the role, its callback address and a client nonce, and sends the browser to the returned URL.
-  2. The user logs in at the identity provider behind Vault's OIDC auth method, or passes straight through if they already have a session there.
-  3. The identity provider sends the browser back to the console's callback with a one-time `code` and `state`.
-  4. The console calls `auth/<mount>/oidc/callback` with the `state`, `code` and nonce, and Vault returns the user's Vault token.
-
-  Vault admins must add the console's callback address (`https://<console>/vault/callback`) in two places: the Vault OIDC role's `allowed_redirect_uris` (for example `vault_jwt_auth_backend_role` in Terraform), and the redirect URIs of the identity provider app whose client ID the auth method uses. If the address is missing from the role, Vault returns no login URL; if it is missing from the identity provider, the provider refuses to redirect. This flow was checked against a local Vault 2.2.1 with a test app: Vault returned a working token, a second login with an existing session needed no login form, and removing the address from either list stopped the login.
-
-Either way, the token is then handled the same: validated, discovered, kept as an encrypted copy in the browser, and renewed only when the user clicks Renew.
-
 **Discovery (at sign-in)**
 
-1. The backend validates the Vault token with `auth/token/lookup-self`, records its TTL and policies, and gives the browser an encrypted copy to keep (see Storage under Sessions), so it is still there at the next sign-in in that browser until it expires or the user removes it. An expired token is dropped and the user is asked for a new one.
+1. The user pastes a Vault token. The backend validates it with `auth/token/lookup-self`, records its TTL and policies, and gives the browser an encrypted copy to keep (see Storage under Sessions), so it is still there at the next sign-in in that browser until it expires or the user removes it. An expired token is dropped and the user is asked for a new one.
 2. The backend calls `GET sys/internal/ui/mounts` with the user's token and keeps the mounts of type `kubernetes` under the configured prefix (default `kubernetes/`). This needs no `sys/mounts` permission: with a token, the response includes every mount the token has path capabilities on, which covers each cluster the user can read config or mint creds for. Vault documents it as [an internal endpoint with no backwards-compatibility guarantee](https://developer.hashicorp.com/vault/api-docs/system/internal-ui-mounts), so every Vault upgrade must be tested against it before rollout.
 3. For each mount, the backend checks the configured candidate roles with `POST sys/capabilities-self` on `kubernetes/<cluster>/creds/<role>` and `kubernetes/<cluster>/config` ([Vault API](https://developer.hashicorp.com/vault/api-docs/system/capabilities-self)).
 4. A cluster appears in the sidebar if the token can `read` its config and `create` or `update` at least one role's creds path. If more than one role is allowed, the user picks one when opening the cluster; the first allowed role in the configured order is the default.
@@ -86,7 +73,6 @@ Either way, the token is then handled the same: validated, discovered, kept as a
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `vault.address` | none | Vault URL |
-| `vault.oidc.mount`, `vault.oidc.role` | none | Vault OIDC auth mount and role for "Sign in with Vault"; the button is shown only when both are set |
 | `encryption.keySecret` | none (required) | Name of the Kubernetes Secret holding the key that encrypts the credential copies kept in browsers and active-session credentials in the database |
 | `vault.kubernetesMountPrefix` | `kubernetes/` | Where cluster mounts live |
 | `vault.credsNamespace` | `itops` | `kubernetes_namespace` sent when minting tokens, where Vault creates the temporary service account |
@@ -409,7 +395,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 ## Decisions
 
 - Vault layout: one Kubernetes secrets engine mount per cluster (`kubernetes/<cluster-name>/`); the mounts are the cluster registry.
-- Sign-in: users sign in with Google or GitHub (whoever deploys the console can limit this to allowed Workspace domains or GitHub organizations with `auth.restrictSignIn`), then add a Vault token (pasted, or through "Sign in with Vault") or upload a kubeconfig. Pasting a token needs no changes to Vault. "Sign in with Vault" is optional and needs Vault admins to add the console's callback address to the Vault OIDC role and the identity provider app.
+- Sign-in: users sign in with Google or GitHub (whoever deploys the console can limit this to allowed Workspace domains or GitHub organizations with `auth.restrictSignIn`), then paste a Vault token or upload a kubeconfig. Vault itself has no SSO integration, so the console needs no changes to Vault or Duo configuration.
 - Audit: records are stored in the console's database (SQLite or PostgreSQL), not S3, with retention set in the Helm values by whoever deploys the console. Elasticsearch shipping comes later.
 - No shell keystroke or output recording. The audit log records actions only, such as a shell session starting and stopping.
 - The oldest supported cluster runs Flux v2.2.2 on Kubernetes v1.35.6.
