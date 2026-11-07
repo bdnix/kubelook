@@ -289,7 +289,7 @@ Notes:
 
 ### Cross-cutting
 
-- Global search across kinds and across the clusters the user has opened in the current session, and a command palette. Search never opens a cluster on its own, so it creates no new Kubernetes credentials. Clusters not yet opened are listed as not searched, with a prompt to open them.
+- A command palette to jump to a view or a resource kind within the cluster that is open. There is no search across clusters, and the console never combines results from several clusters in one view.
 - **Field filter on any kind, CRDs included:** filter a list with rows of field, operator and value, joined by AND or OR, for example `spec.state = pending OR spec.state = ready`. Operators include `=`, `!=`, `contains`, `regex`, `in`, `exists`, and `older than` or `newer than` (durations such as `7d`, or timestamps). A query bar compiles into the rows. Field paths come from the live objects. Filter sets can be saved to the user's settings, and the matching objects can be downloaded as YAML or JSON. "Copy as kubectl" gives the equivalent `kubectl … | yq` or `| jq` command.
 - **Certificate details:** for a Secret that holds PEM certificates, show each certificate's subject, issuer, serial number, validity dates and time to expiry, for the whole chain. The backend parses the certificate and sends only this metadata to the browser, never the private key. Viewing it is audited as a Secret read.
 - **Secret handling:** the backend removes the values of `data` and `stringData` from every Secret before anything reaches the browser, so the only way to see a value is the audited reveal. This applies to:
