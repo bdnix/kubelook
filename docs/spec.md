@@ -168,7 +168,7 @@ Metrics (CPU and memory per pod and node) come from metrics-server when it is pr
 - Container picker, window resize, copy and paste, and reconnect after a network blip.
 - Ephemeral debug container (`kubectl debug` style) for distroless images, gated by RBAC on `pods/ephemeralcontainers`.
 - Optional node shell through a privileged debug pod, off by default in the deployment settings, and usable only by users whose RBAC allows creating privileged pods.
-- Session start, stop, user, pod and container are always audited. **Keystroke recording** is optional and off by default (`audit.shellRecording.enabled`). When it's on, every keystroke sent to the shell is recorded with a timestamp and stored in the database with the other audit records, linked to the shell session's audit record and under the same retention. The terminal shows a notice that the session is recorded. Anything typed is captured, passwords included.
+- Session start, stop, user, pod and container are always audited. What is typed in the shell, and what it prints, is never recorded: the audit log holds actions only.
 
 ### Debug toolkit
 
@@ -341,7 +341,6 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | --- | --- | --- |
 | `audit.retentionDays` | `0` | Days to keep audit records; `0` keeps them forever |
 | `audit.cleanup.credentialsSecret` | none | PostgreSQL credentials for the cleanup job's delete-only role; the console's own role can only insert audit records |
-| `audit.shellRecording.enabled` | `false` | Record shell keystrokes; stored in the database, linked to the shell session's audit record |
 
 | Helm setting | Default | Purpose |
 | --- | --- | --- |
@@ -393,7 +392,7 @@ The phases aren't dated yet. We'll size them once the spike shows how hard the V
 - Vault layout: one Kubernetes secrets engine mount per cluster (`kubernetes/<cluster-name>/`); the mounts are the cluster registry.
 - Sign-in: users sign in with Google or GitHub (whoever deploys the console can limit this to allowed Workspace domains or GitHub organizations with `auth.restrictSignIn`), then paste a Vault token or upload a kubeconfig. Vault itself has no SSO integration, so the console needs no changes to Vault or Duo configuration.
 - Audit: records are stored in the console's database (SQLite or PostgreSQL), not S3, with retention set in the Helm values by whoever deploys the console. Elasticsearch shipping comes later.
-- Shell keystroke recording is optional, off by default, and stored with the other audit records when enabled.
+- No shell keystroke or output recording. The audit log records actions only, such as a shell session starting and stopping.
 - The oldest supported cluster runs Flux v2.2.2 on Kubernetes v1.35.6.
 - No port-forwarding and no feature that needs it. Operator consoles that depend on a forwarded port (PostgreSQL, Kafka and RabbitMQ) are out of scope, and the earlier port-forward action on Services and Pods is removed.
 - An AI assistant is deferred to a possible future version.
