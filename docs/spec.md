@@ -129,7 +129,7 @@ The browser talks only to the backend. The backend talks to Google or GitHub to 
 
 - **Backend language: Go.** client-go, the Helm SDK and the Flux APIs are all Go.
 - **Frontend:** React and TypeScript, Monaco for YAML, xterm.js for shells.
-- **Watch hub:** one upstream watch per user, cluster, kind and namespace, fanned out to every open view. It's closed after an idle timeout and resumed from the last `resourceVersion` on reconnect.
+- **Watch hub:** one upstream watch per user, cluster, kind and namespace, fanned out to every open view. It's closed after an idle timeout and resumed from the last `resourceVersion` on reconnect. The browser reports when a tab is hidden (the Page Visibility API), and a watch that only hidden tabs or closed views use is closed once the idle timeout passes. The timeout is 30 seconds by default and is an app setting, changed on the settings page, not a deployment setting. When the user returns to the view, the list reloads and goes live again.
 - **One WebSocket per tab** carries watch events, log lines, exec frames and file-transfer chunks as tagged channels, with a heartbeat.
 - **Network placement:** the console runs inside the same network as the clusters and connects to each API server directly. There is no agent or tunnel: a cluster the console's network can't reach stays out of reach, so a private cluster stays private.
 - **Deployment:** one image and a Helm chart. A single replica can use SQLite on a persistent volume. Two or more replicas run behind a load balancer with sticky WebSockets and share a PostgreSQL database, which should be highly available.
@@ -364,7 +364,7 @@ The targets below are proposed starting points, to be confirmed after the spike.
 | First list render after opening a cluster | Under 2 s for 1,000 pods |
 | Watch event to UI update | Under 1 s end to end |
 | Concurrent users per backend replica | 200 active sessions |
-| Watches per user | Shared per user, cluster and kind; idle watches closed after 60 s |
+| Watches per user | Shared per user, cluster and kind; idle watches closed after 30 s by default (app setting) |
 | Availability | 99.9% monthly; stateless replicas behind a load balancer, with the PostgreSQL database highly available |
 | Clusters per Vault user | 100+ in the sidebar, with credentials fetched lazily |
 | Supported Kubernetes | Kubernetes 1.35 and newer |
