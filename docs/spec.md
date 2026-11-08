@@ -413,7 +413,7 @@ The targets below are proposed starting points, to be confirmed after the spike.
 
 ## Delivery plan
 
-We ship in four phases, and each phase must pass a gate before the next starts. The spike comes first because the Vault discovery design is the biggest unknown.
+Kubelook is a personal project built in spare time, so there is no team and there are no dates. The work is done in four phases, in order, and a phase with a gate must pass it before the next starts. The spike comes first because the Vault discovery design is the biggest unknown.
 
 | Phase | Scope | Gate to the next phase |
 | --- | --- | --- |
@@ -422,10 +422,8 @@ We ship in four phases, and each phase must pass a gate before the next starts. 
 | 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser and forms; resource map; Karpenter; KEDA, External Secrets, Vault Secrets Operator, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | Security review |
 | 3. Harden | Audit log; metrics and tracing; load and penetration tests | — |
 
-The phases aren't dated yet. We'll size them once the spike shows how hard the Vault and network questions are.
-
 - **Gate 1, auth design holds:** a real user's Vault token lists exactly the clusters their policies allow, and credentials are re-minted before expiry, and logout closes every open connection for the session.
-- **Gate 2, security review:** penetration test findings are fixed, and the audit trail is accepted by the security team.
+- **Gate 2, security review:** a security review of the finished features, including a penetration test, and every finding fixed before Phase 3 work is called done.
 
 ## Decisions
 
