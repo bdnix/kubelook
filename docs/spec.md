@@ -123,7 +123,7 @@ flowchart TB
     broker["Credential broker<br/>re-mints before expiry"]
     discovery["Cluster discovery<br/>kubernetes/* mounts filtered by sys/capabilities-self"]
     proxy["API proxy and watch hub<br/>user's own creds per call"]
-    streams["Stream gateway<br/>logs, exec, file transfer"]
+    streams["Stream gateway (separate deployment)<br/>logs, exec, file transfer"]
     ops["Helm, Flux, audit"]
   end
   vault["Vault<br/>token lookup, mounts, creds, cluster config"]
@@ -145,6 +145,20 @@ The browser talks only to the backend. The backend talks to Google or GitHub to 
 - **One WebSocket per tab** carries watch events, log lines, exec frames and file-transfer chunks as tagged channels, with a heartbeat.
 - **Network placement:** the console runs inside the same network as the clusters and connects to each API server directly. There is no agent or tunnel: a cluster the console's network can't reach stays out of reach, so a private cluster stays private.
 - **Deployment:** one image and a Helm chart. A single replica can use SQLite on a persistent volume. Two or more replicas run behind a load balancer with sticky WebSockets and share a PostgreSQL database, which should be highly available.
+
+### Replica restarts and failures
+
+- **Sessions and credentials** are in the database, so when a replica stops, the browser reconnects to another one and the user stays signed in. Vault and kubeconfig clusters reopen from the session's stored credentials; nothing is pasted or uploaded again.
+- **Watches** reopen on the new replica from the last `resourceVersion`, so lists pause briefly and catch up. **Log streams** restart from the last line's timestamp; a few lines around the gap may repeat or be missing.
+- **Shells** can't survive the connection that carries them, so a shell on a stopped replica ends, along with anything running in it. The terminal shows an error explaining that the server connection was lost and the shell session ended, and offers to start a new shell. **File transfers** in progress fail with a similar message and must be started again.
+- **Stream gateway:** shells, log streams and file transfers run in a separate stream gateway deployment from the same image, which changes rarely, so the main backend can be redeployed without ending anyone's shell.
+- **Planned restarts drain:** before a replica or gateway stops, it stops accepting new shells and waits up to `streams.drainTimeout` (proposed 30 min) for open ones to finish, with a banner asking users to finish their shell sessions. Only shells still open at the deadline are ended, with the error above.
+- **Long actions are durable jobs.** Helm installs, upgrades, rollbacks and uninstalls, node drains and bulk actions are written to the database before they start: who started them, the cluster and objects, the target state (for Helm: chart, version, values hash and the starting revision), status and progress. The replica running a job renews a short lease on it. If the lease expires because the replica died, another replica checks the cluster against the target state:
+  - Helm release deployed at the target: the job is marked succeeded.
+  - Helm release unchanged from the starting revision, or a drain or bulk action part-way through: the job is marked interrupted.
+  - Helm release stuck in a `pending-*` state: the job is marked interrupted, with rollback to the starting revision offered.
+
+  An interrupted job is never retried automatically. The user sees what happened and what is left, and clicks Retry (or Roll back); the retry runs under their current credentials and is audited like any other action. Users can see their jobs' progress from any tab or after reconnecting.
 
 ## Functional requirements
 
@@ -356,6 +370,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 
 | Helm setting | Default | Purpose |
 | --- | --- | --- |
+| `streams.drainTimeout` | `30m` (proposed) | How long a stopping replica or stream gateway waits for open shells to finish |
 | `debug.image` | `nicolaka/netshoot:latest` | Image of the ephemeral debug container |
 | `debug.shell` | `/bin/bash` | Shell started in the debug container; falls back to `/bin/sh` if it isn't there, as normal shells do |
 | `debug.profiles` | none | Named sets of debug options (profile, shared process namespace) users can pick |
