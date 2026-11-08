@@ -423,7 +423,7 @@ Kubelook is a personal project built in spare time, so there is no team and ther
 | 3. Harden | Audit log; metrics and tracing; load and penetration tests | — |
 
 - **Gate 1, auth design holds:** a real user's Vault token lists exactly the clusters their policies allow, and credentials are re-minted before expiry, and logout closes every open connection for the session.
-- **Gate 2, security review:** a security review of the finished features, including a penetration test, and every finding fixed before Phase 3 work is called done.
+- **Gate 2, security review:** a security review of the finished features, including a penetration test, with every finding fixed before Phase 3 starts.
 
 ## Decisions
 
