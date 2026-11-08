@@ -160,6 +160,16 @@ The browser talks only to the backend. The backend talks to Google or GitHub to 
 
   An interrupted job is never retried automatically. The user sees what happened and what is left, and clicks Retry (or Roll back); the retry runs under their current credentials and is audited like any other action. Users can see their jobs' progress from any tab or after reconnecting.
 
+### Replica memory
+
+Memory grows with what users have open, so each part has a bound, and the replica as a whole has a ceiling.
+
+- **Watches:** the 30-second idle and hidden-tab close keeps each user to the views they are actually looking at. Before an object is kept in memory, the backend drops fields the UI never shows, notably `metadata.managedFields`, which keeps large lists (such as all pods on a big cluster) small. There is no separate per-user watch cap.
+- **Log streams:** each stream has a small fixed server-side buffer. If a browser can't keep up, the oldest buffered lines are dropped instead of queued without limit, on top of the per-stream rate cap. File transfers are streamed in chunks and never held whole.
+- **Helm jobs:** each replica runs at most `helm.maxConcurrentJobs` (proposed 5) Helm jobs at once and queues the rest, and refuses charts larger than `helm.maxChartBytes` (proposed 10 MiB).
+- **Replica ceiling:** the pod has a Kubernetes memory limit, and Go's `GOMEMLIMIT` is set just below it so garbage collection works harder before the limit. Above `memory.refuseNewWorkPercent` (proposed 80%) of the limit, the replica refuses new watches, shells and Helm jobs with a clear "server busy, try again shortly" message instead of running out of memory and dropping everyone's connections. Existing connections keep working.
+- **Measuring:** memory per watch, watches per user, stream buffer sizes and refused requests are exported as Prometheus metrics. The proposed numbers above are set for real from the load test.
+
 ## Functional requirements
 
 Every list and detail view is backed by a live watch, so status changes appear without a refresh. Every action is checked against the user's own RBAC before it's shown.
@@ -371,6 +381,9 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Helm setting | Default | Purpose |
 | --- | --- | --- |
 | `streams.drainTimeout` | `30m` (proposed) | How long a stopping replica or stream gateway waits for open shells to finish |
+| `helm.maxConcurrentJobs` | `5` (proposed) | Most Helm jobs one replica runs at once; more are queued |
+| `helm.maxChartBytes` | `10485760` (10 MiB, proposed) | Largest chart a replica accepts |
+| `memory.refuseNewWorkPercent` | `80` (proposed) | Share of the pod's memory limit above which new watches, shells and Helm jobs are refused |
 | `debug.image` | `nicolaka/netshoot:latest` | Image of the ephemeral debug container |
 | `debug.shell` | `/bin/bash` | Shell started in the debug container; falls back to `/bin/sh` if it isn't there, as normal shells do |
 | `debug.profiles` | none | Named sets of debug options (profile, shared process namespace) users can pick |
