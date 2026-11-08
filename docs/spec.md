@@ -413,7 +413,7 @@ The targets below are proposed starting points, to be confirmed after the spike.
 
 ## Delivery plan
 
-Kubelook is a personal project built in spare time, so there is no team and there are no dates. The work is done in four phases, in order, and a phase with a gate must pass it before the next starts. The spike comes first because the Vault discovery design is the biggest unknown.
+The work is done in four phases, in order, and a phase with a gate must pass it before the next starts. The spike comes first because the Vault discovery design is the biggest unknown.
 
 | Phase | Scope | Gate to the next phase |
 | --- | --- | --- |
