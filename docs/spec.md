@@ -215,7 +215,7 @@ Metrics (CPU and memory per pod and node) come from metrics-server when it is pr
 Everything here runs through the Kubernetes API under the user's own identity. Each action is shown only when the user's RBAC allows it.
 
 - **Debug a pod:** from a pod's menu, add an ephemeral debug container to the pod. A container picker chooses the target container when the pod has several. This needs `pods/ephemeralcontainers`.
-- **Configurable debug container:** the image and shell come from the deployment settings (`debug.image`, `debug.shell`). The default image is `nicolaka/netshoot:latest`, which is the default the Freelens debug-pod extension uses. A named list of debug profiles (`debug.profiles`) sets extra options such as the `kubectl debug` profile and whether the debug container shares the process namespace of the target.
+- **Configurable debug container:** the image and shell come from the deployment settings (`debug.image`, `debug.shell`). The default image is Kubelook's own debug image, `ghcr.io/bdnix/kubelook-netshoot` (proposed name), built from the latest [netshoot](https://github.com/nicolaka/netshoot) release (Apache 2.0; v0.16 at the time of writing). Kubelook's release pipeline rebuilds it whenever a new netshoot release appears, publishes it with a version tag, and each Kubelook release pins its default to that image's digest, so the image can't change underneath a running install. Deployers can point `debug.image` at their own registry copy instead. A named list of debug profiles (`debug.profiles`) sets extra options such as the `kubectl debug` profile and whether the debug container shares the process namespace of the target.
 - Opening a shell in the debug container uses the normal shell feature above.
 
 ### Pod file browser
@@ -388,7 +388,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | `helm.maxConcurrentJobs` | `5` (proposed) | Most Helm jobs one replica runs at once; more are queued |
 | `helm.maxChartBytes` | `10485760` (10 MiB, proposed) | Largest chart a replica accepts |
 | `memory.refuseNewWorkPercent` | `80` (proposed) | Share of the pod's memory limit above which new watches, shells and Helm jobs are refused |
-| `debug.image` | `nicolaka/netshoot:latest` | Image of the ephemeral debug container |
+| `debug.image` | `ghcr.io/bdnix/kubelook-netshoot@sha256:<digest>` (pinned per Kubelook release) | Image of the ephemeral debug container |
 | `debug.shell` | `/bin/bash` | Shell started in the debug container; falls back to `/bin/sh` if it isn't there, as normal shells do |
 | `debug.profiles` | none | Named sets of debug options (profile, shared process namespace) users can pick |
 | `fileBrowser.enabled` | `true` | Turns the pod file browser on or off |
