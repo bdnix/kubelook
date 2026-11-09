@@ -63,7 +63,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 
 **Opening a cluster**
 
-1. `GET kubernetes/<cluster>/config` gives the API server URL and CA.
+1. `GET kubernetes/<cluster>/config` gives the API server URL and CA. Kubelook uses them as Vault returns them. Making sure each mount's `kubernetes_host` and `kubernetes_ca_cert` are set to an address and CA Kubelook can reach is the deployer's responsibility; Kubelook has no per-cluster override.
 2. `POST kubernetes/<cluster>/creds/<role>` with `kubernetes_namespace` and `cluster_role_binding` from the Helm values returns `service_account_name` and `service_account_token` ([Vault API](https://developer.hashicorp.com/vault/api-docs/v1.16.x/secret/kubernetes)). `cluster_role_binding=true` requires the Vault role to use `kubernetes_role_type=ClusterRole`.
 3. The backend builds an in-memory client config from the URL, CA and token. Nothing is written to disk.
 4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the minted cluster credentials and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created.
