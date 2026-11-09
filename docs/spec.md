@@ -6,7 +6,7 @@ Last updated: 2026-11-05
 
 Kubelook is a browser-based Kubernetes console. Users sign in with Google or GitHub, then add a Vault token or an uploaded kubeconfig, and get full day-2 operations on every cluster that credential reaches, with no desktop install.
 
-**Problem.** Engineers need to investigate and operate many Kubernetes clusters, and cluster access is brokered through Vault. They need one place in the browser where a Vault token, or a kubeconfig, opens exactly the clusters they are allowed to see. No credentials should be stored on their own machines.
+**Problem.** Engineers need to investigate and operate many Kubernetes clusters, and cluster access is brokered through Vault. They need one place in the browser where a Vault token, or a kubeconfig, opens exactly the clusters they are allowed to see. They shouldn't need a kubeconfig or cluster credentials set up on their machines: a Vault token they already have, or an uploaded kubeconfig, is enough.
 
 **Goals**
 
@@ -198,7 +198,7 @@ Metrics (CPU and memory per pod and node) come from metrics-server when it is pr
 - Pick a container, or merge all containers of a pod, or all pods behind a workload or label selector, colour-coded by source.
 - Client-side search with highlighting (plain text or regex), plus a server-side filter for large streams. Download the current buffer.
 - **Structured logs:** lines that are JSON are parsed into fields. The viewer colours the level (`ERROR`, `WARN`, `INFO`, `DEBUG`), highlights timestamps, logger names, UUIDs and URLs, and filters by level and by field value. Plain-text lines still show as they are.
-- **History:** scrolling to the top loads earlier lines, with the tail growing in steps up to a configured maximum, so a user can read back past the first screenful without restarting the stream.
+- **History:** scrolling to the top loads earlier lines, with the tail growing in steps up to a configured maximum, so a user can read back past the first screenful without restarting the stream. Kubernetes serves only the container's current log file, so history stops where the kubelet last rotated the log (by default when it reaches 10 MiB); older lines live only in a cluster's own log system, if it has one.
 - **Export:** download the current buffer as plain text or as newline-delimited JSON (one record per line, with pod, container and timestamp).
 - Back-pressure: the server caps each stream's rate. While following a live stream, the viewer keeps the newest 10,000 lines (proposed) and drops older ones. When the user pauses and scrolls back, it can load older lines up to `logs.historyMaxLines`.
 
@@ -225,9 +225,10 @@ A graphical file browser inside a running container, so users do not have to run
 - **Where:** a "Files" tab in the pod details drawer, and a full page with namespace, pod and container pickers. The container picker includes init containers.
 - **Browse:** a directory listing with breadcrumbs, a filter box, file permissions, sizes and types, and symlink targets.
 - **View and edit:** text files open in the Monaco editor with syntax highlighting, and can be saved back to the container. The save fails with a clear message if the file changed after it was opened. Binary files are detected and offered for download only.
-- **Transfer:** upload by button or drag and drop (including several files and directories), and download of files and directories. Transfers use `tar` in the container where it exists, with a fallback to basic shell utilities (`ls`, `cat`, `stat`, `head`, `rm`) for single files. The size limit is the deployment setting `fileBrowser.maxTransferBytes`.
+- **Transfer:** upload by button or drag and drop (including several files and directories), and download of files and directories. Transfers use `tar` in the container where it exists, with a fallback to basic shell utilities (`ls`, `cat`, `stat`, `head`, `rm`) for single files. The size limit is the deployment setting `fileBrowser.maxTransferBytes`, enforced on the bytes actually streamed, not on the size the container reports.
 - **Delete:** a file or directory, after a confirmation.
 - **Limits:** the container needs a shell or `tar`. Images without them, such as distroless images, are not supported.
+- **Command safety:** every command runs through `exec` with its arguments passed separately (for example `["cat", "--", path]`), never assembled into a shell command line, so a file name can't inject commands. Output from the container, including `tar` archives, is treated as untrusted: archive entries are checked for absolute paths, `..` and links that point outside the requested directory, and the backend never unpacks them onto its own disk.
 - **Safety:** the user's own RBAC is the only authority. Every view, save, upload, download and delete is audited with the path and size, never the content. Files that come from Secret volumes can be read like any other file, so the audit trail matters here.
 
 ### Real-time manifest editing
@@ -299,11 +300,10 @@ A module for clusters that run Karpenter 1.0 or newer, shown only when the clust
 - **Lists and details:** NodeClaims, NodePools and NodeOverlays, each with the columns of the matching `kubectl get -o wide` output, sortable and searchable, and a details view that explains why an object is not ready, with links between related objects. NodeClaim details cover launch, registration and initialization state, drift, instance type, capacity type, zone, provider and image IDs, node capacity and spec.
 - **Provider node classes:** the page reads only the node classes of the provider the cluster runs: EC2NodeClass on AWS, AKSNodeClass on Azure, and GCENodeClass and GCECustomMachineType on GCP.
 - **Node details:** a Karpenter section on the details of a node it manages: NodePool and NodeClaim links, instance and capacity type, zone, registration and initialization state, and whether Karpenter is disrupting it or must not.
-- While the module is active, the Karpenter kinds are not repeated under Custom Resources.
 
 ### Ecosystem modules
 
-Each module follows the same rules: it appears only when the cluster serves the CRDs, it hides itself otherwise, it can be turned off in the deployment settings (`modules.<name>.enabled`), and it reads and changes objects only through the Kubernetes API under the user's identity. Actions on these objects are ordinary mutating calls, so they are audited like every other.
+Each module follows the same rules: it appears only when the cluster serves the CRDs, it hides itself otherwise, while it is active its kinds are not repeated under Custom Resources, it can be turned off in the deployment settings (`modules.<name>.enabled`), and it reads and changes objects only through the Kubernetes API under the user's identity. Actions on these objects are ordinary mutating calls, so they are audited like every other.
 
 | Module | What it shows | Actions |
 | --- | --- | --- |
