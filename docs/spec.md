@@ -1,6 +1,6 @@
 # Kubelook — Product & Technical Spec
 
-Last updated: 2026-11-05
+Last updated: 2026-11-09
 
 ## Overview
 
@@ -17,7 +17,7 @@ Kubelook is a browser-based Kubernetes console. Users sign in with Google or Git
 - Ecosystem modules for Karpenter, KEDA, External Secrets, Vault Secrets Operator, cert-manager, the Gateway API and security reports. Each module appears only on clusters that have the matching CRDs.
 - Everything runs under the user's own Kubernetes identity, so cluster RBAC stays the only authority on what they can do.
 - Vault stays the single place where access is defined. The console reads from Vault but never creates or changes its policies, roles or secrets engines; Vault admins keep owning those.
-- No user management or authorization inside the console. Vault decides who can reach which cluster, and cluster RBAC decides what they can do there. The console has no admin role or permission settings; operators configure it only through its deployment settings. It keeps a record per signed-in account only to store that user's settings.
+- No user management or authorization inside the console. Vault decides who can reach which cluster, and cluster RBAC decides what they can do there. The console has no admin role or permission settings; operators configure it through its deployment settings, and the settings page holds only app settings and user preferences. It keeps a record per signed-in account only to store that user's settings.
 
 **Non-goals for v1**
 
@@ -33,7 +33,7 @@ Kubelook is a browser-based Kubernetes console. Users sign in with Google or Git
 
 ## Authentication and cluster discovery
 
-Sign-in has two steps. First the user signs in with Google or GitHub, which says who they are. Then they add a Vault token (Path A) or a kubeconfig (Path B), which says which clusters they can reach. Both paths end in the same state: a server-side session that holds short-lived Kubernetes credentials per cluster. The browser only ever gets a session cookie.
+Sign-in has two steps. First the user signs in with Google or GitHub, which says who they are. Then they add a Vault token (Path A) or a kubeconfig (Path B), which says which clusters they can reach. Both paths end in the same state: a server-side session that holds short-lived Kubernetes credentials per cluster. The browser gets a session cookie and, for saved credentials, only encrypted copies it can't read.
 
 ### Step 1: Google or GitHub sign-in
 
@@ -66,7 +66,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 1. `GET kubernetes/<cluster>/config` gives the API server URL and CA. Kubelook uses them as Vault returns them. Making sure each mount's `kubernetes_host` and `kubernetes_ca_cert` are set to an address and CA Kubelook can reach is the deployer's responsibility; Kubelook has no per-cluster override.
 2. `POST kubernetes/<cluster>/creds/<role>` with `kubernetes_namespace` and `cluster_role_binding` from the Helm values returns `service_account_name` and `service_account_token` ([Vault API](https://developer.hashicorp.com/vault/api-docs/v1.16.x/secret/kubernetes)). `cluster_role_binding=true` requires the Vault role to use `kubernetes_role_type=ClusterRole`.
 3. The backend builds an in-memory client config from the URL, CA and token. Nothing is written to disk.
-4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the minted cluster credentials and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created.
+4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the session's credentials from the database, including the minted cluster credentials, and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created.
 
 **When Vault is unreachable**
 
@@ -141,7 +141,7 @@ flowchart TB
   backend -- "as the user" --> clusters
 ```
 
-The browser talks only to the backend. The backend talks to Google or GitHub to sign the user in, to Vault for cluster credentials, to the database for sessions, encrypted credentials and user settings, and to each cluster's API server as the user.
+The browser talks only to the backend. The backend talks to Google or GitHub to sign the user in, to Vault for cluster credentials, to the database for sessions, encrypted session credentials, user settings, jobs and audit records, and to each cluster's API server as the user.
 
 - **Backend language: Go.** client-go, the Helm 3 SDK and the Flux APIs are all Go.
 - **Frontend:** React and TypeScript, Monaco for YAML, xterm.js for shells.
@@ -241,7 +241,7 @@ A graphical file browser inside a running container, so users do not have to run
 
 ### Helm
 
-- Releases live in the cluster as storage objects prefixed `sh.helm.release.v1` ([Helm SDK](https://pkg.go.dev/helm.sh/helm/v3/pkg/storage)). The backend runs the Helm 3 Go SDK (`helm.sh/helm/v3`) under the user's credentials, so Helm can do only what the user's RBAC allows. Helm 3 matches the Helm CLI teams use today, so releases made from the console and from the CLI stay interchangeable. Moving to Helm 4 is a later decision, made when teams move their CLI.
+- Releases live in the cluster as storage objects prefixed `sh.helm.release.v1` ([Helm SDK](https://pkg.go.dev/helm.sh/helm/v3/pkg/storage)). The backend runs the Helm 3 Go SDK (`helm.sh/helm/v3`) under the user's credentials, so Helm can do only what the user's RBAC allows. Helm 3 matches the Helm CLI in use today, so releases made from the console and from the CLI stay interchangeable. Moving to Helm 4 is a later decision, made when the CLI in use moves.
 - List releases across namespaces with status, chart, app version and revision.
 - Detail: user-supplied values, computed values, rendered manifest, notes, hooks and revision history.
 - Actions: install from an HTTP repo or OCI registry, upgrade with edited values (shown as a diff first), rollback to a revision, uninstall, and test.
@@ -359,12 +359,12 @@ The layout is a cluster rail, a resource sidebar, a main list, and a details dra
 
 ## Security model
 
-The backend is a credential broker, so a compromise of the backend exposes every live session. The design keeps credentials short-lived, user-scoped and never in the browser.
+The backend is a credential broker, so a compromise of the backend exposes every live session. The design keeps credentials short-lived and user-scoped, and never readable in the browser: the browser holds at most encrypted copies only the server can decrypt.
 
 | Threat | Mitigation |
 | --- | --- |
-| Credential theft from the browser | Credentials stay server-side. The browser holds only an HttpOnly session cookie, and every page has a strict CSP. |
-| Backend or database compromise | Saved Vault tokens and kubeconfigs are kept only as encrypted copies in each user's browser, never in the database. Active-session credentials in the database are encrypted with the deployer-provided key in `encryption.keySecret`, so reading them needs both the database and that Secret. Vault tokens that expire at their TTL unless the user renews them, and never outlive the maximum TTL set in Vault, and cluster credentials that expire at their TTL. Saved kubeconfigs are a known exposure: their certificates and tokens can be long-lived, so a stolen browser copy together with the encryption key exposes them until they are rotated. |
+| Credential theft from the browser | Plaintext credentials stay server-side. The browser holds an HttpOnly session cookie and, for saved credentials, encrypted copies that page scripts can't decrypt; every page has a strict CSP. A stolen copy is useless without the server's key. |
+| Backend or database compromise | Saved Vault tokens and kubeconfigs are kept only as encrypted copies in each user's browser, never in the database. Active-session credentials in the database are encrypted with the deployer-provided key in `encryption.keySecret`, so reading them needs both the database and that Secret. Vault tokens expire at their TTL unless the user renews them and never outlive the maximum TTL set in Vault, and cluster credentials expire at their TTL. Saved kubeconfigs are a known exposure: their certificates and tokens can be long-lived, so a stolen browser copy together with the encryption key exposes them until they are rotated. |
 | Privilege escalation through the console | All Kubernetes calls use the user's own credential. The console has no cluster rights of its own. |
 | SSRF through user-supplied server URLs | Left to the deployment: whoever deploys the console restricts its outbound traffic with a firewall or network policy. The console has no egress filter of its own. |
 | Abuse of shells | Exec goes through the Kubernetes API, never a shell on the console host. Sessions are audited; idle shells time out (proposed 15 min). |
@@ -382,6 +382,8 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | `audit.retentionDays` | `0` | Days to keep audit records; `0` keeps them forever |
 | `audit.cleanup.credentialsSecret` | none | PostgreSQL credentials for the cleanup job's delete-only role; the console's own role can only insert audit records |
 
+**Other deployment settings**
+
 | Helm setting | Default | Purpose |
 | --- | --- | --- |
 | `streams.drainTimeout` | `30m` (proposed) | How long a stopping replica or stream gateway waits for open shells to finish |
@@ -396,7 +398,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | `logs.historyMaxLines` | `200000` (proposed) | Most lines the log viewer loads when scrolling back |
 | `modules.<name>.enabled` | `auto` | `auto` shows a module only when its CRDs exist, `false` hides it. Names: `karpenter`, `keda`, `externalSecrets`, `vaultSecrets`, `certManager`, `gatewayApi`, `trivy`, `permissions` |
 
-**Vault policy users need.** For each cluster they may use: `read` on `kubernetes/<cluster>/config`, and `create` or `update` on `kubernetes/<cluster>/creds/<role>`. Discovery also calls `sys/capabilities-self`, which Vault's default policy usually grants, and `sys/internal/ui/mounts`, which is unauthenticated. Vault admins should confirm both against their own policies.
+**Vault policy users need.** For each cluster they may use: `read` on `kubernetes/<cluster>/config`, and `create` or `update` on `kubernetes/<cluster>/creds/<role>`. Discovery also calls `sys/capabilities-self`, and the console calls `auth/token/lookup-self` and `auth/token/renew-self`; Vault's built-in `default` policy grants all three. Discovery calls `sys/internal/ui/mounts` with the user's token: the endpoint can be called without a token, but only with one does it list the mounts that token can use. Vault admins should confirm these against their own policies.
 
 ## Non-functional requirements
 
@@ -413,7 +415,7 @@ The targets below are proposed starting points, to be confirmed after the spike.
 | Supported Kubernetes | Kubernetes 1.35 and newer |
 | Browsers | Current Chrome, Edge, Firefox and Safari |
 | Observability | Prometheus metrics (sessions, watches, stream counts, Vault and API latency, error rates), OpenTelemetry traces, structured logs |
-| Deployment | One container image and a Helm chart; runs in-cluster or on VMs; config via environment variables and a YAML file |
+| Deployment | One container image and a Helm chart, run in a Kubernetes cluster (the encryption key is a Kubernetes Secret and audit cleanup is a CronJob); config through Helm values, rendered into environment variables and a YAML file |
 
 ## Delivery plan
 
