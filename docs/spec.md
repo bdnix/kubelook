@@ -1,6 +1,6 @@
 # Kubelook — Product & Technical Spec
 
-Last updated: 2026-11-09
+Last updated: 2026-11-10
 
 ## Overview
 
@@ -38,7 +38,7 @@ Sign-in has two steps. First the user signs in with Google or GitHub, which says
 ### Step 1: Google or GitHub sign-in
 
 1. The user picks Google or GitHub and signs in through that provider's OAuth 2.0 / OpenID Connect flow, with the authorization code flow and PKCE.
-2. Whoever deploys the console chooses who may sign in with `auth.restrictSignIn`. When it is `true` (the default), the account must match an allowlist: for Google, the ID token's email must be verified and its hosted domain (`hd` claim) must be in `auth.google.allowedDomains`; for GitHub, the user must be a member of an organization in `auth.github.allowedOrgs`, which needs the `read:org` scope. Sign-in is refused when the account doesn't match, or when no list is set. When it is `false`, any Google or GitHub account can sign in, and the Vault token or kubeconfig alone decides which clusters it reaches.
+2. Whoever deploys the console chooses who may sign in with `auth.restrictSignIn`. When it is `true` (the default), the account must match an allowlist: for Google, the ID token's email must be verified and its hosted domain (`hd` claim) must be in `auth.google.allowedDomains`; for GitHub, the user must be a member of an organization in `auth.github.allowedOrgs`, which needs the `read:org` scope. If the organization has OAuth app access restrictions turned on (GitHub turns them on by default for new organizations), an organization owner must approve Kubelook's OAuth app first, or the membership check can't see the organization ([GitHub docs](https://docs.github.com/en/organizations/managing-oauth-access-to-your-organizations-data/about-oauth-app-access-restrictions)). Sign-in is refused when the account doesn't match, or when no list is set. When it is `false`, any Google or GitHub account can sign in, and the Vault token or kubeconfig alone decides which clusters it reaches.
 3. The account becomes the user's identity in the console: a user record keyed by provider and the provider's stable account ID (Google `sub`, GitHub numeric user ID), not by email.
 4. The console never uses the Google or GitHub token to reach clusters or Vault. It is used only to sign in and to check domain or organization membership.
 
@@ -52,21 +52,25 @@ Sign-in has two steps. First the user signs in with Google or GitHub, which says
 
 ### Path A: Vault token
 
-Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster-name>/`. The mount holds everything needed to build a client: `GET kubernetes/<cluster>/config` returns the API server URL (`kubernetes_host`) and CA (`kubernetes_ca_cert`), and `POST kubernetes/<cluster>/creds/<role>` mints a short-lived service account token. So there is no separate cluster registry: the mounts *are* the registry.
+Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster-name>/`. The mount holds everything needed to build a client: `GET kubernetes/<cluster>/config` returns the API server URL (`kubernetes_host`) and CA (`kubernetes_ca_cert`), and `POST kubernetes/<cluster>/creds/<role>` mints a short-lived service account token. So there is no separate cluster registry: the mounts *are* the registry. Vault returns only the `kubernetes_host` and `kubernetes_ca_cert` values the Vault admin set on the mount. A mount that relies on Vault's in-cluster defaults returns them empty, and Kubelook can't open that cluster (see Opening a cluster).
 
 **Discovery (at sign-in)**
 
 1. The user pastes a Vault token. The backend validates it with `auth/token/lookup-self`, records its TTL and policies, and gives the browser an encrypted copy to keep (see Storage under Sessions), so it is still there at the next sign-in in that browser until it expires or the user removes it. An expired token is dropped and the user is asked for a new one.
-2. The backend calls `GET sys/internal/ui/mounts` with the user's token and keeps the mounts of type `kubernetes` under the configured prefix (default `kubernetes/`). This needs no `sys/mounts` permission: with a token, the response includes every mount the token has path capabilities on, which covers each cluster the user can read config or mint creds for. Vault documents it as [an internal endpoint with no backwards-compatibility guarantee](https://developer.hashicorp.com/vault/api-docs/system/internal-ui-mounts), so every Vault upgrade must be tested against it before rollout.
-3. For each mount, the backend checks the configured candidate roles with `POST sys/capabilities-self` on `kubernetes/<cluster>/creds/<role>` and `kubernetes/<cluster>/config` ([Vault API](https://developer.hashicorp.com/vault/api-docs/system/capabilities-self)).
-4. A cluster appears in the sidebar if the token can `read` its config and `create` or `update` at least one role's creds path. If more than one role is allowed, the user picks one when opening the cluster; the first allowed role in the configured order is the default.
+2. The backend calls `GET sys/internal/ui/mounts` with the user's token and keeps the mounts of type `kubernetes` under the configured prefix (default `kubernetes/`). This needs no `sys/mounts` permission: with a token, the response includes every mount the token has path capabilities on, which covers each cluster the user can read config or mint creds for. It lists only mounts in the Vault namespace the request is made in, so mounts in a child namespace are not found; Kubelook has no Vault namespace setting. Vault documents it as [an internal endpoint with no backwards-compatibility guarantee](https://developer.hashicorp.com/vault/api-docs/system/internal-ui-mounts), so every Vault upgrade must be tested against it before rollout.
+3. For each mount, the backend checks the configured candidate roles with `POST sys/capabilities-self` on `kubernetes/<cluster>/creds/<role>` and `kubernetes/<cluster>/config` ([Vault API](https://developer.hashicorp.com/vault/api-docs/system/capabilities-self)). The endpoint takes a list of paths, so the paths of many mounts go in one call.
+4. A cluster appears in the sidebar if the token can `read` its config and `update` at least one role's creds path. `create` alone is not enough: the creds path handles only the update operation and has no existence check, so Vault treats every write to it as an update. If more than one role is allowed, the user picks one when opening the cluster; the first allowed role in the configured order is the default.
 
 **Opening a cluster**
 
-1. `GET kubernetes/<cluster>/config` gives the API server URL and CA. Kubelook uses them as Vault returns them. Making sure each mount's `kubernetes_host` and `kubernetes_ca_cert` are set to an address and CA Kubelook can reach is the deployer's responsibility; Kubelook has no per-cluster override.
-2. `POST kubernetes/<cluster>/creds/<role>` with `kubernetes_namespace` and `cluster_role_binding` from the Helm values returns `service_account_name` and `service_account_token` ([Vault API](https://developer.hashicorp.com/vault/api-docs/v1.16.x/secret/kubernetes)). `cluster_role_binding=true` requires the Vault role to use `kubernetes_role_type=ClusterRole`.
+1. `GET kubernetes/<cluster>/config` gives the API server URL and CA. Kubelook uses them as Vault returns them. If either comes back empty, opening the cluster fails with a message that says the mount's config has no API server address or CA. Making sure each mount's `kubernetes_host` and `kubernetes_ca_cert` are set to an address and CA Kubelook can reach is the deployer's responsibility; Kubelook has no per-cluster override.
+2. `POST kubernetes/<cluster>/creds/<role>` with `kubernetes_namespace` and `cluster_role_binding` from the Helm values returns `service_account_name` and `service_account_token` ([Vault API](https://developer.hashicorp.com/vault/api-docs/v1.16.x/secret/kubernetes)). `cluster_role_binding=true` requires the Vault role to use `kubernetes_role_type=ClusterRole`; with a `Role`-type Vault role, Vault answers "a ClusterRoleBinding cannot ref a Role". `kubernetes_namespace` must be one the Vault role allows (`allowed_kubernetes_namespaces` or its selector), or Vault refuses the request. Both settings are global, so every role on every cluster must fit them.
 3. The backend builds an in-memory client config from the URL, CA and token. Nothing is written to disk.
-4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the session's credentials from the database, including the minted cluster credentials, and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created.
+4. Vault's sample response for these credentials shows `renewable: false`, so the backend mints a fresh token shortly before the current one expires rather than renewing it. On logout or session expiry it deletes the session's credentials from the database, including the minted cluster credentials, and closes every open watch, log stream and shell for that session, because those connections stay authenticated after the session ends. It does not revoke the lease: the credentials stay valid until their TTL runs out, and Vault then removes the service account objects it created. Four details follow from how Vault works:
+   - Vault creates objects only for roles that use `kubernetes_role_name` or `generated_role_rules`. A role that uses `service_account_name` gets a token for an existing service account, nothing is created or removed, and the token simply runs to its TTL.
+   - Kubelook sends `ttl=30m` by default (`vault.tokenTTL`), so a signed-out user's cluster credentials are gone within 30 minutes, whatever the role's own default is. Vault caps the value at the role's `token_max_ttl` if that is shorter. While the session is active the backend mints a fresh credential before the current one expires.
+   - Vault revokes a token's leases when the token expires or is revoked ([Vault leases](https://developer.hashicorp.com/vault/docs/concepts/lease)). So when the user's Vault token ends, the cluster credentials minted with it end too, even if their own TTL has time left.
+   - Revoking on logout would need `update` on `sys/leases/revoke`, which Vault's `default` policy does not grant.
 
 **When Vault is unreachable**
 
@@ -80,44 +84,43 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `vault.address` | none | Vault URL |
-| `encryption.keySecret` | none (required) | Helm chart only: name of the Kubernetes Secret the chart passes to the app as `KUBELOOK_ENCRYPTION_KEY` |
 | `vault.kubernetesMountPrefix` | `kubernetes/` | Where cluster mounts live |
 | `vault.credsNamespace` | `itops` | `kubernetes_namespace` sent when minting tokens, where Vault creates the temporary service account |
 | `vault.clusterRoleBinding` | `true` | `cluster_role_binding` sent when minting tokens |
 | `vault.candidateRoles` | none | Roles to check per cluster, in order of preference (for example `devops-role`, `platform-hub-role`) |
-| `vault.tokenTTL` | unset (role default) | Optional `ttl` sent when minting tokens |
+| `vault.tokenTTL` | `30m` | `ttl` sent when minting tokens. Short on purpose: credentials aren't revoked at logout, so this is how long they outlive a session |
 | `vault.expiryWarning` | `30m` (proposed) | Time left on a saved Vault token at which the console starts warning the user |
 
 ### Path B: kubeconfig upload
 
 1. The user uploads or pastes a kubeconfig. It is parsed server-side, and the browser keeps an encrypted copy until the user removes it (see Storage under Sessions), so its clusters are there at the next sign-in in that browser.
 2. Every context becomes a cluster in the sidebar, named `<file label>/<context>`.
-3. Supported auth: embedded client certificates, bearer tokens, and OIDC `auth-provider` refresh tokens.
-4. Rejected with a clear message: file-path references (`client-certificate`, `certificate-authority` by path), and any user entry that uses an `exec` credential plugin. The console never runs commands from a kubeconfig; `exec` plugins are not supported. This rules out the kubeconfigs that EKS, GKE and AKS generate, because they use `exec` plugins and would also need cloud credentials on the server. Those clusters are reached through Vault, or through a kubeconfig with an embedded token, such as one built from a Vault-minted service account token.
-5. The console does not filter server URLs itself. It connects to whatever address a kubeconfig names, so whoever deploys it must restrict its outbound traffic with a firewall or network policy, for example to the cluster API servers, Vault and the database.
+3. Supported auth: embedded client certificates, bearer tokens, and OIDC `auth-provider` refresh tokens. For OIDC, the backend contacts the `idp-issuer-url` named in the kubeconfig to refresh the token, so that URL is a second user-supplied address besides the server URL. When the issuer returns a new refresh token, the backend gives the browser a fresh encrypted copy of the kubeconfig, because the saved one no longer works.
+4. Rejected with a clear message: file-path references (`client-certificate`, `certificate-authority` and the OIDC `idp-certificate-authority` by path), and any user entry that uses an `exec` credential plugin. The console never runs commands from a kubeconfig; `exec` plugins are not supported. This rules out the kubeconfigs that EKS and GKE generate, and the ones AKS generates for clusters that use Microsoft Entra ID, because they use `exec` plugins and would also need cloud credentials on the server. (AKS clusters without Entra ID hand out certificate-based kubeconfigs, which work.) Those clusters are reached through Vault, or through a kubeconfig with an embedded token, such as one built from a Vault-minted service account token.
+5. The console does not filter server URLs itself. It connects to whatever address a kubeconfig names, so whoever deploys it must restrict its outbound traffic with a firewall or network policy, for example to the cluster API servers, Vault, the database, Google or GitHub, the OIDC issuers of uploaded kubeconfigs, and the Helm repositories and OCI registries users may install from. A plain Kubernetes NetworkPolicy filters by IP address and port, not by host name. An allowlist that leaves out Helm sources disables installing charts from them.
 
 ### Sessions
 
 - **Cookie:** an HttpOnly, Secure, SameSite=Lax cookie holds an opaque session ID. Mutating requests carry a CSRF token.
 - **Storage:** sessions, active-session credentials and user settings live in a relational database: SQLite for a single-replica deployment, PostgreSQL for more than one replica.
-- **Saved credentials stay in the browser:** the user's Vault token and uploaded kubeconfigs are not stored in the database. The server encrypts each one and the browser keeps only that encrypted copy (in IndexedDB), which page scripts can't decrypt. At sign-in the browser sends the copies back, and the server decrypts them into the session. A database leak alone therefore exposes no saved credentials; an attacker needs both a browser's copy and the server's key. Saved credentials stay in the browser that saved them, so on another machine, or after the user clears site data, they paste them again. The user can see and remove them from the settings page.
+- **Saved credentials stay in the browser:** the user's Vault token and uploaded kubeconfigs are not stored in the database. The server encrypts each one and the browser keeps only that encrypted copy (in IndexedDB), which page scripts can read but can't decrypt. Each copy is bound to the user record that saved it: the user's ID is part of the authenticated data of the encryption, so the server refuses to decrypt a copy in any other account's session. At sign-in the browser sends the copies back, and the server decrypts them into the session. A database leak alone therefore exposes no saved credentials of signed-out users; an attacker needs a browser's copy and either the server's key or a session signed in as that same user. While a user is signed in, their decrypted credentials are in the database as session credentials (see below). Saved credentials stay in the browser that saved them, so on another machine, or after the user clears site data, they paste them again. Safari also removes script-writable storage, IndexedDB included, after 7 days of browser use without interaction with the site ([WebKit](https://webkit.org/tracking-prevention/)), so Safari users who stay away that long paste them again too. The user can see and remove them from the settings page. Removing a copy deletes it from that browser only; a copy that was taken elsewhere stays decryptable, by that same user only, until the key changes.
 - **Encryption key:** all encryption uses one key, which the app reads from the `KUBELOOK_ENCRYPTION_KEY` environment variable (proposed name). How that variable is set, and where the key comes from, is up to whoever deploys the console. The Helm chart sets it from a Kubernetes Secret named in `encryption.keySecret`.
-- **Changing the key:** the console holds one key at a time; there are no old keys and no re-encryption. Every encrypted value is AES-256-GCM with a random nonce and records the ID of the key that encrypted it. To rotate, whoever deploys the console sets a new key in `KUBELOOK_ENCRYPTION_KEY` and restarts the console. From then on:
+- **Changing the key:** the console holds one key at a time; there are no old keys and no re-encryption. Every encrypted value is AES-256-GCM with a random nonce and records the ID of the key that encrypted it. To rotate, whoever deploys the console sets a new key in `KUBELOOK_ENCRYPTION_KEY` and restarts the console. All replicas must be restarted together: while old-key and new-key replicas run side by side, each discards what the other encrypted. From then on:
   - Encrypted copies that a browser sends with an unknown key ID are discarded, and the user sees: "Kubelook's encryption key was changed, so your saved Vault token and kubeconfigs can't be used anymore. Please paste your token and upload your kubeconfigs again."
   - Active-session credentials in the database become unreadable too, so every signed-in user is signed out and sees the same message at their next sign-in.
-  - Users are never left with credentials that fail silently. The change is recorded in the audit log by key ID, never the key itself. If the key leaked, replacing it at once is the whole response: nothing encrypted with the old key can be used afterwards.
+  - Users are never left with credentials that fail silently. The change is recorded in the audit log by key ID, never the key itself. If the key leaked, replacing it stops Kubelook from accepting anything encrypted with the old key, but it is not the whole response. Whoever held the key together with a database copy or a browser's copies may already have the plaintext credentials, and those work directly against Vault and the clusters until they expire or are revoked. The response therefore also includes revoking the affected Vault tokens and rotating the credentials in uploaded kubeconfigs. With one key and random 96-bit nonces, NIST SP 800-38D limits a key to 2^32 encryptions; Kubelook's volume is expected to stay far below that, and the load test confirms the rate.
 - **Session credentials:** while a session is active, its decrypted Vault token, kubeconfig credentials and the Kubernetes credentials minted from Vault are held in the database, encrypted, so any replica can serve the session. They are deleted when the session ends.
 - **User settings:** favourite clusters, saved filter sets, column presets and namespace filters stay with the user record across sessions and machines.
-- **Vault token renewal:** the console never renews a Vault token on its own. The user renews it with a **Renew** button, which calls `auth/token/renew-self`. Each renewal extends the token's TTL, but never past its maximum TTL as set in the user's Vault. Vault can't report that limit in advance in the usual case, because it works out the maximum at each renewal ([Vault token TTLs](https://developer.hashicorp.com/vault/docs/concepts/tokens)), so the console learns it has been reached when a renewal no longer extends the TTL. An expired token can't be renewed: Vault revokes it when its TTL runs out.
+- **Vault token renewal:** the console never renews a Vault token on its own. The user renews it with a **Renew** button, which calls `auth/token/renew-self`. Each renewal extends the token's TTL, but never past its maximum TTL as set in the user's Vault. Vault can't report that limit in advance in the usual case, because it works out the maximum at each renewal ([Vault token TTLs](https://developer.hashicorp.com/vault/docs/concepts/tokens)), so the console learns it has been reached when a renewal no longer extends the TTL. An expired token can't be renewed: Vault revokes it when its TTL runs out. Batch tokens can't be renewed at all, so for them the banner never shows the button. A token whose TTL is 0 never expires and gets no expiry warning.
 - **Cluster credential renewal:** while a session is active, the backend re-mints each open cluster's Kubernetes token shortly before it expires.
 - **Expiry warnings:** when a saved Vault token has less than `vault.expiryWarning` left, the console shows a banner on every page with the time left and the **Renew** button. If the token isn't renewable, or a renewal no longer extends its TTL, the banner drops the button and tells the user to get a new token from Vault (for example by logging in to Vault again) and paste it into their Kubelook settings. The settings page has a box to paste the new token without closing open terminals, log streams or editors.
 - **After expiry:** once the token has expired, the banner says so, its Vault clusters show as disconnected in the cluster rail, and the user sees the same instructions at every sign-in until they paste a new token or remove the old one.
-- **Idle sessions:** a session ends after an idle timeout (proposed 30 min with no interaction and no open stream), which stops cluster credential re-minting and closes its connections.
+- **Idle sessions:** a session ends after an idle timeout (proposed 30 min with no interaction and no open stream), which stops cluster credential re-minting and closes its connections. A session also ends 12 hours after sign-in (proposed) whatever is open, so a forgotten tab with a log stream can't keep it alive.
 - **Sources:** a user can hold a Vault token and uploaded kubeconfigs at the same time. The sidebar groups clusters by source.
 
 ## Architecture
 
-A Go backend sits between the browser and every cluster. Its replicas share one database for sessions, settings and audit records, so any replica can serve any request; the only state a replica holds itself is its open connections (watches, log streams, shells), which is why WebSockets are sticky. It holds credentials, proxies API calls under the user's identity, and multiplexes watches and streams over one WebSocket per browser tab.
+A Go backend sits between the browser and every cluster. Its replicas share one database for sessions, settings and audit records, so any replica can serve any request; the only state a replica holds itself is its open connections (watches, log streams, shells), the objects cached for those watches, and its queue of Helm jobs, which is why WebSockets are sticky. It holds credentials, proxies API calls under the user's identity, and multiplexes watches and streams over one WebSocket per browser tab.
 
 ```mermaid
 flowchart TB
@@ -127,7 +130,7 @@ flowchart TB
     broker["Credential broker<br/>re-mints before expiry"]
     discovery["Cluster discovery<br/>kubernetes/* mounts filtered by sys/capabilities-self"]
     proxy["API proxy and watch hub<br/>user's own creds per call"]
-    streams["Stream gateway (separate deployment)<br/>logs, exec, file transfer"]
+    streams["Streams<br/>logs, exec, file transfer"]
     ops["Helm, Flux, audit"]
   end
   vault["Vault<br/>token lookup, mounts, creds, cluster config"]
@@ -143,24 +146,24 @@ flowchart TB
 
 The browser talks only to the backend. The backend talks to Google or GitHub to sign the user in, to Vault for cluster credentials, to the database for sessions, encrypted session credentials, user settings, jobs and audit records, and to each cluster's API server as the user.
 
-- **Backend language: Go.** client-go, the Helm 3 SDK and the Flux APIs are all Go.
+- **Backend language: Go.** client-go, the Helm SDKs and the Flux APIs are all Go.
 - **Frontend:** React and TypeScript, Monaco for YAML, xterm.js for shells.
-- **Watch hub:** one upstream watch per user, cluster, kind and namespace, fanned out to every open view. It's closed after an idle timeout and resumed from the last `resourceVersion` on reconnect. The browser reports when a tab is hidden (the Page Visibility API), and a watch that only hidden tabs or closed views use is closed once the idle timeout passes. The timeout is 30 seconds by default and is an app setting, changed on the settings page, not a deployment setting. When the user returns to the view, the list reloads and goes live again.
+- **Watch hub:** one upstream watch per user, cluster, kind and namespace, fanned out to every open view. It's closed after an idle timeout. A watch that drops while its view is still open (a network blip, or a move to another replica) is resumed from the last `resourceVersion`; if the API server answers `410 Gone` because that version is too old, the backend lists again and starts a new watch. The browser reports when a tab is hidden (the Page Visibility API), and a watch that only hidden tabs or closed views use is closed once the idle timeout passes. The timeout is 30 seconds by default. Each user can change it for themselves on the settings page, between 30 seconds and 5 minutes; it is not a deployment setting. When the user returns to the view, the list reloads and goes live again.
 - **One WebSocket per tab** carries watch events, log lines, exec frames and file-transfer chunks as tagged channels, with a heartbeat.
 - **Network placement:** the console runs inside the same network as the clusters and connects to each API server directly. There is no agent or tunnel: a cluster the console's network can't reach stays out of reach, so a private cluster stays private.
-- **Deployment:** one image and a Helm chart. The supported deployment is the Helm chart on Kubernetes. The app itself is configured only through environment variables and a YAML file, so it doesn't depend on Kubernetes: the docs also give plain `docker run` commands for the console, the stream gateway and the audit cleanup, which someone could use on a single machine such as an EC2 instance. That route is documented but not a supported deployment. A single replica can use SQLite on a persistent volume. Two or more replicas run behind a load balancer with sticky WebSockets and share a PostgreSQL database, which should be highly available.
+- **Deployment:** one image and a Helm chart. The supported deployment is the Helm chart on Kubernetes. The app itself is configured only through environment variables and a YAML file, so it doesn't depend on Kubernetes: the docs also give plain `docker run` commands for the console and the audit cleanup, which someone could use on a single machine such as an EC2 instance. That route is documented but not a supported deployment. A single replica can use SQLite on a persistent volume. Two or more replicas run behind a load balancer with sticky WebSockets and share a PostgreSQL database, which should be highly available.
 
 ### Replica restarts and failures
 
 - **Sessions and credentials** are in the database, so when a replica stops, the browser reconnects to another one and the user stays signed in. Vault and kubeconfig clusters reopen from the session's stored credentials; nothing is pasted or uploaded again.
-- **Watches** reopen on the new replica from the last `resourceVersion`, so lists pause briefly and catch up. **Log streams** restart from the last line's timestamp; a few lines around the gap may repeat or be missing.
+- **Watches** reopen on the new replica. The new replica has no cached objects, so it lists each open view again and then watches; lists pause briefly and catch up. When a replica with many sessions stops, all of its users' views list again at once. **Log streams** restart from the last line's timestamp; a few lines around the gap may repeat or be missing.
 - **Shells** can't survive the connection that carries them, so a shell on a stopped replica ends, along with anything running in it. The terminal shows an error explaining that the server connection was lost and the shell session ended, and offers to start a new shell. **File transfers** in progress fail with a similar message and must be started again.
-- **Stream gateway:** shells, log streams and file transfers run in a separate stream gateway deployment from the same image, which changes rarely, so the main backend can be redeployed without ending anyone's shell.
-- **Planned restarts drain:** before a replica or gateway stops, it stops accepting new shells and waits up to `streams.drainTimeout` (proposed 30 min) for open ones to finish, with a banner asking users to finish their shell sessions. Only shells still open at the deadline are ended, with the error above.
-- **Long actions are durable jobs.** Helm installs, upgrades, rollbacks and uninstalls, node drains and bulk actions are written to the database before they start: who started them, the cluster and objects, the target state (for Helm: chart, version, values hash and the starting revision), status and progress. The replica running a job renews a short lease on it. If the lease expires because the replica died, another replica checks the cluster against the target state:
+- **No separate stream service:** shells, log streams and file transfers run in the same process as everything else. Restarting or redeploying a replica ends the shells it carries. That is accepted for v1.
+- **Maintenance banner:** whoever deploys the console can set a message (`maintenance.banner`) that every signed-in user sees at the top of every page, for example "Kubelook restarts at 14:00 UTC; open shells will end." It is set before a planned restart and cleared afterwards. There is no drain period: a stopping replica closes its connections at once.
+- **Long actions are durable jobs.** Helm installs, upgrades, rollbacks and uninstalls, node drains and bulk actions are written to the database before they start: who started them, the cluster and objects, the target state (for Helm: chart, version, the values, stored encrypted like session credentials, and the starting revision), status and progress. The replica running a job renews a short lease on it, and stops the job if it can't renew. If the lease expires because the replica died, another replica checks the cluster against the target state:
   - Helm release deployed at the target: the job is marked succeeded.
   - Helm release unchanged from the starting revision, or a drain or bulk action part-way through: the job is marked interrupted.
-  - Helm release stuck in a `pending-*` state: the job is marked interrupted, with rollback to the starting revision offered.
+  - Helm release stuck in a `pending-*` state: the job is marked interrupted, with rollback to the starting revision offered. A first install stuck in `pending-install` has no earlier revision, so uninstall is offered instead.
 
   An interrupted job is never retried automatically. The user sees what happened and what is left, and clicks Retry (or Roll back); the retry runs under their current credentials and is audited like any other action. Users can see their jobs' progress from any tab or after reconnecting.
 
@@ -168,7 +171,7 @@ The browser talks only to the backend. The backend talks to Google or GitHub to 
 
 Memory grows with what users have open, so each part has a bound, and the replica as a whole has a ceiling.
 
-- **Watches:** the 30-second idle and hidden-tab close keeps each user to the views they are actually looking at. Before an object is kept in memory, the backend drops fields the UI never shows, notably `metadata.managedFields`, which keeps large lists (such as all pods on a big cluster) small. There is no separate per-user watch cap.
+- **Watches:** the 30-second idle and hidden-tab close keeps each user to the views they are actually looking at. Before an object is kept in memory, the backend drops fields the UI never shows, notably `metadata.managedFields`, which keeps large lists (such as all pods on a big cluster) small. A user can hold at most 50 watches at once (proposed); past that, the oldest hidden view is closed first.
 - **Log streams:** each stream has a small fixed server-side buffer. If a browser can't keep up, the oldest buffered lines are dropped instead of queued without limit, on top of the per-stream rate cap. File transfers are streamed in chunks and never held whole.
 - **Helm jobs:** each replica runs at most `helm.maxConcurrentJobs` (proposed 5) Helm jobs at once and queues the rest, and refuses charts larger than `helm.maxChartBytes` (proposed 10 MiB).
 - **Replica ceiling:** the pod has a Kubernetes memory limit, and Go's `GOMEMLIMIT` is set just below it so garbage collection works harder before the limit. Above `memory.refuseNewWorkPercent` (proposed 80%) of the limit, the replica refuses new watches, shells and Helm jobs with a clear "server busy, try again shortly" message instead of running out of memory and dropping everyone's connections. Existing connections keep working.
@@ -176,7 +179,7 @@ Memory grows with what users have open, so each part has a bound, and the replic
 
 ## Functional requirements
 
-Every list and detail view is backed by a live watch, so status changes appear without a refresh. Every action is checked against the user's own RBAC before it's shown.
+Every list and detail view of cluster objects is backed by a live watch, so status changes appear without a refresh. Two things can't be watched and are polled instead: metrics (metrics-server serves get and list only) and Helm releases (a release is not a cluster object). Every action is checked against the user's own RBAC before it's shown.
 
 ### Resource coverage
 
@@ -184,7 +187,7 @@ Every list and detail view is backed by a live watch, so status changes appear w
 | --- | --- | --- | --- |
 | Workloads | Pods, Deployments, StatefulSets, DaemonSets, ReplicaSets, Jobs, CronJobs | List with status, restarts, age and readiness; detail with containers, conditions, events and owner chain | Edit, delete, scale, rollout restart, pause or resume, rollback (Deployments); set the image tag of containers and init containers (Deployments, StatefulSets, DaemonSets); trigger a Job now, suspend or resume (CronJobs); evict and delete pods; debug pods (see Debug toolkit) |
 | Configuration | ConfigMaps, Secrets, ResourceQuotas, LimitRanges, HPAs, PodDisruptionBudgets, PriorityClasses | Detail with keys; Secret values hidden until the user reveals them; certificate details for Secrets that hold PEM certificates | Edit, delete; revealing a Secret is audited |
-| Networking | Services, Endpoints, EndpointSlices, Ingresses, IngressClasses, NetworkPolicies, Gateway API when installed (see Ecosystem modules) | Service-to-pod and Ingress-to-service links | Edit, delete |
+| Networking | Services, Endpoints (deprecated since Kubernetes 1.33 in favour of EndpointSlices, shown with that note), EndpointSlices, Ingresses, IngressClasses, NetworkPolicies, Gateway API when installed (see Ecosystem modules) | Service-to-pod and Ingress-to-service links | Edit, delete |
 | Storage | PersistentVolumeClaims, PersistentVolumes, StorageClasses, VolumeSnapshots when installed | Phase, capacity, bound volume, and pods using the claim | Edit, delete, expand a PVC (when the StorageClass allows it) |
 | Cluster | Nodes, Namespaces, Events, Leases, Webhook configurations | Node capacity, allocatable and pressure conditions; a filterable event stream | Cordon, uncordon, drain, add or remove taints; bulk cordon, uncordon and drain on a selection of nodes |
 | Access control | ServiceAccounts, Roles, ClusterRoles, RoleBindings, ClusterRoleBindings | A "who can" view built from bindings | Edit, delete |
@@ -206,7 +209,7 @@ Metrics (CPU and memory per pod and node) come from metrics-server when it is pr
 
 - A browser terminal (xterm.js) over the Kubernetes `exec` subresource. It tries `/bin/bash`, then `/bin/sh`.
 - Container picker, window resize, copy and paste, and reconnect after a network blip.
-- Ephemeral debug container (`kubectl debug` style) for distroless images, gated by RBAC on `pods/ephemeralcontainers`.
+- Ephemeral debug container (`kubectl debug` style) for distroless images, gated by RBAC on `pods/ephemeralcontainers` to add the container and on `pods/exec` to open the shell in it.
 - Optional node shell through a privileged debug pod, off by default in the deployment settings, and usable only by users whose RBAC allows creating privileged pods.
 - Session start, stop, user, pod and container are always audited. What is typed in the shell, and what it prints, is never recorded: the audit log holds actions only.
 
@@ -214,7 +217,7 @@ Metrics (CPU and memory per pod and node) come from metrics-server when it is pr
 
 Everything here runs through the Kubernetes API under the user's own identity. Each action is shown only when the user's RBAC allows it.
 
-- **Debug a pod:** from a pod's menu, add an ephemeral debug container to the pod. A container picker chooses the target container when the pod has several. This needs `pods/ephemeralcontainers`.
+- **Debug a pod:** from a pod's menu, add an ephemeral debug container to the pod. A container picker chooses the target container when the pod has several. This needs `pods/ephemeralcontainers`. Kubernetes doesn't allow an ephemeral container to be changed or removed once added, so each debug container stays in the pod's spec until the pod is deleted, including one whose image could not be pulled. The UI says so before adding one, and reuses a running debug container instead of adding another.
 - **Configurable debug container:** the image and shell come from the deployment settings (`debug.image`, `debug.shell`). The default image is Kubelook's own debug image, `ghcr.io/bdnix/kubelook-netshoot` (proposed name), built from the latest [netshoot](https://github.com/nicolaka/netshoot) release (Apache 2.0; v0.16 at the time of writing). Kubelook's release pipeline rebuilds it whenever a new netshoot release appears, publishes it with a version tag, and each Kubelook release pins its default to that image's digest, so the image can't change underneath a running install. Deployers can point `debug.image` at their own registry copy instead. A named list of debug profiles (`debug.profiles`) sets extra options such as the `kubectl debug` profile and whether the debug container shares the process namespace of the target.
 - Opening a shell in the debug container uses the normal shell feature above.
 
@@ -222,10 +225,10 @@ Everything here runs through the Kubernetes API under the user's own identity. E
 
 A graphical file browser inside a running container, so users do not have to run `kubectl exec` and `cat` repeatedly. It works through the `exec` subresource and needs `pods/exec` on the pod.
 
-- **Where:** a "Files" tab in the pod details drawer, and a full page with namespace, pod and container pickers. The container picker includes init containers.
+- **Where:** a "Files" tab in the pod details drawer, and a full page with namespace, pod and container pickers. The container picker includes init containers that are still running; a finished init container can't be entered.
 - **Browse:** a directory listing with breadcrumbs, a filter box, file permissions, sizes and types, and symlink targets.
 - **View and edit:** text files open in the Monaco editor with syntax highlighting, and can be saved back to the container. The save fails with a clear message if the file changed after it was opened. Binary files are detected and offered for download only.
-- **Transfer:** upload by button or drag and drop (including several files and directories), and download of files and directories. Transfers use `tar` in the container where it exists, with a fallback to basic shell utilities (`ls`, `cat`, `stat`, `head`, `rm`) for single files. The size limit is the deployment setting `fileBrowser.maxTransferBytes`, enforced on the bytes actually streamed, not on the size the container reports.
+- **Transfer:** upload by button or drag and drop (including several files and directories), and download of files and directories. Transfers use `tar` in the container where it exists, with a fallback to basic shell utilities (`ls`, `cat`, `stat`, `head`, `tee`, `rm`) for single files; `tee` writes an uploaded file without a shell redirection. The size limit is the deployment setting `fileBrowser.maxTransferBytes`, enforced on the bytes actually streamed, not on the size the container reports.
 - **Delete:** a file or directory, after a confirmation.
 - **Limits:** the container needs a shell or `tar`. Images without them, such as distroless images, are not supported.
 - **Command safety:** every command runs through `exec` with its arguments passed separately (for example `["cat", "--", path]`), never assembled into a shell command line, so a file name can't inject commands. Output from the container, including `tar` archives, is treated as untrusted: archive entries are checked for absolute paths, `..` and links that point outside the requested directory, and the backend never unpacks them onto its own disk.
@@ -234,14 +237,16 @@ A graphical file browser inside a running container, so users do not have to run
 ### Real-time manifest editing
 
 - Monaco YAML editor with validation and autocompletion from the cluster's OpenAPI v3 schema, CRDs included.
-- Before saving, a server-side dry run shows the diff against the live object and any admission errors.
-- Saving replaces the whole object with an update (`PUT`, as `kubectl edit` does), with field manager `kubelook`, so the saved object matches the editor exactly, including deleted fields. The update carries the `resourceVersion` the editor loaded, so it fails instead of overwriting if the object changed since.
+- Before saving, a server-side dry run shows the diff against the live object and any admission errors. A dry run fails when an admission webhook doesn't declare itself free of side effects on dry run; the editor then says the preview isn't available for this object and lets the user save without it. The diff of a Secret is masked like every other Secret view.
+- Saving replaces the whole object with an update (`PUT`, as `kubectl replace` does; `kubectl edit` instead sends a patch of the user's changes), with field manager `kubelook`, so the saved object matches the editor exactly, including deleted fields. The update carries the `resourceVersion` the editor loaded, so it fails instead of overwriting if the object changed since. Any write to the object counts, including one the user didn't care about, so saves to busy objects may conflict often; the spike measures how often.
 - While the editor is open, the object stays watched. If someone else changes it, a banner offers "reload" or "diff against mine" instead of silently overwriting.
 - Create from YAML, multi-document apply, and "copy as kubectl" for every action.
 
 ### Helm
 
-- Releases live in the cluster as storage objects prefixed `sh.helm.release.v1` ([Helm SDK](https://pkg.go.dev/helm.sh/helm/v3/pkg/storage)). The backend runs the Helm 3 Go SDK (`helm.sh/helm/v3`) under the user's credentials, so Helm can do only what the user's RBAC allows. Helm 3 matches the Helm CLI in use today, so releases made from the console and from the CLI stay interchangeable. Moving to Helm 4 is a later decision, made when the CLI in use moves.
+- Releases live in the cluster as storage objects prefixed `sh.helm.release.v1` ([Helm SDK](https://pkg.go.dev/helm.sh/helm/v3/pkg/storage)). The backend runs Helm's Go SDK under the user's credentials, so Helm can do only what the user's RBAC allows.
+- **Helm 3 and Helm 4 are both supported.** The two SDKs are separate Go modules (`helm.sh/helm/v3` and `helm.sh/helm/v4`), so one Kubelook build carries both. The deployment setting `helm.version` picks which one the console uses for every Helm action: `4` (the default) or `3`. Teams whose Helm CLI is still version 3 set `3`, so releases made from the console and from the CLI stay interchangeable. Helm 4 is the default because the Helm project ends security fixes for Helm 3 on 2026-11-11 ([Helm 4 announcement](https://helm.sh/blog/helm-4-released/)); Helm 3 support is removed from Kubelook once no supported cluster needs it. Each Helm minor supports a window of Kubernetes versions (3.20.x and 4.1.x both cover 1.32 to 1.35), so the bundled SDK versions follow the clusters. The spike confirms whether a release written by one major version can be managed by the other.
+- The SDK writes downloaded charts and repository indexes to disk; Kubelook points it at a temporary directory per job and removes it afterwards.
 - List releases across namespaces with status, chart, app version and revision.
 - Detail: user-supplied values, computed values, rendered manifest, notes, hooks and revision history.
 - Actions: install from an HTTP repo or OCI registry, upgrade with edited values (shown as a diff first), rollback to a revision, uninstall, and test.
@@ -261,12 +266,12 @@ The console covers these Flux API groups and kinds ([Freelens FluxCD extension R
 | `image.toolkit.fluxcd.io` | ImageRepository, ImagePolicy, ImageUpdateAutomation |
 | `notification.toolkit.fluxcd.io` | Provider, Alert, Receiver |
 
-Supported Flux: v2.2 and newer. The console reads the API versions each cluster actually serves and uses those, so a Flux 2.2 cluster and a newer one work side by side. Kinds a cluster doesn't have are hidden: the `fluxcd.controlplane.io` kinds need flux-operator, and ExternalArtifact and ArtifactGenerator need Flux 2.7 or later.
+Supported Flux: v2.2 and newer. The console reads the API versions each cluster actually serves and uses those, so a Flux 2.2 cluster and a newer one work side by side. Kinds a cluster doesn't have are hidden: the `fluxcd.controlplane.io` kinds need flux-operator, and ExternalArtifact and ArtifactGenerator need Flux 2.7 or later. The Flux project itself supports only its last three minor releases, so 2.2 is supported by Kubelook but no longer by Flux, and some fields below don't exist on it.
 
-- **Dashboard:** ready, failed, suspended and in-progress counts per kind; the Flux version and controller health.
-- **Detail:** conditions, last applied revision, source artifact, inventory (the objects a Kustomization or HelmRelease manages, linked to their views), history and events.
+- **Dashboard:** ready, failed, suspended and in-progress counts per kind; the Flux version and controller health. Kinds that report no status (Alert and Provider in `v1beta3`) show a total and a suspended count only.
+- **Detail:** conditions, last applied revision, source artifact, inventory (the objects a Kustomization or HelmRelease manages, linked to their views), history and events. A HelmRelease reports its inventory in `.status.inventory` only from Flux 2.8 (helm-controller 1.5.0); on older Flux the backend reads the objects from the Helm release's manifest instead.
 - **Reconcile:** merge-patch the annotation `reconcile.fluxcd.io/requestedAt` with the current time. It's disabled while the object is suspended.
-- **Suspend and resume:** set `spec.suspend`. ArtifactGenerator uses its `source.extensions.fluxcd.io/reconcile` annotation instead.
+- **Suspend and resume:** set `spec.suspend`. Kinds without that field use an annotation instead: ArtifactGenerator uses `source.extensions.fluxcd.io/reconcile`, and the flux-operator kinds (FluxInstance, ResourceSet, ResourceSetInputProvider) use `fluxcd.controlplane.io/reconcile`. FluxReport can't be suspended.
 - **Graph:** a source → Kustomization or HelmRelease → workload view, so a user can trace a failed deploy back to its Git or OCI source.
 
 ### Resource map
@@ -292,28 +297,28 @@ A live graph of the objects in the selected namespaces and the links between the
 
 ### Karpenter
 
-A module for clusters that run Karpenter 1.0 or newer, shown only when the cluster serves the `karpenter.sh/v1` API. On a cluster with an older Karpenter (0.x), the module is hidden and its objects appear in the generic Custom Resources browser instead. Releases are tested against 1.0 and the newest 1.x.
+A module for clusters that run Karpenter 1.0 or newer, shown only when the cluster serves the `karpenter.sh/v1` API. On a cluster with an older Karpenter (0.x), the module is hidden and its objects appear in the generic Custom Resources browser instead. Releases are tested against the oldest Karpenter that supports the oldest supported Kubernetes, and against the newest 1.x. Karpenter 1.0 itself doesn't support Kubernetes 1.35: the [compatibility matrix](https://karpenter.sh/docs/upgrading/compatibility/) of the AWS provider lists 1.9 as the minimum for 1.35, so 1.9 is the oldest version tested today. NodeOverlay is an alpha API (`karpenter.sh/v1alpha1`) behind a feature gate, so everything about NodeOverlays below appears only where the cluster serves it.
 
 - **Overview:** total, Karpenter-managed and other nodes; NodePools and their readiness; NodeClaims still waiting for a node. One card per NodePool shows its node class, status, instance types, limits against current CPU and memory use, `expireAfter`, the NodeOverlays that apply to it (and those Karpenter rejected), its nodes and its recent events. A filter works by name, node status, instance type and NodePool status.
 - **Topology:** a treemap of nodes grouped by NodePool, zone, instance type or node class, sized by CPU, memory, pods or equally, showing node status and capacity type (spot or on-demand).
 - **Scaling decisions:** Karpenter's events grouped as scale up, scale down, drift, errors and other, and the pod and node decisions as tables. The console stores no history, so this covers only the events the cluster still holds (1 hour with the default kube-apiserver `--event-ttl`).
 - **Lists and details:** NodeClaims, NodePools and NodeOverlays, each with the columns of the matching `kubectl get -o wide` output, sortable and searchable, and a details view that explains why an object is not ready, with links between related objects. NodeClaim details cover launch, registration and initialization state, drift, instance type, capacity type, zone, provider and image IDs, node capacity and spec.
-- **Provider node classes:** the page reads only the node classes of the provider the cluster runs: EC2NodeClass on AWS, AKSNodeClass on Azure, and GCENodeClass and GCECustomMachineType on GCP.
+- **Provider node classes:** the page reads only the node classes of the provider the cluster runs: EC2NodeClass on AWS, AKSNodeClass on Azure, and GCENodeClass and GCECustomMachineType on GCP (from the third-party cloudpilot-ai provider).
 - **Node details:** a Karpenter section on the details of a node it manages: NodePool and NodeClaim links, instance and capacity type, zone, registration and initialization state, and whether Karpenter is disrupting it or must not.
 
 ### Ecosystem modules
 
-Each module follows the same rules: it appears only when the cluster serves the CRDs, it hides itself otherwise, while it is active its kinds are not repeated under Custom Resources, it can be turned off in the deployment settings (`modules.<name>.enabled`), and it reads and changes objects only through the Kubernetes API under the user's identity. Actions on these objects are ordinary mutating calls, so they are audited like every other.
+Each module follows the same rules: it appears only when the cluster serves the CRDs, it hides itself otherwise, while it is active the kinds it shows are not repeated under Custom Resources (other kinds of the same API group, such as KEDA's ScaledJob and TriggerAuthentication, stay there), it can be turned off in the deployment settings (`modules.<name>.enabled`), and it reads and changes objects only through the Kubernetes API under the user's identity. Actions on these objects are ordinary mutating calls, so they are audited like every other.
 
 | Module | What it shows | Actions |
 | --- | --- | --- |
 | **Gateway API** | An overview with the number of Ready, Not Ready, In Progress and Unknown objects per kind and the events of those objects; one list per kind for every kind served by the `gateway.networking.k8s.io` and `gateway.networking.x-k8s.io` groups; details with status conditions, spec fields and links to the referenced objects | Edit, delete |
 | **Vault Secrets Operator** | The `VaultSecret` resources of the [ricoberger operator](https://github.com/ricoberger/vault-secrets-operator) (`ricoberger.de`), with the `SecretCreated` condition (status, reason, message, last transition), the Vault path or paths, the engine (KV or PKI) and the generated Secret. A resource is marked stale when the condition's `observedGeneration` is behind `metadata.generation`. | Open the generated Secret; restart the workloads that use it |
-| **KEDA** | ScaledObjects with the columns of `kubectl get so`, every trigger and its authentication reference, conditions, and scaling events | Pause and resume autoscaling |
-| **External Secrets** | ExternalSecrets, SecretStores and ClusterSecretStores with sync status, the target Secret, the store and the refresh interval | Force sync of an ExternalSecret |
+| **KEDA** | ScaledObjects with the columns of `kubectl get so`, every trigger and its authentication reference, conditions, and scaling events | Pause and resume autoscaling, by setting and removing the `autoscaling.keda.sh/paused` annotation, which holds the workload at its current replica count |
+| **External Secrets** | ExternalSecrets, SecretStores and ClusterSecretStores with sync status, the target Secret, the store and the refresh interval | Force sync of an ExternalSecret, by changing its `force-sync` annotation |
 | **cert-manager** | Certificates, Issuers, ClusterIssuers and CertificateRequests with status and expiry | Edit, delete |
-| **Trivy Operator** | Vulnerability, configuration-audit, RBAC, infrastructure-assessment, exposed-secret, SBOM and compliance reports, an overview of the worst findings, and a Trivy section in the details of workloads | Rescan (deletes the report so the operator scans again), after a confirmation; export of findings as CSV or JSON |
-| **Permissions and policy** | The effective permissions of every ServiceAccount, resolved through its Role and ClusterRole bindings and ranked by risk level; the status of Kyverno policies and Gatekeeper constraints, with their violations | None. It reads only. |
+| **Trivy Operator** | Vulnerability, configuration-audit, RBAC, infrastructure-assessment, exposed-secret, SBOM and compliance reports, an overview of the worst findings, and a Trivy section in the details of workloads | Rescan (deletes the report so the operator scans again; this behaviour is still to be confirmed against the operator), after a confirmation; export of findings as CSV or JSON |
+| **Permissions and policy** | The effective permissions of every ServiceAccount, resolved through its Role and ClusterRole bindings and ranked by risk level; the status of Kyverno policies and Gatekeeper constraints, with their violations. Gatekeeper keeps at most 20 violations per constraint by default, so the view shows the total count and says when the list is cut short. The ServiceAccount permissions part needs no CRDs and is always available; the Kyverno and Gatekeeper parts follow the CRD rule | None. It reads only. |
 
 Notes:
 
@@ -332,15 +337,16 @@ Notes:
 - A command palette to jump to a view or a resource kind within the cluster that is open. There is no search across clusters, and the console never combines results from several clusters in one view.
 - **Field filter on any kind, CRDs included:** filter a list with rows of field, operator and value, joined by AND or OR, for example `spec.state = pending OR spec.state = ready`. Operators include `=`, `!=`, `contains`, `regex`, `in`, `exists`, and `older than` or `newer than` (durations such as `7d`, or timestamps). A query bar compiles into the rows. Field paths come from the live objects. Filter sets can be saved to the user's settings, and the matching objects can be downloaded as YAML or JSON. "Copy as kubectl" gives the equivalent `kubectl … | yq` or `| jq` command.
 - **Certificate details:** for a Secret that holds PEM certificates, show each certificate's subject, issuer, serial number, validity dates and time to expiry, for the whole chain. The backend parses the certificate and sends only this metadata to the browser, never the private key. Viewing it is audited as a Secret read.
-- **Secret handling:** the backend removes the values of `data` and `stringData` from every Secret before anything reaches the browser, so the only way to see a value is the audited reveal. This applies to:
+- **Secret handling:** the backend removes the values of `data` and `stringData` from every Secret before anything reaches the browser, so the only way to see a value through the Kubernetes API views is the audited reveal. (A user with `pods/exec` can still read a mounted Secret through a shell or the file browser, which are audited as such.) This applies to:
   - **Lists and live updates:** keys are shown, values are not.
   - **YAML tab and editor:** values appear masked. Saving leaves a masked value as it is stored. To change a value, the user reveals it first, which is audited, then edits it.
   - **Field filter and downloads:** filters can't match on Secret values, and downloads and exports leave them out.
   - **Helm:** the release storage Secrets (`sh.helm.release.v1.*`) are never sent. Rendered manifests have the values of any Secret in them removed. User-supplied and computed values can hold passwords in any field, so they are hidden as a whole until revealed, and that reveal is audited like a Secret reveal.
   - **Resource map and other modules:** names and links only, as the Resource Map already does.
+  - **Copies of Secret data outside `data`:** the `kubectl.kubernetes.io/last-applied-configuration` annotation holds the whole applied manifest, so on a Secret it is removed like the values. When Helm is set to store releases in ConfigMaps, those ConfigMaps (`sh.helm.release.v1.*`) are never sent either.
 - **Export:** every list can be exported as CSV or JSON, with sensitive values left out. Every CSV export neutralises spreadsheet formulas (cells starting with `=`, `+`, `-` or `@`), not only the Trivy export.
 - Namespace filter per cluster, saved with the user's settings.
-- RBAC-aware UI from `SelfSubjectAccessReview` and `SelfSubjectRulesReview`: actions the user can't perform are hidden, or disabled with the missing verb shown.
+- RBAC-aware UI from `SelfSubjectAccessReview` and `SelfSubjectRulesReview`: actions the user can't perform are hidden, or disabled with the missing verb shown. `SelfSubjectRulesReview` can return an incomplete list on clusters with non-RBAC authorizers, so it is used only as a first pass; an action is hidden only after `SelfSubjectAccessReview` denies it. Shells are checked with `create` on `pods/exec`, which Kubernetes 1.35 requires for WebSocket connections too.
 - Bulk actions on list selections: delete, restart, label. On a selection of nodes: cordon, uncordon and drain. A drain handles one node at a time and uses the eviction API, so PodDisruptionBudgets are respected. Every bulk action names the objects it will change and asks for confirmation first.
 
 ## UI and UX
@@ -348,11 +354,11 @@ Notes:
 The layout is a cluster rail, a resource sidebar, a main list, and a details drawer, with a dock for terminals and logs.
 
 - **Cluster rail (far left):** clusters grouped by source (Vault, or the name of each uploaded kubeconfig). Each shows connection status, and favourites are pinned and saved with the user's settings.
-- **Resource sidebar:** Overview, Workloads, Config, Network, Storage, Access Control, Helm, FluxCD, Resource Map, Pod Files, the ecosystem modules (Karpenter, KEDA, External Secrets, Vault Secrets Operator, cert-manager, Gateway API, Security), Custom Resources (grouped by API group), Events. Sections the user can't list, and modules the cluster doesn't have, are hidden.
+- **Resource sidebar:** Overview, Workloads, Config, Network, Storage, Access Control, Helm, FluxCD, Resource Map, Pod Files, the ecosystem modules (Karpenter, KEDA, External Secrets, Vault Secrets Operator, cert-manager, Gateway API, Security), Custom Resources (grouped by API group), Events. "Security" holds the Trivy Operator and Permissions and policy modules. Sections the user can't list, and modules the cluster doesn't have, are hidden.
 - **Main list:** a sortable, filterable table with live status badges and multi-select. Column presets are saved per kind in the user's settings.
 - **Details drawer:** opens on the right with tabs for Overview, YAML, Events, Logs, Files (pods) and Related. Related shows owners, children, a map of related objects, and the Flux source if any.
 - **Bottom dock:** tabs for terminals, log streams and editors, which survive navigation between clusters. It docks or pops out to its own browser window.
-- **Deep links:** every view has a stable URL, so users can share a page by copying the browser address. The form is `/c/<cluster>/ns/<ns>/<group>/<kind>/<name>`, with the namespace part left out for cluster-scoped objects and the API group included so kinds with the same name (such as two `Certificate` kinds) can't be confused. Cluster names are URL-encoded, since kubeconfig cluster names contain `/`. A link to a Vault cluster opens for anyone whose own Vault access includes that cluster, and shows a "no access" page otherwise. A link to an uploaded-kubeconfig cluster only works for the user who uploaded it, in the browser holding it; anyone else sees "This cluster was uploaded by another user and isn't available to you."
+- **Deep links:** every view has a stable URL, so users can share a page by copying the browser address. The form is `/c/<cluster>/ns/<ns>/<group>/<kind>/<name>`, with the namespace part left out for cluster-scoped objects and the API group included so kinds with the same name (such as two `Certificate` kinds) can't be confused. Cluster names are URL-encoded, since kubeconfig cluster names contain `/`. A link to a Vault cluster opens for anyone whose own Vault access includes that cluster, and shows a "no access" page otherwise. A link to an uploaded-kubeconfig cluster only works for the user who uploaded it, in the browser holding it; anyone else sees "This cluster isn't available in your session. If it comes from a kubeconfig, upload that kubeconfig first." The server keeps no record of uploaded kubeconfigs, so it can't tell another user's cluster from one that doesn't exist.
 - **Themes and access:** light and dark themes, full keyboard navigation, and screen-reader labels on status icons.
 - **Screen size:** designed for desktop browsers. Phone layouts are not supported, because terminals, YAML editing and wide resource tables need the room.
 - **Cluster overview:** a page with node health, failing pods, recent warning events, and Flux and Helm failure counts. It also lists Pending pods with the scheduler's message from their `FailedScheduling` event, pods that are running but not ready with the failing condition, and a timeline of the warning events the cluster still holds. A Karpenter summary appears when the module is active.
@@ -363,19 +369,20 @@ The backend is a credential broker, so a compromise of the backend exposes every
 
 | Threat | Mitigation |
 | --- | --- |
-| Credential theft from the browser | Plaintext credentials stay server-side. The browser holds an HttpOnly session cookie and, for saved credentials, encrypted copies that page scripts can't decrypt; every page has a strict CSP. A stolen copy is useless without the server's key. |
+| Credential theft from the browser | Plaintext credentials stay server-side. The browser holds an HttpOnly session cookie and, for saved credentials, encrypted copies that page scripts can't decrypt; every page has a strict CSP. Each copy is bound to the user who saved it, so a stolen copy is useless without the server's key or a session signed in as that user. |
 | Backend or database compromise | Saved Vault tokens and kubeconfigs are kept only as encrypted copies in each user's browser, never in the database. Active-session credentials in the database are encrypted with the deployer-provided key in `KUBELOOK_ENCRYPTION_KEY`, so reading them needs both the database and that key. Vault tokens expire at their TTL unless the user renews them and never outlive the maximum TTL set in Vault, and cluster credentials expire at their TTL. Saved kubeconfigs are a known exposure: their certificates and tokens can be long-lived, so a stolen browser copy together with the encryption key exposes them until they are rotated. |
 | Privilege escalation through the console | All Kubernetes calls use the user's own credential. The console has no cluster rights of its own. |
-| SSRF through user-supplied server URLs | Left to the deployment: whoever deploys the console restricts its outbound traffic with a firewall or network policy. The console has no egress filter of its own. |
+| Malicious content from a cluster (log lines, annotations, Helm notes, CRD fields, terminal output) | Everything a cluster supplies is rendered as text, never as HTML. Links are made only from `http` and `https` URLs. The CSP forbids inline script. The exact CSP and the rendering rules are part of the security review. |
+| SSRF through user-supplied addresses (kubeconfig server URLs, OIDC issuer URLs, Helm repositories and OCI registries, per-cluster Prometheus sources) | Left to the deployment: whoever deploys the console restricts its outbound traffic with a firewall or network policy. The console has no egress filter of its own. |
 | Abuse of shells | Exec goes through the Kubernetes API, never a shell on the console host. Sessions are audited; idle shells time out (proposed 15 min). |
 | Data theft or tampering through the file browser | Uses the `exec` subresource under the user's own RBAC. Size limit from the deployment settings. Every view, save, upload, download and delete is audited with path and size, never content. The feature can be switched off. |
 | Tunnels into the cluster network | Not offered. The console has no port-forward or TCP tunnel feature. |
 | Cross-site request forgery | SameSite cookies plus a CSRF token on REST calls; WebSocket upgrades check the Origin header |
 | Secret exposure in the UI | The server removes Secret values from every response (lists, watch events, YAML, filters, exports, Helm output) and sends them only through the audited reveal. See Secret handling. |
 
-**Audit log.** We record sign-in and sign-out, every Vault credential issued (path and lease ID, never the token), every mutating Kubernetes call (verb, resource, cluster, namespace, outcome), every Helm and Flux action, every Secret reveal and certificate view, exec start and stop, every file-browser action (path and size, never content), every debug container created, every bulk node action, and every log view and download (cluster, namespace, pod, container, time range or tail size, and for downloads the format; never the log lines themselves). A log view is one record when the stream opens and one when it closes, not one per line. Each record names both the signed-in Google or GitHub account and the Vault identity behind the action, since a user could paste someone else's Vault token. This is the only place the person, the cluster and the action appear together: each cluster's own audit log shows the temporary service account Vault minted, not the person.
+**Audit log.** We record sign-in and sign-out, every Vault credential issued (path and lease ID, never the token), every mutating Kubernetes call (verb, resource, cluster, namespace, outcome), every Helm and Flux action, every Secret reveal and certificate view, exec start and stop, every file-browser action (path and size, never content), every debug container created, every bulk node action, and every log view and download (cluster, namespace, pod, container, time range or tail size, and for downloads the format; never the log lines themselves). A log view is one record when the stream opens and one when it closes, not one per line. Each record names both the signed-in Google or GitHub account and the Vault identity behind the action, since a user could paste someone else's Vault token. This is the only place the person, the cluster and the action appear together in full: each cluster's own audit log shows the service account Vault minted, not the person. (Vault's default name for a generated service account includes the first 8 characters of the token's display name and of the role name, so the cluster log carries a hint, not an identity.) The Vault identity is the token's entity ID and display name. For clusters from a kubeconfig there is no Vault identity; the record names the kubeconfig's context and user entry instead.
 
-**Audit storage.** Records are stored in the console's database (SQLite or PostgreSQL) in an `audit_events` table with one column per field: time, signed-in account, Vault identity, cluster, namespace, verb, resource kind and name, outcome, and a JSON column for action-specific details. Each record is written when the action happens, with no in-memory buffer, so a crash or restart loses nothing. **Tamper resistance:** on PostgreSQL, the console writes audit records with a database role that can only insert into `audit_events`, with no update or delete rights, so taking over the console doesn't let anyone change or erase past records. Retention is set by whoever deploys the console and runs as a separate cleanup command (`kubelook audit-cleanup`, proposed name) with its own role, which can only delete records older than the configured number of days; `0` keeps them forever. SQLite has no database roles, so a single-replica SQLite install can't enforce this: whoever controls the console's volume can alter the audit log. Installs that need a tamper-resistant audit trail use PostgreSQL. The cleanup command reads its database credentials from its own environment variable (`KUBELOOK_AUDIT_CLEANUP_DATABASE_URL`, proposed name), never the console's. The Helm chart runs it as a Kubernetes CronJob; outside Kubernetes, the docs give the `docker run` command to schedule with the machine's own cron. Shipping records to an Elasticsearch endpoint is a planned future option.
+**Audit storage.** Records are stored in the console's database (SQLite or PostgreSQL) in an `audit_events` table with one column per field: time, signed-in account, Vault identity, cluster, namespace, verb, resource kind and name, outcome, and a JSON column for action-specific details. Each record is written when the action happens, with no in-memory buffer, so a crash or restart loses nothing. If the record can't be written, the action is refused. Every record is also printed to the console's standard output as one JSON line, so the cluster's log pipeline keeps a copy outside the database. **Tamper resistance:** on PostgreSQL, the console writes audit records with a database role that can only insert into `audit_events`, with no update or delete rights, so taking over the console doesn't let anyone change or erase past records. Retention is set by whoever deploys the console and runs as a separate cleanup command (`kubelook audit-cleanup`, proposed name) with its own role, which can only delete records older than the configured number of days; `0` keeps them forever. Table privileges alone can't limit deletes by age, so this is enforced with a row-level security policy on `audit_events`. SQLite has no database roles, so a single-replica SQLite install can't enforce this: whoever controls the console's volume can alter the audit log. Installs that need a tamper-resistant audit trail use PostgreSQL. The cleanup command reads its database credentials from its own environment variable (`KUBELOOK_AUDIT_CLEANUP_DATABASE_URL`, proposed name), never the console's. The Helm chart runs it as a Kubernetes CronJob; outside Kubernetes, the docs give the `docker run` command to schedule with the machine's own cron. Shipping records to an Elasticsearch endpoint is a planned future option.
 
 | Helm setting | Default | Purpose |
 | --- | --- | --- |
@@ -386,19 +393,22 @@ The backend is a credential broker, so a compromise of the backend exposes every
 
 | Helm setting | Default | Purpose |
 | --- | --- | --- |
-| `streams.drainTimeout` | `30m` (proposed) | How long a stopping replica or stream gateway waits for open shells to finish |
+| `encryption.keySecret` | none (required) | Helm chart only: name of the Kubernetes Secret the chart passes to the app as `KUBELOOK_ENCRYPTION_KEY` |
+| `maintenance.banner` | none | Message shown to every signed-in user on every page, used to announce planned restarts |
+| `helm.version` | `4` | Which Helm SDK the console uses: `4` or `3` |
 | `helm.maxConcurrentJobs` | `5` (proposed) | Most Helm jobs one replica runs at once; more are queued |
 | `helm.maxChartBytes` | `10485760` (10 MiB, proposed) | Largest chart a replica accepts |
 | `memory.refuseNewWorkPercent` | `80` (proposed) | Share of the pod's memory limit above which new watches, shells and Helm jobs are refused |
 | `debug.image` | `ghcr.io/bdnix/kubelook-netshoot@sha256:<digest>` (pinned per Kubelook release) | Image of the ephemeral debug container |
 | `debug.shell` | `/bin/bash` | Shell started in the debug container; falls back to `/bin/sh` if it isn't there, as normal shells do |
 | `debug.profiles` | none | Named sets of debug options (profile, shared process namespace) users can pick |
+| `kubeconfig.enabled` | `true` | Turns kubeconfig upload (Path B) on or off |
 | `fileBrowser.enabled` | `true` | Turns the pod file browser on or off |
 | `fileBrowser.maxTransferBytes` | `26214400` (25 MiB, proposed) | Largest single upload or download |
 | `logs.historyMaxLines` | `200000` (proposed) | Most lines the log viewer loads when scrolling back |
 | `modules.<name>.enabled` | `auto` | `auto` shows a module only when its CRDs exist, `false` hides it. Names: `karpenter`, `keda`, `externalSecrets`, `vaultSecrets`, `certManager`, `gatewayApi`, `trivy`, `permissions` |
 
-**Vault policy users need.** For each cluster they may use: `read` on `kubernetes/<cluster>/config`, and `create` or `update` on `kubernetes/<cluster>/creds/<role>`. Discovery also calls `sys/capabilities-self`, and the console calls `auth/token/lookup-self` and `auth/token/renew-self`; Vault's built-in `default` policy grants all three. Discovery calls `sys/internal/ui/mounts` with the user's token: the endpoint can be called without a token, but only with one does it list the mounts that token can use. Vault admins should confirm these against their own policies.
+**Vault policy users need.** For each cluster they may use: `read` on `kubernetes/<cluster>/config`, and `update` on `kubernetes/<cluster>/creds/<role>` (`create` alone doesn't work, see Discovery). Discovery also calls `sys/capabilities-self`, and the console calls `auth/token/lookup-self` and `auth/token/renew-self`; Vault's built-in `default` policy grants all three. Discovery calls `sys/internal/ui/mounts` with the user's token: the endpoint can be called without a token, but only with one does it list the mounts that token can use. Vault admins should confirm these against their own policies.
 
 ## Non-functional requirements
 
@@ -409,10 +419,10 @@ The targets below are proposed starting points, to be confirmed after the spike.
 | First list render after opening a cluster | Under 2 s for 1,000 pods |
 | Watch event to UI update | Under 1 s end to end |
 | Concurrent users per backend replica | 200 active sessions |
-| Watches per user | One per user, cluster, kind and namespace, shared by that user's open views; idle watches closed after 30 s by default (app setting) |
+| Watches per user | One per user, cluster, kind and namespace, shared by that user's open views; idle watches closed after 30 s by default (each user's own setting) |
 | Availability | 99.9% monthly; replicas sharing one database behind a load balancer, with the PostgreSQL database highly available |
 | Clusters per Vault user | 100+ in the sidebar, with credentials fetched lazily |
-| Supported Kubernetes | Kubernetes 1.35 and newer |
+| Supported Kubernetes | Kubernetes 1.35 and newer. 1.35 is the oldest release still supported upstream at the time of writing; its upstream end of life is 2027-02-28 |
 | Browsers | Current Chrome, Edge, Firefox and Safari |
 | Observability | Prometheus metrics (sessions, watches, stream counts, Vault and API latency, error rates), OpenTelemetry traces, structured logs |
 | Deployment | One container image. Supported: the Helm chart on Kubernetes. Documented alternative: `docker run` commands, with audit cleanup scheduled by the machine's cron. The app reads its config from environment variables and a YAML file, however they are provided |
@@ -423,10 +433,10 @@ The work is done in four phases, in order, and a phase with a gate must pass it 
 
 | Phase | Scope | Gate to the next phase |
 | --- | --- | --- |
-| 0. Spike | Google and GitHub sign-in; Vault login and cluster discovery; pods list and logs on one cluster | Auth design holds |
-| 1. Core | All core kinds with live watches; YAML edit with dry run; exec shells; kubeconfig upload; structured logs; debug toolkit; pod file browser; bulk node actions; field filter; certificate details; image-tag edit | — |
+| 0. Spike | Google and GitHub sign-in; Vault token sign-in and cluster discovery; pods list and logs on one cluster | Auth design holds |
+| 1. Core | All core kinds with live watches; YAML edit with dry run; exec shells; kubeconfig upload; structured logs; debug toolkit; pod file browser; bulk node actions; field filter; certificate details; image-tag edit; the audit log, written by every audited feature from the day it ships; the load test of the watch hub | — |
 | 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser and forms; resource map; Karpenter; KEDA, External Secrets, Vault Secrets Operator, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | Security review |
-| 3. Harden | Audit log; metrics and tracing; load and penetration tests | — |
+| 3. Harden | Metrics and tracing; full load test; retest of the security review's findings | — |
 
 - **Gate 1, auth design holds:** a real user's Vault token lists exactly the clusters their policies allow, and credentials are re-minted before expiry, and logout closes every open connection for the session.
 - **Gate 2, security review:** a security review of the finished features, including a penetration test, with every finding fixed before Phase 3 starts.
@@ -437,15 +447,30 @@ The work is done in four phases, in order, and a phase with a gate must pass it 
 - Sign-in: users sign in with Google or GitHub (whoever deploys the console can limit this to allowed Workspace domains or GitHub organizations with `auth.restrictSignIn`), then paste a Vault token or upload a kubeconfig. Vault itself has no SSO integration, so the console needs no changes to Vault or Duo configuration.
 - Audit: records are stored in the console's database (SQLite or PostgreSQL), not S3, with retention set in the Helm values by whoever deploys the console. Elasticsearch shipping comes later.
 - No shell keystroke or output recording. The audit log records actions only, such as a shell session starting and stopping.
-- The oldest supported cluster runs Flux v2.2.2 on Kubernetes v1.35.6.
+- The oldest supported cluster runs Flux v2.2.2 on Kubernetes v1.35.6. Flux 2.2 is outside the Flux project's own support window.
 - No port-forwarding and no feature that needs it. Operator consoles that depend on a forwarded port (PostgreSQL, Kafka and RabbitMQ) are out of scope, and the earlier port-forward action on Services and Pods is removed.
 - An AI assistant is deferred to a possible future version.
-- No pod or workload duplication. A debug copy could still match a Service selector or be recreated by its controller, so the feature needs care that v1 does not take on. The ephemeral debug container is the only debug tool.
-- Supported Karpenter: 1.0 and newer (the `karpenter.sh/v1` API). Older clusters get the generic Custom Resources browser only.
+- No pod or workload duplication. A debug copy could still match a Service selector or be recreated by its controller, so the feature needs care that v1 does not take on. The ephemeral debug container is the only tool for debugging a pod; the optional node shell is separate and uses its own privileged pod.
+- Supported Karpenter: 1.0 and newer (the `karpenter.sh/v1` API). Older clusters get the generic Custom Resources browser only. On the oldest supported Kubernetes (1.35) the oldest Karpenter that can run is 1.9.
 - The user's Vault token is used only to discover clusters and mint cluster credentials. The console never reads secret data from Vault, so there is no Vault secret browser, no comparison of Vault and cluster values, and no Vault-side secret editing.
 - Ecosystem features are built-in modules that hide themselves when a cluster lacks the CRDs, not plugins.
 - Features borrowed from Freelens extensions are reimplemented from their documented behaviour. No extension code is copied.
-- Kubelook is built from scratch, with [Headlamp](https://github.com/kubernetes-sigs/headlamp) as a reference, not a fork. Kubelook's core differs from Headlamp's (Vault sign-in and per-user cluster discovery, Google and GitHub login, a database for saved credentials and settings, the audit log), so a fork would soon stop taking upstream fixes while keeping Headlamp's code to maintain. Headlamp is Apache 2.0, so specific pieces can be reused with attribution where they fit.
+- Helm 3 and Helm 4 are both supported, chosen with `helm.version` (default `4`).
+- There is no separate stream service. A replica restart ends its shells; planned restarts are announced with a maintenance banner.
+- The audit log is built in Phase 1, together with the features it records.
+- Cluster credentials are requested from Vault for 30 minutes at a time and aren't revoked at logout.
+- Kubelook is built from scratch, with [Headlamp](https://github.com/kubernetes-sigs/headlamp) as a reference, not a fork. Kubelook's core differs from Headlamp's (Vault sign-in and per-user cluster discovery, Google and GitHub login, a database for sessions and settings, the audit log), so a fork would soon stop taking upstream fixes while keeping Headlamp's code to maintain. Headlamp is Apache 2.0, so specific pieces can be reused with attribution where they fit.
+
+## To confirm in the spike
+
+These are facts the spec depends on that have not been checked yet. Phase 0 checks them; none needs a decision now.
+
+- A release written by Helm 4 can be managed by Helm 3, and the other way round.
+- How often a YAML save conflicts on a busy object, such as a Deployment during a rollout. If it is often, saving switches to a patch of the user's changes.
+- Trivy Operator scans again after a report is deleted.
+- Where Kyverno reports violations.
+- Whether an open watch or shell stays connected after its credential expires.
+- Whether the cluster mounts sit in a Vault namespace. If they do, a namespace setting is added.
 
 ## Sources
 
@@ -469,3 +494,20 @@ The work is done in four phases, in order, and a phase with a gate must pass it 
 - [Vault `sys/capabilities-self`](https://developer.hashicorp.com/vault/api-docs/system/capabilities-self)
 - [Vault `sys/internal/ui/mounts`](https://developer.hashicorp.com/vault/api-docs/system/internal-ui-mounts)
 - [Helm storage package](https://pkg.go.dev/helm.sh/helm/v3/pkg/storage)
+- [Helm 4 announcement](https://helm.sh/blog/helm-4-released/): Helm 3 support end dates
+- [Helm version support policy](https://helm.sh/docs/topics/version_skew/): Kubernetes versions per Helm minor
+- [Vault default policy](https://github.com/hashicorp/vault/blob/main/vault/policy_store.go) and [Kubernetes secrets engine creds path](https://github.com/hashicorp/vault-plugin-secrets-kubernetes/blob/main/path_creds.go): capabilities, TTL fallback and role kinds
+- [Vault leases](https://developer.hashicorp.com/vault/docs/concepts/lease) and [tokens](https://developer.hashicorp.com/vault/docs/concepts/tokens): lease revocation with the token, batch tokens
+- [kubectl edit source](https://github.com/kubernetes/kubernetes/blob/master/staging/src/k8s.io/kubectl/pkg/cmd/util/editor/editoptions.go): edits are sent as patches
+- [Kubernetes API concepts](https://kubernetes.io/docs/reference/using-api/api-concepts/): `410 Gone` and watch bookmarks
+- [Kubernetes 1.35 changelog](https://github.com/kubernetes/kubernetes/blob/master/CHANGELOG/CHANGELOG-1.35.md): `create` required for WebSocket exec
+- [Karpenter compatibility matrix](https://karpenter.sh/docs/upgrading/compatibility/)
+- [Flux release support](https://fluxcd.io/flux/releases/), [helm-controller changelog](https://github.com/fluxcd/helm-controller/blob/main/CHANGELOG.md) and [flux-operator API docs](https://github.com/controlplaneio-fluxcd/flux-operator/tree/main/docs/api/v1)
+- [KEDA scaling deployments](https://github.com/kedacore/keda-docs/blob/main/content/docs/2.22/concepts/scaling-deployments.md) and [External Secrets FAQ](https://github.com/external-secrets/external-secrets/blob/main/docs/introduction/faq.md)
+- [Gatekeeper audit](https://github.com/open-policy-agent/gatekeeper/blob/master/website/docs/audit.md)
+- [AKS kubeconfig access](https://learn.microsoft.com/en-us/azure/aks/control-kubeconfig-access) and [EKS kubeconfig](https://docs.aws.amazon.com/eks/latest/userguide/create-kubeconfig.html)
+- [GitHub OAuth app access restrictions](https://docs.github.com/en/organizations/managing-oauth-access-to-your-organizations-data/about-oauth-app-access-restrictions)
+- [WebKit tracking prevention](https://webkit.org/tracking-prevention/)
+- [PostgreSQL row security policies](https://www.postgresql.org/docs/current/ddl-rowsecurity.html)
+- [NIST SP 800-38D](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38d.pdf)
+- [SQLite over a network](https://www.sqlite.org/useovernet.html)
