@@ -1,0 +1,11 @@
+.git
+bin
+web/node_modules
+web/dist
+web/coverage
+coverage.out
+test
+docs
+deploy
+.github
+.it
