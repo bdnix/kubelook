@@ -4,7 +4,6 @@ package webui
 import (
 	"bytes"
 	"embed"
-	"errors"
 	"io/fs"
 	"net/http"
 	"path"
@@ -68,23 +67,14 @@ func Handler(fsys fs.FS) http.Handler {
 
 func isAsset(cleanPath string) bool { return strings.HasPrefix(cleanPath, "/assets/") }
 
-// serveFile writes the named regular file and reports whether it existed.
+// serveFile writes the named file and reports whether it could be read.
+// A missing file, a directory and any other read error all count as "not served".
 func serveFile(w http.ResponseWriter, r *http.Request, fsys fs.FS, name, cacheControl string) bool {
 	data, err := fs.ReadFile(fsys, name)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) && !isDirError(err) {
-			http.Error(w, "internal error", http.StatusInternalServerError)
-			return true
-		}
 		return false
 	}
 	w.Header().Set("Cache-Control", cacheControl)
 	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 	return true
-}
-
-// isDirError reports whether err came from reading a directory as a file.
-func isDirError(err error) bool {
-	var pe *fs.PathError
-	return errors.As(err, &pe)
 }
