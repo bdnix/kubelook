@@ -5,12 +5,12 @@ Written 2026-11-11. Every version below was looked up on that date (see §3).
 
 **How to use this plan (read first, executor).**
 
-1. Work through the steps strictly in order. Never start a step before the previous step's pull request is merged with CI green.
-2. One step = one branch `step/<id>-<slug>` = one pull request into `main`.
+1. Work through the steps strictly in order. The 96 steps are grouped into **10 pull requests** (see "Pull request map" in §7). Never start a pull request before the previous one is merged with CI green.
+2. One pull request = one branch `pr/<nn>-<slug>` (or the branch the repository owner designates) into `main`. A step is a group of commits inside its pull request, never a pull request of its own. Push after every step so CI runs step by step; open the pull request as a draft after the first step and mark it ready after the last.
 3. Inside every step, follow the order **Red → Green → Refactor** exactly as written. Commit after each: `test(<id>): …` (failing tests), `feat(<id>): …` (implementation), `refactor(<id>): …` (only if something changed).
 4. Do not make design decisions. If something is not specified, look in this order: the step → §5 Conventions → §1 Assumptions → `docs/spec.md`. If it is still not answered, stop and ask; do not guess.
 5. Do not upgrade, swap or add dependencies beyond those in §3. Dependabot does upgrades after the project is done.
-6. A step is finished only when its **Acceptance** commands print the expected output *and* `make verify` prints `VERIFY OK` *and* CI is green.
+6. A step is finished only when its **Acceptance** commands print the expected output *and* `make verify` prints `VERIFY OK` (from Step 0.5 on) *and* CI is green on the pushed commit (from Step 0.7 on, when the pipeline exists). A pull request is finished when every step in it is finished; only then is it merged, as a squash merge whose message is the pull request title.
 
 ---
 
@@ -269,7 +269,7 @@ Package dependency rule (enforced by review, and by `depguard` in Step 0.3): `in
 2. **Green.** Write the smallest implementation that makes the Red command pass. Do not add behaviour that no test asks for. Run the Green command; it must print `ok` (Go) or `Test Files  N passed` (Vitest) with zero failures. Commit.
 3. **Refactor.** Apply the cleanups the step lists (and only those plus removal of duplication you introduced). Re-run the same command; it must still pass. Commit if anything changed.
 4. Run `make verify`. It must end with `VERIFY OK`. This includes lint, all unit tests, both coverage gates and the build.
-5. Open the pull request. Merge only when every CI job is green.
+5. Push. CI must be green on the step's last commit before the next step starts. After the last step of the pull request (§7), mark it ready; merge only when every CI job is green.
 
 ### 5.2 Commands (defined in the Makefile, Step 0.1 onwards)
 
@@ -321,6 +321,7 @@ Package dependency rule (enforced by review, and by `depguard` in Step 0.3): `in
 ### 5.7 Git and CI conventions
 
 - Commits follow Conventional Commits. Do not put session URLs or tool names in commits or PR text.
+- Pull request titles follow `<type>(pr<n>): <what the pull request delivers>`, and the body lists the steps it contains with their acceptance results. Reviewers read a pull request step by step, using the `test(<id>)` / `feat(<id>)` commits.
 - Never push to `main` directly. Never merge with a red or skipped required check. Never disable a test or lower a threshold to get green.
 
 ---
@@ -361,7 +362,7 @@ Package dependency rule (enforced by review, and by `depguard` in Step 0.3): `in
 
 - **What they cover:** behaviour that only a real system can prove. Vault: token lookup, mount listing limited by policy, capability checks (`update` vs `create`), reading mount config, minting credentials, renewal, leases. Kubernetes (two kind clusters, 1.35 and 1.37): list/watch/resume, logs, exec over WebSocket, ephemeral containers, server-side dry run, optimistic-concurrency conflicts, eviction and drain with PodDisruptionBudgets, `SelfSubjectAccessReview`, CRD discovery, Helm 3 and Helm 4 installs. PostgreSQL: both dialects, the insert-only audit role and row-level security. Kubelook as a container image: sign-in flows, sessions across two replicas, logout closing every connection, the browser UI through Playwright (including Monaco and xterm).
 - They are Go tests under `test/integration` with build tag `integration` (so `go test ./...` never compiles them) plus Playwright tests under `test/e2e`.
-- They run with `make it` locally and in `.github/workflows/integration.yml`. They must pass for a pull request to merge from Phase 7 on.
+- They run with `make it` locally and in `.github/workflows/integration.yml`. They must pass for a pull request to merge from pull request 9 (Phase 7) on.
 
 ---
 
@@ -386,8 +387,34 @@ Steps are executed in numeric order; this map shows the real dependencies so a f
 8.1 → 8.2 → 8.3 → 8.4 → 8.5 → 8.6
 ```
 
+### Pull request map
+
+The whole plan is delivered in 10 pull requests. Each ends in a state where `main` builds, passes `make verify` and is green in CI.
+
+| PR | Steps | Delivers | Ends with |
+| --- | --- | --- | --- |
+| 1 | 0.1–0.9 | Scaffold, `version` command, web app, embed, Dockerfile, **the CI pipeline**, image scan and push, Dependabot | The `ci` workflow green on the pull request itself: lint, tests, both coverage gates, build, vulnerability check, image scan |
+| 2 | 1.1–1.11 | Foundations: config, clock, crypto, store, users, sessions, audit, HTTP server, session manager, `serve`/`migrate`, web shell | A server that starts and serves the web shell |
+| 3 | 2.1–2.10 | Sign-in (Google, GitHub), Vault client and discovery, saved credentials, kubeconfig upload, cluster list, sign-in UI | A user can sign in and see their clusters |
+| 4 | 3.1–3.11 | Credential broker, Kubernetes clients, redaction, read API, RBAC checks, WebSocket, watch hub, live lists, logs, Vault outage handling | Live resource lists and log streaming |
+| 5 | 4.1–4.10 | Writes with audit, kind registry, details drawer, YAML editor, workload actions, Secret reveal, shells, debug toolkit, pod file browser | Day-to-day operations on workloads |
+| 6 | 4.11–4.19 | Durable jobs, node actions and drain, full logs, field filter, export, settings, navigation, metrics, "who can" | All core features of the spec |
+| 7 | 5.1–5.15 | Custom resources, module framework, Helm 3 and 4, Flux, resource map, ecosystem modules, cluster overview | All platform features of the spec |
+| 8 | 6.1–6.4 | Prometheus metrics, traces and logs, memory guard, load test | Hardening complete |
+| 9 | 7.1–7.11, 8.1 part A | Integration and browser suites on kind + Vault as required checks; nightly run; spike findings; the debug image published | The `integration` workflow green on the pull request itself |
+| 10 | 8.1 part B, 8.2–8.6 | Debug image digest pin, Helm chart, chart test, release workflow, documentation, final verification | §8 Definition of done |
+
+Rules for this grouping:
+
+- Pull request 1 **must** contain the pipeline (Steps 0.7–0.9). Nothing is merged to `main` before CI exists, so every merge in the project's history was checked by CI.
+- Phase 4 is split after Step 4.10 because 4.11 (durable jobs) starts a new dependency chain (4.12 and 5.5 need it); nothing in 4.1–4.10 depends on 4.11–4.19.
+- Step 8.1 needs two merges (the image must be published from `main` before its digest can be pinned), so its part A rides in pull request 9 and part B in pull request 10.
+- Do not split or merge these groups without the repository owner's agreement. If a pull request must be split because of size, split only at a step boundary.
+
 ---
 # Phase 0 — Repository and CI/CD
+
+**Delivered in pull request 1** (all of Phase 0; it is not merged until Steps 0.7–0.9 have added the pipeline and it is green).
 
 Outcome: an empty-but-real application (a `kubelook version` command and a one-component web page) with the full pipeline around it: lint, unit tests, a 90% coverage gate that is proven to fail, build, container image with vulnerability scan, push to GHCR, Dependabot. Every later step lands inside this pipeline.
 
@@ -1388,10 +1415,10 @@ fi
 echo '```'
 ```
 
-**Red / Green.** Prove the pipeline rejects low coverage: on a throw-away branch `ci-proof`, add the untested function from Step 0.3, push, open a draft PR. Expected: job `coverage (unit tests, >= 90%)` fails and `ci-ok` fails. Close the PR and delete the branch. Then open the real PR for this step. Expected: all jobs green, and the `coverage` job summary shows the Go total and four web percentages.
+**Red / Green.** Prove the pipeline rejects low coverage on pull request 1 itself (no extra pull request): commit the untested function from Step 0.3 as `test(0.7): prove the coverage gate fails in CI` and push. Expected: job `coverage (unit tests, >= 90%)` fails and `ci-ok` fails. Then `git revert` that commit and push. Expected: all jobs green, and the `coverage` job summary shows the Go total and four web percentages.
 
 **Acceptance.**
-- The PR for this step shows eight jobs: `lint-go`, `lint-web`, `test-go`, `test-web`, `coverage (unit tests, >= 90%)`, `build`, `vuln`, `ci-ok`; all green.
+- Pull request 1 shows eight jobs: `lint-go`, `lint-web`, `test-go`, `test-web`, `coverage (unit tests, >= 90%)`, `build`, `vuln`, `ci-ok`; all green.
 - `grep -c 'uses: .*@v[0-9]' .github/workflows/*.yml` prints `0` (no tag-pinned actions).
 - `grep -L '^permissions:' .github/workflows/*.yml` prints nothing.
 
@@ -1563,6 +1590,8 @@ Job to add to `ci.yml` (and add `dependency-review` to nothing else: it only run
 
 ---
 # Phase 1 — Foundations
+
+**Delivered in pull request 2**.
 
 Outcome: `kubelook serve` starts, reads config, opens the database, runs migrations, serves the SPA, health endpoints and an authenticated-session skeleton. No sign-in yet.
 
@@ -2168,6 +2197,8 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 # Phase 2 — Sign-in and credentials
 
+**Delivered in pull request 3**.
+
 Outcome (the spec's spike, minus live data): a user signs in with Google or GitHub, pastes a Vault token or uploads a kubeconfig, and sees exactly the clusters that credential reaches. Saved credentials live encrypted in the browser.
 
 ### Step 2.1 — OAuth core: state, PKCE, provider interface
@@ -2513,6 +2544,8 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 ---
 # Phase 3 — Cluster access and live data
+
+**Delivered in pull request 4**.
 
 Outcome: opening a cluster mints credentials; lists are live through one WebSocket per tab; pod logs stream. This completes the spec's spike scope (sign-in, discovery, pods list, logs).
 
@@ -2915,6 +2948,8 @@ Command: `make test-go PKG="./internal/vault/... ./internal/httpapi/..."` and `m
 ---
 # Phase 4 — Core features
 
+**Delivered in pull request 5 (Steps 4.1–4.10) and pull request 6 (Steps 4.11–4.19)**.
+
 Outcome: the spec's "Phase 1. Core": all core kinds live, editing with dry run, actions, shells, debug containers, file browser, durable jobs and bulk actions, structured logs, field filter, exports, settings, navigation.
 
 ### Step 4.1 — Mutating resource API with audit
@@ -3251,6 +3286,8 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 **Pitfalls.** Use `Uint8Array` end to end; build base64 in chunks (no `String.fromCharCode(...bigArray)` spread, which overflows the stack).
 
+> **Pull request 6 starts here.** Pull request 5 (Steps 4.1–4.10) must be merged first.
+
 ### Step 4.11 — Durable jobs framework
 
 **Goal.** Long actions recorded before they start, run under a renewed lease, and classified by another replica if their replica dies (spec "Long actions are durable jobs").
@@ -3482,6 +3519,8 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 ---
 # Phase 5 — Platform features
+
+**Delivered in pull request 7**.
 
 Outcome: the spec's "Phase 2. Platform": CRD browser, Helm 3 and 4, Flux, resource map, Karpenter, the ecosystem modules, security views and the cluster overview.
 
@@ -3875,6 +3914,8 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 # Phase 6 — Hardening
 
+**Delivered in pull request 8**.
+
 ### Step 6.1 — Prometheus metrics
 
 **Goal.** Export the metrics the spec lists at `GET /metrics`.
@@ -3950,6 +3991,8 @@ load:
 
 ---
 # Phase 7 — Integration testing (kind + Vault)
+
+**Delivered in pull request 9** (together with Step 8.1 part A).
 
 Outcome: a suite that runs the real Kubelook image against real Vault, two real Kubernetes clusters (kind) and real PostgreSQL, locally with `make it-up && make it` and in CI. No mocks of Vault or Kubernetes. The only stand-in is the identity provider (A23).
 
@@ -4441,23 +4484,25 @@ jobs:
 
 # Phase 8 — Release packaging
 
+**Delivered in pull request 10** (Step 8.1 part A is delivered earlier, in pull request 9).
+
 Outcome: versioned multi-architecture images, the debug image, a Helm chart that installs a working console, and deployment documentation.
 
 ### Step 8.1 — Debug image and digest pin
 
 **Goal.** Publish `ghcr.io/bdnix/kubelook-netshoot` and pin Kubelook's default `debug.image` to its digest.
 
-**Files (PR 1).** Create `build/netshoot/Dockerfile` (`FROM nicolaka/netshoot:v0.16` plus OCI labels `org.opencontainers.image.source`, `…licenses=Apache-2.0`, `…description`), `.github/workflows/netshoot.yml`; add a `docker` entry for `/build/netshoot` to `.github/dependabot.yml`.
+**Files (part A, delivered in pull request 9).** Create `build/netshoot/Dockerfile` (`FROM nicolaka/netshoot:v0.16` plus OCI labels `org.opencontainers.image.source`, `…licenses=Apache-2.0`, `…description`), `.github/workflows/netshoot.yml`; add a `docker` entry for `/build/netshoot` to `.github/dependabot.yml`.
 
 `netshoot.yml`: triggers `push` to `main` with `paths: [build/netshoot/**]` and `workflow_dispatch`; top-level `permissions: contents: read`; one job with `packages: write`, `id-token: write`, `attestations: write` that reads the tag from the `FROM` line (`TAG=$(sed -n 's/^FROM nicolaka\/netshoot:\([^@ ]*\).*/\1/p' build/netshoot/Dockerfile)`), builds for `linux/amd64,linux/arm64`, pushes `ghcr.io/bdnix/kubelook-netshoot:$TAG`, runs Trivy with `exit-code: "0"` (report only: it is a third-party toolbox image; deployers may replace it via `debug.image`), and attests provenance. A new netshoot release reaches the repository as a Dependabot PR on the `FROM` line; merging it publishes the new image (this is the spec's "rebuilds whenever a new netshoot release appears").
 
-**Files (PR 2, after PR 1's workflow has pushed the image).** Create `hack/pin-netshoot.sh` (resolves `docker buildx imagetools inspect ghcr.io/bdnix/kubelook-netshoot:<tag> --format '{{json .Manifest.Digest}}'` and rewrites the constant `DefaultDebugImage` in `internal/config/defaults.go`); modify `internal/config/config_test.go`.
+**Files (part B, in pull request 10, after pull request 9 is merged and its workflow has pushed the image).** Create `hack/pin-netshoot.sh` (resolves `docker buildx imagetools inspect ghcr.io/bdnix/kubelook-netshoot:<tag> --format '{{json .Manifest.Digest}}'` and rewrites the constant `DefaultDebugImage` in `internal/config/defaults.go`); modify `internal/config/config_test.go`.
 
-**Red (PR 2).** Add the test: the default `debug.image` matches `^ghcr\.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]{64}$`. `make test-go PKG=./internal/config/...` fails (the default is still a tag). **Green.** Run `hack/pin-netshoot.sh`; test passes. **Refactor.** None.
+**Red (part B).** Add the test: the default `debug.image` matches `^ghcr\.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]{64}$`. `make test-go PKG=./internal/config/...` fails (the default is still a tag). **Green.** Run `hack/pin-netshoot.sh`; test passes. **Refactor.** None.
 
 **Acceptance.** `docker pull "$(grep -o 'ghcr.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]*' internal/config/defaults.go)"` succeeds; `make verify` → `VERIFY OK`.
 
-**Pitfalls.** PR 2 cannot start before PR 1's `netshoot` workflow run on `main` is green. The integration config keeps overriding `debug.image` with `busybox:1.37`.
+**Pitfalls.** Part B cannot start before pull request 9 is merged and its `netshoot` workflow run on `main` is green. The integration config keeps overriding `debug.image` with `busybox:1.37`.
 
 ### Step 8.2 — Helm chart
 
@@ -4563,7 +4608,7 @@ hack/it-chart.sh && KUBELOOK_IT_BASE_URL=http://localhost:18090 go test -tags in
 make it-down
 ```
 
-**Acceptance.** Every box in §9 ticked in the pull request description of this step, with the command output for the coverage lines pasted in.
+**Acceptance.** Every box in §9 ticked in the description of pull request 10, with the command output for the coverage lines pasted in.
 
 ---
 
@@ -4571,7 +4616,7 @@ make it-down
 
 The project is done when all of the following are true on `main`:
 
-1. Every step of Phases 0–8 is merged, in order, each through a pull request whose CI was green.
+1. Every step of Phases 0–8 is merged, in order, through the 10 pull requests of §7, each of which was green in CI when merged.
 2. `make verify` prints `VERIFY OK` on a clean clone. In particular: Go unit-test statement coverage ≥ 90% (`Total coverage threshold (90%) satisfied: PASS`), and web unit-test coverage ≥ 90% lines, statements and functions and ≥ 80% branches, with only the exclusions listed in §6.
 3. The `ci` workflow is green: `lint-go`, `lint-web`, `test-go`, `test-web`, `coverage (unit tests, >= 90%)`, `build`, `vuln`, `image-scan`, `chart`, `ci-ok`; and `image-push` on `main`.
 4. The `integration` workflow is green: the kind + Vault suite (`make it`), the browser suite (`make e2e`) and the chart install test.
