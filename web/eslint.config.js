@@ -14,7 +14,10 @@ export default [
       'react-hooks/exhaustive-deps': 'error',
       'no-restricted-syntax': [
         'error',
-        { selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']", message: 'Cluster content must be rendered as text.' },
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: 'Cluster content must be rendered as text.',
+        },
       ],
       'no-restricted-globals': ['error', { name: 'fetch', message: 'Use api/client.ts.' }],
     },
