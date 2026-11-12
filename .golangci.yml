@@ -26,16 +26,20 @@ linters:
           msg: write to an injected io.Writer or slog.Logger
     depguard:
       rules:
-        handlers-are-leaves:
+        only-app-imports-httpapi:
           files:
-            - "!**/internal/httpapi/**"
             - "!**/internal/app/**"
-            - "!**/cmd/kubelook/**"
+            - "!**/internal/httpapi/**"
           deny:
             - pkg: github.com/bdnix/kubelook/internal/httpapi
               desc: only internal/app may import httpapi
+        only-main-imports-app:
+          files:
+            - "!**/cmd/kubelook/**"
+            - "!**/internal/app/**"
+          deny:
             - pkg: github.com/bdnix/kubelook/internal/app
-              desc: nothing imports app
+              desc: only cmd/kubelook may import app
   exclusions:
     rules:
       - path: internal/clock/

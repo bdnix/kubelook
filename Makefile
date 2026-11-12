@@ -2,6 +2,9 @@ SHELL := /usr/bin/env bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := verify
 
+# The web build rewrites internal/webui/dist, which the Go build embeds: never run targets in parallel.
+.NOTPARALLEL:
+
 BIN := $(CURDIR)/bin
 export PATH := $(BIN):$(PATH)
 PKG ?= ./...

@@ -2,8 +2,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export GOBIN="$ROOT/bin"
-# Build the tools with the same Go as the module so lint can load go 1.27.4 code.
-export GOTOOLCHAIN=go1.27.4
+# Build the tools with the same Go as the module so lint can load its code.
+export GOTOOLCHAIN="go$(sed -n 's/^go //p' "$ROOT/go.mod")"
 mkdir -p "$GOBIN"
 OS="$(go env GOOS)"; ARCH="$(go env GOARCH)"
 
@@ -25,14 +25,16 @@ go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VE
 go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
 go install "sigs.k8s.io/kind@${KIND_VERSION}"
 
-if [ ! -x "$GOBIN/kubectl" ] || ! "$GOBIN/kubectl" version --client 2>/dev/null | grep -q "${KUBECTL_VERSION}"; then
+have_kubectl="$("$GOBIN/kubectl" version --client 2>/dev/null || true)"
+if ! grep -Fqw "${KUBECTL_VERSION}" <<<"$have_kubectl"; then
   curl -fsSLo "$tmp/kubectl" "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/${OS}/${ARCH}/kubectl"
   echo "$(curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/${OS}/${ARCH}/kubectl.sha256")  $tmp/kubectl" | sha256_check
   chmod +x "$tmp/kubectl"
   mv "$tmp/kubectl" "$GOBIN/kubectl"
 fi
 
-if [ ! -x "$GOBIN/helm" ] || ! "$GOBIN/helm" version --short 2>/dev/null | grep -q "${HELM_VERSION}"; then
+have_helm="$("$GOBIN/helm" version --short 2>/dev/null || true)"
+if ! grep -Fqw "${HELM_VERSION}" <<<"$have_helm"; then
   curl -fsSLo "$tmp/helm.tgz" "https://get.helm.sh/helm-${HELM_VERSION}-${OS}-${ARCH}.tar.gz"
   echo "$(curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-${OS}-${ARCH}.tar.gz.sha256sum" | awk '{print $1}')  $tmp/helm.tgz" | sha256_check
   tar -xzf "$tmp/helm.tgz" -C "$tmp"

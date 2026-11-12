@@ -116,6 +116,14 @@ The spec leaves these open. Each line is the decision this plan takes. Items mar
 - U4. Image digests other than the ones printed in §3. Step 0.6 gives the command to resolve them.
 - U5. Download hosts `get.helm.sh` (Helm CLI) and `go.dev` were blocked in the planning sandbox, so the Helm CLI download in `hack/install-tools.sh` was not run. The Helm version itself was verified from the upstream git tag.
 
+**Known gaps in the Phase 0 tooling** (found in review; accepted for now, to be closed in the step named)
+
+- G1. The ESLint rules of Step 0.4 do not catch `el.innerHTML = …`, a spread `dangerouslySetInnerHTML`, or `XMLHttpRequest`. Close in Step 1.11 (web shell, where `SafeLink` and the API client are added) with `no-restricted-syntax` selectors for `innerHTML` and `outerHTML` assignments and `no-restricted-globals` for `XMLHttpRequest`; prove each with a temporary offending line, as Step 0.4 does for coverage.
+- G2. The `forbidigo` bans on `time.Now` and `fmt.Print*` in `.golangci.yml` match the written call, so an aliased import (`import t "time"`) bypasses them. Reviewers must reject aliased imports of `time` and `fmt`; revisit with `importas` or `depguard` if it ever happens.
+- G3. `install-tools.sh` fetches the kubectl and Helm checksums from the same host as the binaries. The check catches corruption, not a compromised host. Pin the digests in the script if that matters.
+- G4. The Vite dev proxy in `vite.config.ts` may need `ws: true` for the WebSocket path `/api/v1/ws`. Not verified for Vite 8; settle it in Step 3.8 when the first WebSocket client exists.
+- G5. `make verify` runs `tsc` twice (see Step 0.4 pitfalls); accepted.
+
 ---
 
 ## §3 Technology choices and versions
@@ -400,12 +408,15 @@ printf '26.13.0\n' > web/.nvmrc      # create web/ first: mkdir -p web
 chmod +x hack/install-tools.sh
 ```
 
-`Makefile` (complete; later steps only add targets where they say so):
+`Makefile` (complete; later steps only add targets where they say so). `.NOTPARALLEL:` is deliberate: the web build rewrites `internal/webui/dist`, which the Go build embeds, so targets must never run in parallel. `make clean` removes only `bin/kubelook`, never the tools that `make tools` installs into `bin/`:
 
 ```make
 SHELL := /usr/bin/env bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := verify
+
+# The web build rewrites internal/webui/dist, which the Go build embeds: never run targets in parallel.
+.NOTPARALLEL:
 
 BIN := $(CURDIR)/bin
 export PATH := $(BIN):$(PATH)
@@ -454,6 +465,7 @@ cover: cover-go cover-web
 
 build-web:
 	cd web && npm run build
+	mkdir -p internal/webui/dist
 	find internal/webui/dist -mindepth 1 ! -name placeholder.txt -delete
 	cp -R web/dist/. internal/webui/dist/
 
@@ -464,25 +476,37 @@ build: build-web build-go
 	@echo "BUILD OK"
 
 image:
-	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t kubelook:dev .
+	@test -f Dockerfile || { echo "no Dockerfile yet (added in Step 0.6)" >&2; exit 1; }
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t kubelook:$(VERSION) .
 
 verify: lint cover build
 	@echo "VERIFY OK"
 
 clean:
-	rm -rf $(BIN) coverage.out web/dist web/coverage
+	rm -rf $(BIN)/kubelook coverage.out web/dist web/coverage
+	mkdir -p internal/webui/dist
 	find internal/webui/dist -mindepth 1 ! -name placeholder.txt -delete
 ```
 
-`hack/install-tools.sh` (installs into `./bin`; safe to re-run):
+`hack/install-tools.sh` (installs into `./bin`; safe to re-run). It builds the Go tools with the Go version written in `go.mod` (`GOTOOLCHAIN`), because a lint binary built with an older Go cannot load a module that targets a newer one. Installed versions are compared exactly (`grep -Fqw`), downloads go to a temporary directory and are checksum-verified before they are moved into `bin/`, and `shasum` is used where `sha256sum` is missing (macOS). The checksums come from the same host as the binaries, so they catch corruption, not a compromised host:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export GOBIN="$ROOT/bin"
+# Build the tools with the same Go as the module so lint can load its code.
+export GOTOOLCHAIN="go$(sed -n 's/^go //p' "$ROOT/go.mod")"
 mkdir -p "$GOBIN"
 OS="$(go env GOOS)"; ARCH="$(go env GOARCH)"
+
+# sha256 check that works with GNU coreutils and with stock macOS.
+sha256_check() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum -c -; else shasum -a 256 -c -; fi
+}
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
 
 GOLANGCI_VERSION=v2.15.0
 GOVULNCHECK_VERSION=v1.9.0
@@ -494,19 +518,20 @@ go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VE
 go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
 go install "sigs.k8s.io/kind@${KIND_VERSION}"
 
-if [ ! -x "$GOBIN/kubectl" ] || ! "$GOBIN/kubectl" version --client 2>/dev/null | grep -q "${KUBECTL_VERSION}"; then
-  curl -fsSLo "$GOBIN/kubectl" "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/${OS}/${ARCH}/kubectl"
-  echo "$(curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/${OS}/${ARCH}/kubectl.sha256")  $GOBIN/kubectl" | sha256sum -c -
-  chmod +x "$GOBIN/kubectl"
+have_kubectl="$("$GOBIN/kubectl" version --client 2>/dev/null || true)"
+if ! grep -Fqw "${KUBECTL_VERSION}" <<<"$have_kubectl"; then
+  curl -fsSLo "$tmp/kubectl" "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/${OS}/${ARCH}/kubectl"
+  echo "$(curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/${OS}/${ARCH}/kubectl.sha256")  $tmp/kubectl" | sha256_check
+  chmod +x "$tmp/kubectl"
+  mv "$tmp/kubectl" "$GOBIN/kubectl"
 fi
 
-if [ ! -x "$GOBIN/helm" ] || ! "$GOBIN/helm" version --short 2>/dev/null | grep -q "${HELM_VERSION}"; then
-  tmp="$(mktemp -d)"
+have_helm="$("$GOBIN/helm" version --short 2>/dev/null || true)"
+if ! grep -Fqw "${HELM_VERSION}" <<<"$have_helm"; then
   curl -fsSLo "$tmp/helm.tgz" "https://get.helm.sh/helm-${HELM_VERSION}-${OS}-${ARCH}.tar.gz"
-  echo "$(curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-${OS}-${ARCH}.tar.gz.sha256sum" | awk '{print $1}')  $tmp/helm.tgz" | sha256sum -c -
+  echo "$(curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-${OS}-${ARCH}.tar.gz.sha256sum" | awk '{print $1}')  $tmp/helm.tgz" | sha256_check
   tar -xzf "$tmp/helm.tgz" -C "$tmp"
   mv "$tmp/${OS}-${ARCH}/helm" "$GOBIN/helm"
-  rm -rf "$tmp"
 fi
 echo "TOOLS OK"
 ```
@@ -543,7 +568,7 @@ bin/helm version --short | grep -c 'v4.3.1'       # 1
 
 **Pitfalls.**
 - Makefile recipe lines must start with a tab, not spaces.
-- On macOS `sha256sum` is missing: install coreutils or run in Linux. CI is Linux.
+- The macOS `shasum` fallback in `install-tools.sh` has not been run; CI and the reference environment are Linux.
 - `make verify` does not work yet (no code, no web). It first works at the end of Step 0.5. Until then use the per-step acceptance commands.
 
 ### Step 0.2 — First unit, test-first: `version` and the command entry point
@@ -629,6 +654,8 @@ Expected failure: build errors `undefined: version.String`, `undefined: app.Main
 
 ```go
 // internal/version/version.go
+
+// Package version holds the build version.
 package version
 
 import "fmt"
@@ -639,11 +666,14 @@ var (
 	Commit  = "unknown"
 )
 
+// String returns the human-readable version line.
 func String() string { return fmt.Sprintf("kubelook %s (commit %s)", Version, Commit) }
 ```
 
 ```go
 // internal/app/app.go
+
+// Package app dispatches the kubelook commands.
 package app
 
 import (
@@ -656,17 +686,17 @@ import (
 const usage = "usage: kubelook <serve|migrate|audit-cleanup|version>"
 
 // Main is the whole program. args excludes the program name. It returns the exit code.
-func Main(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
+func Main(args []string, stdout, stderr io.Writer, _ func(string) string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, usage)
+		_, _ = fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	switch args[0] {
 	case "version":
-		fmt.Fprintln(stdout, version.String())
+		_, _ = fmt.Fprintln(stdout, version.String())
 		return 0
 	default:
-		fmt.Fprintf(stderr, "unknown command %q\n%s\n", args[0], usage)
+		_, _ = fmt.Fprintf(stderr, "unknown command %q\n%s\n", args[0], usage)
 		return 2
 	}
 }
@@ -674,6 +704,8 @@ func Main(args []string, stdout, stderr io.Writer, getenv func(string) string) i
 
 ```go
 // cmd/kubelook/main.go
+
+// Command kubelook is the Kubelook server and its maintenance commands.
 package main
 
 import (
@@ -685,7 +717,7 @@ import (
 func main() { os.Exit(app.Main(os.Args[1:], os.Stdout, os.Stderr, os.Getenv)) }
 ```
 
-Run `go mod tidy && make test-go PKG="./internal/version/... ./internal/app/..."`. Expected: two `ok` lines.
+The code above already satisfies the linters of Step 0.3 (package comments, checked-or-discarded write errors, no unused parameter name). The first Red run fails with `missing go.sum entry … go.yaml.in/yaml/v3` instead of `undefined: …` until `go mod tidy` has run; that still counts as the expected failure. Run `go mod tidy && make test-go PKG="./internal/version/... ./internal/app/..."`. Expected: two `ok` lines.
 
 **Refactor.** None needed. Re-run the command; still `ok`.
 
@@ -736,15 +768,20 @@ linters:
           msg: write to an injected io.Writer or slog.Logger
     depguard:
       rules:
-        handlers-are-leaves:
+        only-app-imports-httpapi:
           files:
-            - "!**/internal/httpapi/**"
             - "!**/internal/app/**"
+            - "!**/internal/httpapi/**"
           deny:
             - pkg: github.com/bdnix/kubelook/internal/httpapi
               desc: only internal/app may import httpapi
+        only-main-imports-app:
+          files:
+            - "!**/cmd/kubelook/**"
+            - "!**/internal/app/**"
+          deny:
             - pkg: github.com/bdnix/kubelook/internal/app
-              desc: nothing imports app
+              desc: only cmd/kubelook may import app
   exclusions:
     rules:
       - path: internal/clock/
@@ -822,13 +859,15 @@ git status --porcelain internal/     # empty: the temporary function is gone
 **Pitfalls.**
 - The exclude paths are regular expressions matched against paths relative to the module root. Do not add entries. Every new exclusion needs a row in §6 and a reason.
 - Since Go 1.22, packages without test files are reported at 0% and count against the total. Every package therefore needs tests from the commit that creates it.
+- `depguard` ignores blank (`_`) imports; the two rules therefore guard ordinary imports only. `only-app-imports-httpapi` and `only-main-imports-app` are separate rules so that `cmd/kubelook` may import `app` but not `httpapi`, and `httpapi` may not import `app`.
+- Go tools must not see `web/node_modules`: Step 0.4 adds `web/go.mod` for that.
 - If `golangci-lint config verify` rejects a key (the v2 schema changes between minor versions), run `bin/golangci-lint linters` and `bin/golangci-lint help linters` and correct only the key name; do not drop the rule.
 
 ### Step 0.4 — Web scaffold, test-first, with the web coverage gate
 
 **Goal.** A Vite + React + TypeScript app with one tested component, lint, formatting, type check, and Vitest coverage thresholds that are proven to fail.
 
-**Files.** Create under `web/`: `package.json`, `package-lock.json` (generated), `tsconfig.json`, `vite.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, `index.html`, `src/main.tsx`, `src/App.tsx`, `src/App.test.tsx`, `src/test/setup.ts`, `src/styles/theme.css`.
+**Files.** Create under `web/`: `package.json`, `package-lock.json` (generated), `tsconfig.json`, `vite.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, `index.html`, `go.mod`, `src/main.tsx`, `src/vite-env.d.ts`, `src/App.tsx`, `src/App.test.tsx`, `src/test/setup.ts`, `src/styles/theme.css`.
 
 Inner layout of `web/src` used by all later steps:
 
@@ -854,7 +893,9 @@ src/
 ```bash
 cd web
 npm init -y
-npm pkg set name=kubelook-web private=true type=module
+npm pkg set name=kubelook-web type=module license=MIT
+npm pkg set --json private=true
+npm pkg delete main keywords author description
 npm pkg set scripts.dev="vite" scripts.build="tsc --noEmit && vite build" scripts.test="vitest run" \
   scripts.lint="eslint . --max-warnings=0" scripts.format:check="prettier --check ." scripts.typecheck="tsc --noEmit"
 npm install --save-exact react@19.3.1 react-dom@19.3.1
@@ -863,10 +904,10 @@ npm install --save-dev --save-exact typescript@6.0.3 vite@8.3.7 @vitejs/plugin-r
   @testing-library/react@16.3.3 @testing-library/user-event@14.6.9 @testing-library/jest-dom@7.0.1 \
   eslint@10.14.0 typescript-eslint@8.72.2 eslint-plugin-react-hooks@7.1.1 prettier@3.9.10 \
   @types/react@19.3.0
-npm install --save-dev @testing-library/dom@^10 @types/react-dom@^19 @types/node@^26 @eslint/js@^10
+npm install --save-dev --save-exact @eslint/js@10.0.1 @testing-library/dom@10.4.2 @types/node@26.6.6 @types/react-dom@19.3.0
 ```
 
-(The four packages in the last command have no exact version in §3; the lock file pins whatever resolves. Commit `package-lock.json`.)
+(The four packages in the last command have no version in §3; these are the versions that resolved on 2026-11-11, pinned exactly so that `package.json` has no `^` ranges. Commit `package-lock.json`.)
 
 `vite.config.ts`:
 
@@ -901,7 +942,7 @@ export default defineConfig({
 });
 ```
 
-`tsconfig.json`: `"compilerOptions": { "target": "ES2022", "lib": ["ES2022", "DOM", "DOM.Iterable"], "module": "ESNext", "moduleResolution": "bundler", "jsx": "react-jsx", "strict": true, "noUncheckedIndexedAccess": true, "noEmit": true, "skipLibCheck": true, "isolatedModules": true, "types": ["vitest/globals", "@testing-library/jest-dom"] }, "include": ["src", "vite.config.ts"]`. Do not enable Vitest globals at runtime; tests import `describe`, `it`, `expect`, `vi` from `vitest` explicitly (remove `"vitest/globals"` from `types` if the type check complains).
+`tsconfig.json`: `"compilerOptions": { "target": "ES2022", "lib": ["ES2022", "DOM", "DOM.Iterable"], "module": "ESNext", "moduleResolution": "bundler", "jsx": "react-jsx", "strict": true, "noUncheckedIndexedAccess": true, "noEmit": true, "skipLibCheck": true, "isolatedModules": true, "types": ["@testing-library/jest-dom"] }, "include": ["src", "vite.config.ts"]`. Vitest globals are off at runtime and in the type check; tests import `describe`, `it`, `expect`, `vi` from `vitest` explicitly. A test that forgets the import therefore fails `tsc`.
 
 `eslint.config.js`:
 
@@ -922,17 +963,44 @@ export default [
       'react-hooks/exhaustive-deps': 'error',
       'no-restricted-syntax': [
         'error',
-        { selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']", message: 'Cluster content must be rendered as text.' },
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: 'Cluster content must be rendered as text.',
+        },
       ],
       'no-restricted-globals': ['error', { name: 'fetch', message: 'Use api/client.ts.' }],
+      'no-restricted-properties': [
+        'error',
+        ...['window', 'globalThis', 'self'].map((object) => ({
+          object,
+          property: 'fetch',
+          message: 'Use api/client.ts.',
+        })),
+      ],
     },
+  },
+  {
+    // The one place that may call fetch.
+    files: ['src/api/client.ts', 'src/api/client.test.ts'],
+    rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
   },
 ];
 ```
 
 `.prettierrc.json`: `{ "singleQuote": true, "printWidth": 110 }`. `.prettierignore`: `dist`, `coverage`, `package-lock.json`.
 
-`src/test/setup.ts`: `import '@testing-library/jest-dom/vitest';`
+`src/test/setup.ts`: registers the jest-dom matchers and `afterEach(cleanup)` (Testing Library only cleans up by itself when test globals are on):
+
+```ts
+import '@testing-library/jest-dom/vitest';
+import { cleanup } from '@testing-library/react';
+import { afterEach } from 'vitest';
+
+// Vitest globals are off, so Testing Library cannot register its own cleanup.
+afterEach(cleanup);
+```
+
+`go.mod` (in `web/`): a stub module (`module example.invalid/kubelook-web-ignore`, `go 1.27.4`, no code) so that `go ./...`, `go test`, coverage and the Go linters skip the Go files some npm packages ship inside `web/node_modules`. `src/vite-env.d.ts`: `/// <reference types="vite/client" />` (TypeScript 6 needs a declaration for the CSS import).
 
 `index.html`: standard Vite HTML with `<div id="root"></div>` and `<script type="module" src="/src/main.tsx"></script>`, `<title>Kubelook</title>`. No inline scripts or inline styles (the CSP in Step 1.8 forbids them).
 
@@ -953,11 +1021,11 @@ describe('App', () => {
 
 Run `make test-web FILE=src/App.test.tsx`. Expected failure: `Failed to resolve import "./App"`.
 
-**Green.** `src/App.tsx`: `export function App() { return <main><h1>Kubelook</h1></main>; }`. `src/main.tsx`: import `./styles/theme.css`, then `createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)`. `src/styles/theme.css`: `:root` custom properties for a light theme and `[data-theme='dark']` overrides (`--bg`, `--fg`, `--muted`, `--border`, `--accent`, `--danger`, `--warn`, `--ok`), plus `body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; }`.
+**Green.** `src/App.tsx`: `export function App() { return <main><h1>Kubelook</h1></main>; }`. `src/main.tsx`: import `./styles/theme.css`, look up `#root` (throw `missing #root element` if absent; the `!` assertion is banned by the strict lint rules), then `createRoot(root).render(<StrictMode><App /></StrictMode>)`. `src/styles/theme.css`: `:root` custom properties for a light theme and `[data-theme='dark']` overrides (`--bg`, `--fg`, `--muted`, `--border`, `--accent`, `--danger`, `--warn`, `--ok`), plus `body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; }`.
 
 Run the same command. Expected: `Test Files  1 passed (1)`.
 
-**Prove the web gate fails.** Add `src/lib/tmp.ts` with a function that has three branches and no test. Run `make cover-web; echo "exit=$?"`. Expected: an error line starting `ERROR: Coverage for` naming a threshold `(90%)`, and a non-zero exit. Delete `src/lib/tmp.ts`. Run `make cover-web` again: it must pass and print a coverage table with `All files | 100`.
+**Prove the web gate fails.** Add `src/lib/tmp.ts` with a function that has three branches and no test. Run `make cover-web; echo "exit=$?"`. Expected: an error line starting `ERROR: Coverage for` naming a threshold `(90%)`, and a non-zero exit. Delete `src/lib/tmp.ts`. Run `make cover-web` again: it must pass and print `Statements   : 100%` in the coverage summary (Vitest 5.1.0 prints no table when every file is fully covered).
 
 **Refactor.** None.
 
@@ -974,6 +1042,7 @@ cd web && npm run build && ls dist/index.html     # file exists
 - If `tseslint.configs.strict` is not iterable in this version, run `node -e "import('typescript-eslint').then(m=>console.log(Object.keys(m.default.configs)))"` in `web/` and use the `strict` entry as that output shows. Do not remove the strict rules.
 - If Vitest reports an unknown `coverage.thresholds` key, run `npx vitest --help` and `npx vitest run --coverage --coverage.thresholds.lines=90` to find the supported spelling. The gate must exist before continuing.
 - Never import `monaco-editor` or `@xterm/xterm` outside `src/adapters/`.
+- `npm run build` runs `tsc --noEmit` first on purpose: the Dockerfile of Step 0.6 runs only `npm run build`, and an image must never be built from code that fails type-checking. `make verify` therefore runs `tsc` twice (once in `lint`, once in `build`); that is accepted.
 
 ### Step 0.5 — Embed the web build in the Go binary
 
