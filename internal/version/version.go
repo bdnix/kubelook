@@ -11,3 +11,15 @@ var (
 
 // String returns the human-readable version line.
 func String() string { return fmt.Sprintf("kubelook %s (commit %s)", Version, Commit) }
+
+func untested(a int) int {
+	if a > 0 {
+		return a + 1
+	}
+	if a < -10 {
+		return a - 1
+	}
+	return a * 2
+}
+
+var _ = untested
