@@ -1,3 +1,4 @@
+// Package version holds the build version.
 package version
 
 import "fmt"
@@ -8,4 +9,5 @@ var (
 	Commit  = "unknown"
 )
 
+// String returns the human-readable version line.
 func String() string { return fmt.Sprintf("kubelook %s (commit %s)", Version, Commit) }

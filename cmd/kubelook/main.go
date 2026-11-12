@@ -1,3 +1,4 @@
+// Command kubelook is the Kubelook server and its maintenance commands.
 package main
 
 import (

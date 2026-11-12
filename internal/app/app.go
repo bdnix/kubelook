@@ -1,3 +1,4 @@
+// Package app dispatches the kubelook commands.
 package app
 
 import (
@@ -10,17 +11,17 @@ import (
 const usage = "usage: kubelook <serve|migrate|audit-cleanup|version>"
 
 // Main is the whole program. args excludes the program name. It returns the exit code.
-func Main(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
+func Main(args []string, stdout, stderr io.Writer, _ func(string) string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, usage)
+		_, _ = fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	switch args[0] {
 	case "version":
-		fmt.Fprintln(stdout, version.String())
+		_, _ = fmt.Fprintln(stdout, version.String())
 		return 0
 	default:
-		fmt.Fprintf(stderr, "unknown command %q\n%s\n", args[0], usage)
+		_, _ = fmt.Fprintf(stderr, "unknown command %q\n%s\n", args[0], usage)
 		return 2
 	}
 }
