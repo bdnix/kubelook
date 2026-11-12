@@ -2,6 +2,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export GOBIN="$ROOT/bin"
+# Build the tools with the same Go as the module so lint can load go 1.27.4 code.
+export GOTOOLCHAIN=go1.27.4
 mkdir -p "$GOBIN"
 OS="$(go env GOOS)"; ARCH="$(go env GOARCH)"
 
