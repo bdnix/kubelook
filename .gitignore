@@ -9,3 +9,5 @@
 /test/e2e/test-results/
 /.it/
 *.local
+/go-coverage.txt
+/web-coverage.txt
