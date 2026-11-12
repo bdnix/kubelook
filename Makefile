@@ -49,6 +49,7 @@ cover: cover-go cover-web
 
 build-web:
 	cd web && npm run build
+	mkdir -p internal/webui/dist
 	find internal/webui/dist -mindepth 1 ! -name placeholder.txt -delete
 	cp -R web/dist/. internal/webui/dist/
 
@@ -59,11 +60,13 @@ build: build-web build-go
 	@echo "BUILD OK"
 
 image:
-	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t kubelook:dev .
+	@test -f Dockerfile || { echo "no Dockerfile yet (added in Step 0.6)" >&2; exit 1; }
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t kubelook:$(VERSION) .
 
 verify: lint cover build
 	@echo "VERIFY OK"
 
 clean:
-	rm -rf $(BIN) coverage.out web/dist web/coverage
+	rm -rf $(BIN)/kubelook coverage.out web/dist web/coverage
+	mkdir -p internal/webui/dist
 	find internal/webui/dist -mindepth 1 ! -name placeholder.txt -delete

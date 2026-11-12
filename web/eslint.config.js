@@ -20,6 +20,19 @@ export default [
         },
       ],
       'no-restricted-globals': ['error', { name: 'fetch', message: 'Use api/client.ts.' }],
+      'no-restricted-properties': [
+        'error',
+        ...['window', 'globalThis', 'self'].map((object) => ({
+          object,
+          property: 'fetch',
+          message: 'Use api/client.ts.',
+        })),
+      ],
     },
+  },
+  {
+    // The one place that may call fetch.
+    files: ['src/api/client.ts', 'src/api/client.test.ts'],
+    rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
   },
 ];
