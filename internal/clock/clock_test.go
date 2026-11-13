@@ -15,7 +15,7 @@ import (
 var t0 = time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)
 
 func TestReal_Now_IsCloseToSystemTime(t *testing.T) {
-	d := clock.Real().Now().Sub(time.Now())
+	d := time.Until(clock.Real().Now())
 	assert.Less(t, d.Abs(), time.Second)
 }
 
@@ -136,7 +136,7 @@ func TestFake_BlockUntil_ReturnsOnceTimersAreRegistered(t *testing.T) {
 	testutil.Recv(t, done)
 }
 
-func TestFake_BlockUntil_AlreadySatisfied(t *testing.T) {
+func TestFake_BlockUntil_AlreadySatisfied(_ *testing.T) {
 	f := clock.NewFake(t0)
 	f.BlockUntil(0)
 	f.NewTimer(time.Second)
