@@ -192,8 +192,8 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 | Helm CLI | v4.3.1 | Chart lint, template, install |
 | Vault image | `hashicorp/vault:2.2.1@sha256:962a92876e168d68eaaa24b0b8b49bbce1cb63024060a67bba95cd158a366fc2` | Newest Vault (see U1) |
 | PostgreSQL image | `postgres:18.6-trixie` | Newest stable PostgreSQL |
-| Build images | `golang:1.27.4-trixie@sha256:b54b2639de8c1bfe538ec5ffc45f29b1932235ac5f6d63c059853646677112d9`, `node:26.13.0-trixie` | Match tool versions |
-| Runtime base image | `gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329` | No shell, non-root, small attack surface |
+| Build images | `golang:1.27.4-trixie`, `node:26.13.0-trixie` | Match tool versions. Digests pinned in the `Dockerfile` |
+| Runtime base image | `gcr.io/distroless/static-debian13:nonroot` | No shell, non-root, small attack surface. Digest pinned in the `Dockerfile` |
 | Debug image base | `nicolaka/netshoot:v0.16` | Spec: default debug image is built from netshoot |
 | Trivy | via `aquasecurity/trivy-action` v0.36.0 | Image vulnerability scan |
 | chart-testing | via `helm/chart-testing-action` v2.9.0 | Chart lint and install test |
@@ -1149,7 +1149,7 @@ RUN npm ci
 COPY web/ ./
 RUN npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.27.4-trixie@sha256:b54b2639de8c1bfe538ec5ffc45f29b1932235ac5f6d63c059853646677112d9 AS build
+FROM --platform=$BUILDPLATFORM golang:1.27.4-trixie AS build
 ARG TARGETOS
 ARG TARGETARCH
 ARG VERSION=dev
@@ -1164,7 +1164,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath \
     -ldflags "-s -w -X github.com/bdnix/kubelook/internal/version.Version=${VERSION} -X github.com/bdnix/kubelook/internal/version.Commit=${COMMIT}" \
     -o /out/kubelook ./cmd/kubelook
 
-FROM gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
+FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=build /out/kubelook /kubelook
 USER 65532:65532
 EXPOSE 8080
@@ -1172,10 +1172,10 @@ ENTRYPOINT ["/kubelook"]
 CMD ["serve"]
 ```
 
-Resolve the digest for the Node image and append it to the `FROM` line as `@sha256:…`:
+Pin every `FROM` line to its digest (`@sha256:…`). The `Dockerfile` is the only place these digests are recorded; Dependabot keeps them current, so this plan does not repeat them. Resolve a digest with:
 
 ```bash
-docker buildx imagetools inspect node:26.13.0-trixie --format '{{json .Manifest.Digest}}'
+docker buildx imagetools inspect <image>:<tag> --format '{{json .Manifest.Digest}}'
 ```
 
 `.dockerignore`: `.git`, `bin`, `web/node_modules`, `web/dist`, `web/coverage`, `coverage.out`, `test`, `docs`, `deploy`, `.github`, `.it`.
