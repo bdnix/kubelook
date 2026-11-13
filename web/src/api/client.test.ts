@@ -8,11 +8,11 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function clientWith(response: Response | Error, csrf: string | undefined = 'tok') {
-  const fetch = vi.fn(() =>
+function clientWith(response: Response | Error, csrf: string | null = 'tok') {
+  const fetch = vi.fn<(input: string, init?: RequestInit) => Promise<Response>>(() =>
     response instanceof Error ? Promise.reject(response) : Promise.resolve(response),
   );
-  return { fetch, client: createClient({ fetch, getCsrf: () => csrf }) };
+  return { fetch, client: createClient({ fetch, getCsrf: () => csrf ?? undefined }) };
 }
 
 describe('createClient', () => {
@@ -64,7 +64,7 @@ describe('createClient', () => {
   });
 
   it('post without a token or a body sends neither', async () => {
-    const { fetch, client } = clientWith(json({}), undefined);
+    const { fetch, client } = clientWith(json({}), null);
     await client.post('/x');
     const init = fetch.mock.calls[0]?.[1] as RequestInit;
     expect(new Headers(init.headers).has('X-CSRF-Token')).toBe(false);
@@ -72,9 +72,7 @@ describe('createClient', () => {
   });
 
   it('turns a JSON error body into ApiError', async () => {
-    const { client } = clientWith(
-      json({ error: { code: 'conflict', message: 'Changed meanwhile.' } }, 409),
-    );
+    const { client } = clientWith(json({ error: { code: 'conflict', message: 'Changed meanwhile.' } }, 409));
     const err = await client.get('/x').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(ApiError);
     expect(err).toMatchObject({ status: 409, code: 'conflict', message: 'Changed meanwhile.' });
