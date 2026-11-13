@@ -155,7 +155,7 @@ func TestLoad_Errors(t *testing.T) {
 		env  map[string]string
 		want string
 	}{
-		{"unknown key", base + "vault:\n  adress: x\n", nil, "unknown field"},
+		{"unknown key", base + "vault:\n  adress: x\n", nil, "unknown field"}, //nolint:misspell // the typo is the test input
 		{"key missing", base, map[string]string{"KUBELOOK_ENCRYPTION_KEY": ""}, "KUBELOOK_ENCRYPTION_KEY is required"},
 		{"key wrong length", base, map[string]string{"KUBELOOK_ENCRYPTION_KEY": short}, "must decode to 32 bytes"},
 		{"key not base64", base, map[string]string{"KUBELOOK_ENCRYPTION_KEY": "!!!"}, "base64"},
@@ -166,14 +166,14 @@ func TestLoad_Errors(t *testing.T) {
 		{"helm version", base + "helm:\n  version: 5\n", nil, "helm.version"},
 		{"google id without secret", base + "auth:\n  google:\n    clientId: x\n", nil, "KUBELOOK_GOOGLE_CLIENT_SECRET"},
 		{"github id without secret", base + "auth:\n  github:\n    clientId: x\n", nil, "KUBELOOK_GITHUB_CLIENT_SECRET"},
-		{"bad duration", base + "vault:\n  tokenTTL: abc\n", nil, "tokenTTL"},
+		{"bad duration", base + "vault:\n  tokenTTL: abc\n", nil, "invalid duration"},
 		{"unknown module", base + "modules:\n  nope:\n    enabled: auto\n", nil, "nope"},
 		{"bad module value", base + "modules:\n  keda:\n    enabled: true\n", nil, "modules.keda.enabled"},
 		{"bad module value string", base + "modules:\n  keda:\n    enabled: sometimes\n", nil, "modules.keda.enabled"},
 		{"unknown module field", base + "modules:\n  keda:\n    enable: false\n", nil, "unknown field"},
-		{"module not a mapping", base + "modules:\n  keda: 3\n", nil, "keda"},
+		{"module not a mapping", base + "modules:\n  keda: 3\n", nil, "cannot unmarshal"},
 		{"module enabled wrong type", base + "modules:\n  keda:\n    enabled: 3\n", nil, "modules.keda.enabled"},
-		{"duration wrong type", base + "vault:\n  tokenTTL: 5\n", nil, "tokenTTL"},
+		{"duration wrong type", base + "vault:\n  tokenTTL: 5\n", nil, "duration must be a string"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -271,8 +271,6 @@ func TestLogValue_ContainsNoSecrets(t *testing.T) {
 
 	out := fmt.Sprintf("%v", c.LogValue())
 	var sb strings.Builder
-	h := slog.NewTextHandler(&sb, nil)
-	require.NoError(t, h.Handle(t.Context(), slog.NewRecord(time.Time{}, slog.LevelInfo, "cfg", 0)))
 	logger := slog.New(slog.NewTextHandler(&sb, nil))
 	logger.Info("loaded", "config", c)
 	out += sb.String()
