@@ -38,7 +38,7 @@ linters:
             - "!**/cmd/kubelook/**"
             - "!**/internal/app/**"
           deny:
-            - pkg: github.com/bdnix/kubelook/internal/app
+            - pkg: github.com/bdnix/kubelook/internal/app$
               desc: only cmd/kubelook may import app
   exclusions:
     rules:
