@@ -25,13 +25,7 @@ var (
 const maxBodyBytes = 1 << 20
 
 // APIError is returned by handlers that need a specific status, code and user-facing message.
-type APIError struct {
-	Status  int
-	Code    string
-	Message string
-}
-
-func (e *APIError) Error() string { return e.Code + ": " + e.Message }
+type APIError = apperr.APIError
 
 type errorBody struct {
 	Error errorDetail `json:"error"`

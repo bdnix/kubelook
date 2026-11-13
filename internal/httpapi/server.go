@@ -10,6 +10,7 @@ import (
 
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/config"
+	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/webui"
 )
@@ -23,6 +24,8 @@ type Deps struct {
 	WebFS  fs.FS
 	Ready  func(context.Context) error
 	NewID  func() string // request IDs; nil → store.NewID
+
+	Sessions *session.Manager // nil → no session or CSRF checks (not wired yet)
 }
 
 // New builds the handler.
@@ -50,10 +53,15 @@ func New(d Deps) http.Handler {
 	})
 	mux.Handle("/", webui.Handler(d.WebFS))
 
-	return chain(recordRoute(mux),
+	mws := []middleware{
 		recoverPanics(d.Log),
 		requestID(d.NewID),
 		accessLog(d.Log, d.Clock),
 		securityHeaders(d.Config.CookieSecure()),
-	)
+	}
+	if d.Sessions != nil {
+		fail := func(w http.ResponseWriter, r *http.Request, err error) { writeError(w, r, d.Log, err) }
+		mws = append(mws, d.Sessions.Require(fail), session.CSRF(fail))
+	}
+	return chain(recordRoute(mux), mws...)
 }

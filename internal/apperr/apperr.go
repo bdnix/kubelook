@@ -13,3 +13,12 @@ var (
 	ErrBusy            = errors.New("server busy")
 	ErrTooLarge        = errors.New("too large")
 )
+
+// APIError is an error that carries its own HTTP status, machine code and user-facing message.
+type APIError struct {
+	Status  int
+	Code    string
+	Message string
+}
+
+func (e *APIError) Error() string { return e.Code + ": " + e.Message }
