@@ -87,3 +87,38 @@ func TestStoretestNew_ReturnsMigratedDatabase(t *testing.T) {
 	assert.Equal(t, store.SQLite, db.Dialect())
 	assert.GreaterOrEqual(t, count(t, db, "schema_migrations"), 1)
 }
+
+func TestPending_ListsUnappliedMigrations(t *testing.T) {
+	ctx := t.Context()
+	db := openSQLite(t)
+	fsys := fstest.MapFS{
+		"0001_a.sql": {Data: []byte("CREATE TABLE a (id TEXT PRIMARY KEY)")},
+		"0002_b.sql": {Data: []byte("CREATE TABLE b (id TEXT PRIMARY KEY)")},
+	}
+
+	got, err := store.Pending(ctx, db, fsys)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"0001_a.sql", "0002_b.sql"}, got, "no schema_migrations table yet: everything is pending")
+
+	require.NoError(t, store.Migrate(ctx, db, fsys))
+	got, err = store.Pending(ctx, db, fsys)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	fsys["0003_c.sql"] = &fstest.MapFile{Data: []byte("SELECT 1")}
+	got, err = store.Pending(ctx, db, fsys)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"0003_c.sql"}, got)
+}
+
+func TestPending_DatabaseUnreachable_ReturnsError(t *testing.T) {
+	db := openSQLite(t)
+	require.NoError(t, db.Close())
+	_, err := store.Pending(t.Context(), db, store.Migrations())
+	assert.Error(t, err)
+}
+
+func TestPending_BadFileName_ReturnsError(t *testing.T) {
+	_, err := store.Pending(t.Context(), openSQLite(t), fstest.MapFS{"bad.sql": {Data: []byte("x")}})
+	assert.Error(t, err)
+}
