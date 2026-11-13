@@ -59,7 +59,9 @@ func (h *harness) do(method, target string, hdr ...string) *httptest.ResponseRec
 
 func errorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
 	t.Helper()
-	var body struct{ Error struct{ Code, Message string } }
+	var body struct {
+		Error struct{ Code, Message string }
+	}
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body), rec.Body.String())
 	return body.Error.Code
 }
@@ -101,7 +103,7 @@ func TestRoot_ServedBySPAHandler(t *testing.T) {
 	rec := newHarness("https://k.example.com").do(http.MethodGet, "/")
 	assert.Equal(t, http.StatusOK, rec.Code)
 	assert.Equal(t, "<html>app</html>", rec.Body.String())
-	assert.Empty(t, rec.Header().Get("Cache-Control") == "no-store", "SPA responses are not marked no-store")
+	assert.NotEqual(t, "no-store", rec.Header().Get("Cache-Control"), "SPA responses are not marked no-store")
 }
 
 func TestSecurityHeaders_OnEveryResponse(t *testing.T) {
@@ -247,29 +249,29 @@ type payload struct {
 	Name string `json:"name"`
 }
 
-func decode(body string) (payload, error, *httptest.ResponseRecorder) {
+func decode(body string) (payload, error) {
 	var p payload
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
 	err := httpapi.DecodeJSON(rec, req, &p)
-	return p, err, rec
+	return p, err
 }
 
 func TestDecodeJSON(t *testing.T) {
-	p, err, _ := decode(`{"name":"x"}`)
+	p, err := decode(`{"name":"x"}`)
 	require.NoError(t, err)
 	assert.Equal(t, "x", p.Name)
 
-	_, err, _ = decode(`{"name":"x","extra":1}`)
+	_, err = decode(`{"name":"x","extra":1}`)
 	assert.ErrorIs(t, err, apperr.ErrInvalid, "unknown fields are rejected")
 
-	_, err, _ = decode(`{"name":`)
+	_, err = decode(`{"name":`)
 	assert.ErrorIs(t, err, apperr.ErrInvalid)
 
-	_, err, _ = decode(`{"name":"x"} {"name":"y"}`)
+	_, err = decode(`{"name":"x"} {"name":"y"}`)
 	assert.ErrorIs(t, err, apperr.ErrInvalid, "trailing data is rejected")
 
-	_, err, _ = decode(`{"name":"` + strings.Repeat("a", 1<<20) + `"}`)
+	_, err = decode(`{"name":"` + strings.Repeat("a", 1<<20) + `"}`)
 	assert.ErrorIs(t, err, apperr.ErrTooLarge)
 
 	rec := httptest.NewRecorder()
