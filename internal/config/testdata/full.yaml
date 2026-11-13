@@ -1,0 +1,77 @@
+server:
+  listenAddress: ":9090"
+  publicURL: https://kubelook.example.org
+database:
+  driver: postgres
+  sqlitePath: /var/lib/kubelook/k.db
+  migrateOnStart: true
+session:
+  idleTimeout: 10m
+  maxLifetime: 2h
+auth:
+  restrictSignIn: false
+  google:
+    clientId: google-id
+    allowedDomains: [example.org, example.com]
+    issuerURL: https://idp.example.org
+  github:
+    clientId: github-id
+    allowedOrgs: [acme, widgets]
+    baseURL: https://ghe.example.org
+    apiBaseURL: https://ghe.example.org/api/v3
+vault:
+  address: https://vault.example.org
+  kubernetesMountPrefix: k8s/
+  credsNamespace: ops
+  clusterRoleBinding: false
+  candidateRoles: [viewer, editor]
+  tokenTTL: 45m
+  expiryWarning: 10m
+  remintBefore: 2m
+kubeconfig:
+  enabled: false
+fileBrowser:
+  enabled: false
+  maxTransferBytes: 1024
+logs:
+  historyMaxLines: 100
+  liveBufferLines: 200
+  maxLinesPerSecond: 300
+shell:
+  idleTimeout: 5m
+nodeShell:
+  enabled: true
+  image: example.org/node-shell:1
+debug:
+  image: example.org/debug:2
+  shell: /bin/sh
+  profiles:
+    - name: net
+      profile: netadmin
+      shareProcessNamespace: true
+helm:
+  version: 3
+  maxConcurrentJobs: 2
+  maxChartBytes: 2048
+  repositories:
+    - name: bitnami
+      url: https://charts.example.org
+watch:
+  maxPerUser: 7
+memory:
+  refuseNewWorkPercent: 60
+audit:
+  retentionDays: 90
+maintenance:
+  banner: Down at noon
+modules:
+  keda:
+    enabled: false
+  trivy:
+    enabled: auto
+prometheus:
+  clusters:
+    "v:prod":
+      url: https://prom.example.org
+telemetry:
+  otlpEndpoint: otel.example.org:4317
