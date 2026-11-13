@@ -43,7 +43,7 @@ func TestMigrate_InvalidSQL_NamesFileAndRollsBackOnlyThatFile(t *testing.T) {
 	ctx := t.Context()
 	db := openSQLite(t)
 	fsys := fstest.MapFS{
-		"0001_a.sql": {Data: []byte("CREATE TABLE a (id TEXT PRIMARY KEY)")},
+		"0001_a.sql":   {Data: []byte("CREATE TABLE a (id TEXT PRIMARY KEY)")},
 		"0002_bad.sql": {Data: []byte("CREATE TABLE half (id TEXT PRIMARY KEY)\n-- statement-break\nTHIS IS NOT SQL")},
 	}
 	err := store.Migrate(ctx, db, fsys)
@@ -71,9 +71,8 @@ func TestMigrate_CommentOnlyStatementsAreSkipped(t *testing.T) {
 	assert.Equal(t, 1, count(t, db, "schema_migrations"))
 }
 
-func TestMigrate_UnreadableMigration_ReturnsError(t *testing.T) {
-	fsys := fstest.MapFS{"0001_dir.sql/inner": {Data: []byte("x")}}
-	// 0001_dir.sql is a directory: it is skipped, not treated as a migration.
+func TestMigrate_DirectoryNamedLikeMigration_IsSkipped(t *testing.T) {
+	fsys := fstest.MapFS{"0001_dir.sql/inner": {Data: []byte("x")}} // a directory, not a migration
 	require.NoError(t, store.Migrate(t.Context(), openSQLite(t), fsys))
 }
 

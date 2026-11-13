@@ -1,0 +1,2 @@
+-- Kubelook schema, step 1: the migrator itself creates schema_migrations.
+-- Tables are added by the numbered files that follow, one per feature.
