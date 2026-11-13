@@ -21,6 +21,7 @@ func withSessions(t *testing.T) (*harness, string, string) {
 	t.Helper()
 	h := newHarness("http://localhost:8080")
 	db := storetest.New(t)
+	h.db = db
 	user, err := store.NewUsers(db, h.fake, func() string { return "u1" }).Upsert(t.Context(), "google", "s", "e", "n")
 	require.NoError(t, err)
 	h.deps.Sessions = session.NewManager(session.Deps{

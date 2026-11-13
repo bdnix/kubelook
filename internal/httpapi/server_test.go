@@ -21,6 +21,7 @@ import (
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/httpapi"
+	"github.com/bdnix/kubelook/internal/store"
 )
 
 var t0 = time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)
@@ -28,6 +29,7 @@ var t0 = time.Date(2026, 11, 13, 12, 0, 0, 0, time.UTC)
 const wantCSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 
 type harness struct {
+	db   *store.DB
 	deps httpapi.Deps
 	logs *bytes.Buffer
 	fake *clock.Fake

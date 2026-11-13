@@ -103,7 +103,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		audit: audit.NewRecorder(db, o.Clock, o.Stdout, store.NewID),
 	}
 	c.handler = httpapi.New(httpapi.Deps{
-		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr,
+		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil

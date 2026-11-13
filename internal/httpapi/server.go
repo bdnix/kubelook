@@ -26,6 +26,7 @@ type Deps struct {
 	NewID  func() string // request IDs; nil → store.NewID
 
 	Sessions *session.Manager // nil → no session or CSRF checks (not wired yet)
+	Users    *store.Users
 }
 
 // New builds the handler.
@@ -47,6 +48,7 @@ func New(d Deps) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	mux.HandleFunc("GET /api/v1/me", d.me)
 	// API routes are registered above the SPA catch-all; unknown API paths get a JSON 404.
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, d.Log, fmt.Errorf("no such API route: %w", ErrNotFound))

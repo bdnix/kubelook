@@ -1,0 +1,45 @@
+.layout {
+  display: grid;
+  grid-template-columns: 4rem 14rem minmax(0, 1fr) auto;
+  grid-template-rows: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'clusters resources main drawer'
+    'dock dock dock dock';
+  height: 100vh;
+}
+.layout-clusters {
+  grid-area: clusters;
+  border-right: 1px solid var(--border);
+}
+.layout-resources {
+  grid-area: resources;
+  border-right: 1px solid var(--border);
+}
+.layout-main {
+  grid-area: main;
+  overflow: auto;
+  padding: 1rem;
+}
+.layout-drawer {
+  grid-area: drawer;
+  width: 28rem;
+  border-left: 1px solid var(--border);
+  overflow: auto;
+}
+.layout-dock {
+  grid-area: dock;
+  border-top: 1px solid var(--border);
+}
+.banner {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border);
+}
+.banner-warning {
+  border-color: var(--warn);
+}
+.banner-error {
+  border-color: var(--danger);
+}
