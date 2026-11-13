@@ -1,0 +1,58 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - depguard
+    - errorlint
+    - forbidigo
+    - gocritic
+    - gosec
+    - misspell
+    - noctx
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - unconvert
+    - unparam
+  settings:
+    forbidigo:
+      forbid:
+        - pattern: '^time\.(Now|Since|Until|Sleep|After|AfterFunc|Tick|NewTimer|NewTicker)$'
+          msg: use clock.Clock (internal/clock) so tests stay deterministic
+        - pattern: '^(fmt\.Print(f|ln)?|print|println)$'
+          msg: write to an injected io.Writer or slog.Logger
+    depguard:
+      rules:
+        only-app-imports-httpapi:
+          files:
+            - "!**/internal/app/**"
+            - "!**/internal/httpapi/**"
+          deny:
+            - pkg: github.com/bdnix/kubelook/internal/httpapi
+              desc: only internal/app may import httpapi
+        only-main-imports-app:
+          files:
+            - "!**/cmd/kubelook/**"
+            - "!**/internal/app/**"
+          deny:
+            - pkg: github.com/bdnix/kubelook/internal/app
+              desc: only cmd/kubelook may import app
+  exclusions:
+    rules:
+      - path: internal/clock/
+        linters: [forbidigo]
+      - path: internal/testutil/
+        linters: [forbidigo]
+      - path: _test\.go
+        linters: [gosec, noctx, unparam]
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/bdnix/kubelook

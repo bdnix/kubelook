@@ -5,12 +5,12 @@ Written 2026-11-11. Every version below was looked up on that date (see §3).
 
 **How to use this plan (read first, executor).**
 
-1. Work through the steps strictly in order. Never start a step before the previous step's pull request is merged with CI green.
-2. One step = one branch `step/<id>-<slug>` = one pull request into `main`.
+1. Work through the steps strictly in order. The 96 steps are grouped into **10 pull requests** (see "Pull request map" in §7). Never start a pull request before the previous one is merged with CI green.
+2. One pull request = one branch `pr/<nn>-<slug>` (or the branch the repository owner designates) into `main`. A step is a group of commits inside its pull request, never a pull request of its own. Push after every step so CI runs step by step; open the pull request as a draft after the first step and mark it ready after the last.
 3. Inside every step, follow the order **Red → Green → Refactor** exactly as written. Commit after each: `test(<id>): …` (failing tests), `feat(<id>): …` (implementation), `refactor(<id>): …` (only if something changed).
 4. Do not make design decisions. If something is not specified, look in this order: the step → §5 Conventions → §1 Assumptions → `docs/spec.md`. If it is still not answered, stop and ask; do not guess.
 5. Do not upgrade, swap or add dependencies beyond those in §3. Dependabot does upgrades after the project is done.
-6. A step is finished only when its **Acceptance** commands print the expected output *and* `make verify` prints `VERIFY OK` *and* CI is green.
+6. A step is finished only when its **Acceptance** commands print the expected output *and* `make verify` prints `VERIFY OK` (from Step 0.5 on) *and* CI is green on the pushed commit (from Step 0.7 on, when the pipeline exists). A pull request is finished when every step in it is finished; only then is it merged, as a squash merge whose message is the pull request title.
 
 ---
 
@@ -115,6 +115,14 @@ The spec leaves these open. Each line is the decision this plan takes. Items mar
 - U3. Runtime behaviour of the frontend tool chain (Vite 8, Vitest 5, React Router 8). Step 0.4 proves the tool chain and the coverage gate before anything depends on them.
 - U4. Image digests other than the ones printed in §3. Step 0.6 gives the command to resolve them.
 - U5. Download hosts `get.helm.sh` (Helm CLI) and `go.dev` were blocked in the planning sandbox, so the Helm CLI download in `hack/install-tools.sh` was not run. The Helm version itself was verified from the upstream git tag.
+
+**Known gaps in the Phase 0 tooling** (found in review; accepted for now, to be closed in the step named)
+
+- G1. The ESLint rules of Step 0.4 do not catch `el.innerHTML = …`, a spread `dangerouslySetInnerHTML`, or `XMLHttpRequest`. Close in Step 1.11 (web shell, where `SafeLink` and the API client are added) with `no-restricted-syntax` selectors for `innerHTML` and `outerHTML` assignments and `no-restricted-globals` for `XMLHttpRequest`; prove each with a temporary offending line, as Step 0.4 does for coverage.
+- G2. The `forbidigo` bans on `time.Now` and `fmt.Print*` in `.golangci.yml` match the written call, so an aliased import (`import t "time"`) bypasses them. Reviewers must reject aliased imports of `time` and `fmt`; revisit with `importas` or `depguard` if it ever happens.
+- G3. `install-tools.sh` fetches the kubectl and Helm checksums from the same host as the binaries. The check catches corruption, not a compromised host. Pin the digests in the script if that matters.
+- G4. The Vite dev proxy in `vite.config.ts` may need `ws: true` for the WebSocket path `/api/v1/ws`. Not verified for Vite 8; settle it in Step 3.8 when the first WebSocket client exists.
+- G5. `make verify` runs `tsc` twice (see Step 0.4 pitfalls); accepted.
 
 ---
 
@@ -261,7 +269,7 @@ Package dependency rule (enforced by review, and by `depguard` in Step 0.3): `in
 2. **Green.** Write the smallest implementation that makes the Red command pass. Do not add behaviour that no test asks for. Run the Green command; it must print `ok` (Go) or `Test Files  N passed` (Vitest) with zero failures. Commit.
 3. **Refactor.** Apply the cleanups the step lists (and only those plus removal of duplication you introduced). Re-run the same command; it must still pass. Commit if anything changed.
 4. Run `make verify`. It must end with `VERIFY OK`. This includes lint, all unit tests, both coverage gates and the build.
-5. Open the pull request. Merge only when every CI job is green.
+5. Push. CI must be green on the step's last commit before the next step starts. After the last step of the pull request (§7), mark it ready; merge only when every CI job is green.
 
 ### 5.2 Commands (defined in the Makefile, Step 0.1 onwards)
 
@@ -313,6 +321,7 @@ Package dependency rule (enforced by review, and by `depguard` in Step 0.3): `in
 ### 5.7 Git and CI conventions
 
 - Commits follow Conventional Commits. Do not put session URLs or tool names in commits or PR text.
+- Pull request titles follow `<type>(pr<n>): <what the pull request delivers>`, and the body lists the steps it contains with their acceptance results. Reviewers read a pull request step by step, using the `test(<id>)` / `feat(<id>)` commits.
 - Never push to `main` directly. Never merge with a red or skipped required check. Never disable a test or lower a threshold to get green.
 
 ---
@@ -353,7 +362,7 @@ Package dependency rule (enforced by review, and by `depguard` in Step 0.3): `in
 
 - **What they cover:** behaviour that only a real system can prove. Vault: token lookup, mount listing limited by policy, capability checks (`update` vs `create`), reading mount config, minting credentials, renewal, leases. Kubernetes (two kind clusters, 1.35 and 1.37): list/watch/resume, logs, exec over WebSocket, ephemeral containers, server-side dry run, optimistic-concurrency conflicts, eviction and drain with PodDisruptionBudgets, `SelfSubjectAccessReview`, CRD discovery, Helm 3 and Helm 4 installs. PostgreSQL: both dialects, the insert-only audit role and row-level security. Kubelook as a container image: sign-in flows, sessions across two replicas, logout closing every connection, the browser UI through Playwright (including Monaco and xterm).
 - They are Go tests under `test/integration` with build tag `integration` (so `go test ./...` never compiles them) plus Playwright tests under `test/e2e`.
-- They run with `make it` locally and in `.github/workflows/integration.yml`. They must pass for a pull request to merge from Phase 7 on.
+- They run with `make it` locally and in `.github/workflows/integration.yml`. They must pass for a pull request to merge from pull request 9 (Phase 7) on.
 
 ---
 
@@ -378,8 +387,34 @@ Steps are executed in numeric order; this map shows the real dependencies so a f
 8.1 → 8.2 → 8.3 → 8.4 → 8.5 → 8.6
 ```
 
+### Pull request map
+
+The whole plan is delivered in 10 pull requests. Each ends in a state where `main` builds, passes `make verify` and is green in CI.
+
+| PR | Steps | Delivers | Ends with |
+| --- | --- | --- | --- |
+| 1 | 0.1–0.9 | Scaffold, `version` command, web app, embed, Dockerfile, **the CI pipeline**, image scan and push, Dependabot | The `ci` workflow green on the pull request itself: lint, tests, both coverage gates, build, vulnerability check, image scan |
+| 2 | 1.1–1.11 | Foundations: config, clock, crypto, store, users, sessions, audit, HTTP server, session manager, `serve`/`migrate`, web shell | A server that starts and serves the web shell |
+| 3 | 2.1–2.10 | Sign-in (Google, GitHub), Vault client and discovery, saved credentials, kubeconfig upload, cluster list, sign-in UI | A user can sign in and see their clusters |
+| 4 | 3.1–3.11 | Credential broker, Kubernetes clients, redaction, read API, RBAC checks, WebSocket, watch hub, live lists, logs, Vault outage handling | Live resource lists and log streaming |
+| 5 | 4.1–4.10 | Writes with audit, kind registry, details drawer, YAML editor, workload actions, Secret reveal, shells, debug toolkit, pod file browser | Day-to-day operations on workloads |
+| 6 | 4.11–4.19 | Durable jobs, node actions and drain, full logs, field filter, export, settings, navigation, metrics, "who can" | All core features of the spec |
+| 7 | 5.1–5.15 | Custom resources, module framework, Helm 3 and 4, Flux, resource map, ecosystem modules, cluster overview | All platform features of the spec |
+| 8 | 6.1–6.4 | Prometheus metrics, traces and logs, memory guard, load test | Hardening complete |
+| 9 | 7.1–7.11, 8.1 part A | Integration and browser suites on kind + Vault as required checks; nightly run; spike findings; the debug image published | The `integration` workflow green on the pull request itself |
+| 10 | 8.1 part B, 8.2–8.6 | Debug image digest pin, Helm chart, chart test, release workflow, documentation, final verification | §8 Definition of done |
+
+Rules for this grouping:
+
+- Pull request 1 **must** contain the pipeline (Steps 0.7–0.9). Nothing is merged to `main` before CI exists, so every merge in the project's history was checked by CI.
+- Phase 4 is split after Step 4.10 because 4.11 (durable jobs) starts a new dependency chain (4.12 and 5.5 need it); nothing in 4.1–4.10 depends on 4.11–4.19.
+- Step 8.1 needs two merges (the image must be published from `main` before its digest can be pinned), so its part A rides in pull request 9 and part B in pull request 10.
+- Do not split or merge these groups without the repository owner's agreement. If a pull request must be split because of size, split only at a step boundary.
+
 ---
 # Phase 0 — Repository and CI/CD
+
+**Delivered in pull request 1** (all of Phase 0; it is not merged until Steps 0.7–0.9 have added the pipeline and it is green).
 
 Outcome: an empty-but-real application (a `kubelook version` command and a one-component web page) with the full pipeline around it: lint, unit tests, a 90% coverage gate that is proven to fail, build, container image with vulnerability scan, push to GHCR, Dependabot. Every later step lands inside this pipeline.
 
@@ -400,12 +435,15 @@ printf '26.13.0\n' > web/.nvmrc      # create web/ first: mkdir -p web
 chmod +x hack/install-tools.sh
 ```
 
-`Makefile` (complete; later steps only add targets where they say so):
+`Makefile` (complete; later steps only add targets where they say so). `.NOTPARALLEL:` is deliberate: the web build rewrites `internal/webui/dist`, which the Go build embeds, so targets must never run in parallel. `make clean` removes only `bin/kubelook`, never the tools that `make tools` installs into `bin/`:
 
 ```make
 SHELL := /usr/bin/env bash
 .SHELLFLAGS := -euo pipefail -c
 .DEFAULT_GOAL := verify
+
+# The web build rewrites internal/webui/dist, which the Go build embeds: never run targets in parallel.
+.NOTPARALLEL:
 
 BIN := $(CURDIR)/bin
 export PATH := $(BIN):$(PATH)
@@ -454,6 +492,7 @@ cover: cover-go cover-web
 
 build-web:
 	cd web && npm run build
+	mkdir -p internal/webui/dist
 	find internal/webui/dist -mindepth 1 ! -name placeholder.txt -delete
 	cp -R web/dist/. internal/webui/dist/
 
@@ -464,25 +503,37 @@ build: build-web build-go
 	@echo "BUILD OK"
 
 image:
-	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t kubelook:dev .
+	@test -f Dockerfile || { echo "no Dockerfile yet (added in Step 0.6)" >&2; exit 1; }
+	docker build --build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) -t kubelook:$(VERSION) .
 
 verify: lint cover build
 	@echo "VERIFY OK"
 
 clean:
-	rm -rf $(BIN) coverage.out web/dist web/coverage
+	rm -rf $(BIN)/kubelook coverage.out web/dist web/coverage
+	mkdir -p internal/webui/dist
 	find internal/webui/dist -mindepth 1 ! -name placeholder.txt -delete
 ```
 
-`hack/install-tools.sh` (installs into `./bin`; safe to re-run):
+`hack/install-tools.sh` (installs into `./bin`; safe to re-run). It builds the Go tools with the Go version written in `go.mod` (`GOTOOLCHAIN`), because a lint binary built with an older Go cannot load a module that targets a newer one. Installed versions are compared exactly (`grep -Fqw`), downloads go to a temporary directory and are checksum-verified before they are moved into `bin/`, and `shasum` is used where `sha256sum` is missing (macOS). The checksums come from the same host as the binaries, so they catch corruption, not a compromised host:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 export GOBIN="$ROOT/bin"
+# Build the tools with the same Go as the module so lint can load its code.
+export GOTOOLCHAIN="go$(sed -n 's/^go //p' "$ROOT/go.mod")"
 mkdir -p "$GOBIN"
 OS="$(go env GOOS)"; ARCH="$(go env GOARCH)"
+
+# sha256 check that works with GNU coreutils and with stock macOS.
+sha256_check() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum -c -; else shasum -a 256 -c -; fi
+}
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
 
 GOLANGCI_VERSION=v2.15.0
 GOVULNCHECK_VERSION=v1.9.0
@@ -494,19 +545,20 @@ go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VE
 go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
 go install "sigs.k8s.io/kind@${KIND_VERSION}"
 
-if [ ! -x "$GOBIN/kubectl" ] || ! "$GOBIN/kubectl" version --client 2>/dev/null | grep -q "${KUBECTL_VERSION}"; then
-  curl -fsSLo "$GOBIN/kubectl" "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/${OS}/${ARCH}/kubectl"
-  echo "$(curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/${OS}/${ARCH}/kubectl.sha256")  $GOBIN/kubectl" | sha256sum -c -
-  chmod +x "$GOBIN/kubectl"
+have_kubectl="$("$GOBIN/kubectl" version --client 2>/dev/null || true)"
+if ! grep -Fqw "${KUBECTL_VERSION}" <<<"$have_kubectl"; then
+  curl -fsSLo "$tmp/kubectl" "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/${OS}/${ARCH}/kubectl"
+  echo "$(curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/${OS}/${ARCH}/kubectl.sha256")  $tmp/kubectl" | sha256_check
+  chmod +x "$tmp/kubectl"
+  mv "$tmp/kubectl" "$GOBIN/kubectl"
 fi
 
-if [ ! -x "$GOBIN/helm" ] || ! "$GOBIN/helm" version --short 2>/dev/null | grep -q "${HELM_VERSION}"; then
-  tmp="$(mktemp -d)"
+have_helm="$("$GOBIN/helm" version --short 2>/dev/null || true)"
+if ! grep -Fqw "${HELM_VERSION}" <<<"$have_helm"; then
   curl -fsSLo "$tmp/helm.tgz" "https://get.helm.sh/helm-${HELM_VERSION}-${OS}-${ARCH}.tar.gz"
-  echo "$(curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-${OS}-${ARCH}.tar.gz.sha256sum" | awk '{print $1}')  $tmp/helm.tgz" | sha256sum -c -
+  echo "$(curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-${OS}-${ARCH}.tar.gz.sha256sum" | awk '{print $1}')  $tmp/helm.tgz" | sha256_check
   tar -xzf "$tmp/helm.tgz" -C "$tmp"
   mv "$tmp/${OS}-${ARCH}/helm" "$GOBIN/helm"
-  rm -rf "$tmp"
 fi
 echo "TOOLS OK"
 ```
@@ -543,7 +595,7 @@ bin/helm version --short | grep -c 'v4.3.1'       # 1
 
 **Pitfalls.**
 - Makefile recipe lines must start with a tab, not spaces.
-- On macOS `sha256sum` is missing: install coreutils or run in Linux. CI is Linux.
+- The macOS `shasum` fallback in `install-tools.sh` has not been run; CI and the reference environment are Linux.
 - `make verify` does not work yet (no code, no web). It first works at the end of Step 0.5. Until then use the per-step acceptance commands.
 
 ### Step 0.2 — First unit, test-first: `version` and the command entry point
@@ -629,6 +681,8 @@ Expected failure: build errors `undefined: version.String`, `undefined: app.Main
 
 ```go
 // internal/version/version.go
+
+// Package version holds the build version.
 package version
 
 import "fmt"
@@ -639,11 +693,14 @@ var (
 	Commit  = "unknown"
 )
 
+// String returns the human-readable version line.
 func String() string { return fmt.Sprintf("kubelook %s (commit %s)", Version, Commit) }
 ```
 
 ```go
 // internal/app/app.go
+
+// Package app dispatches the kubelook commands.
 package app
 
 import (
@@ -656,17 +713,17 @@ import (
 const usage = "usage: kubelook <serve|migrate|audit-cleanup|version>"
 
 // Main is the whole program. args excludes the program name. It returns the exit code.
-func Main(args []string, stdout, stderr io.Writer, getenv func(string) string) int {
+func Main(args []string, stdout, stderr io.Writer, _ func(string) string) int {
 	if len(args) == 0 {
-		fmt.Fprintln(stderr, usage)
+		_, _ = fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	switch args[0] {
 	case "version":
-		fmt.Fprintln(stdout, version.String())
+		_, _ = fmt.Fprintln(stdout, version.String())
 		return 0
 	default:
-		fmt.Fprintf(stderr, "unknown command %q\n%s\n", args[0], usage)
+		_, _ = fmt.Fprintf(stderr, "unknown command %q\n%s\n", args[0], usage)
 		return 2
 	}
 }
@@ -674,6 +731,8 @@ func Main(args []string, stdout, stderr io.Writer, getenv func(string) string) i
 
 ```go
 // cmd/kubelook/main.go
+
+// Command kubelook is the Kubelook server and its maintenance commands.
 package main
 
 import (
@@ -685,7 +744,7 @@ import (
 func main() { os.Exit(app.Main(os.Args[1:], os.Stdout, os.Stderr, os.Getenv)) }
 ```
 
-Run `go mod tidy && make test-go PKG="./internal/version/... ./internal/app/..."`. Expected: two `ok` lines.
+The code above already satisfies the linters of Step 0.3 (package comments, checked-or-discarded write errors, no unused parameter name). The first Red run fails with `missing go.sum entry … go.yaml.in/yaml/v3` instead of `undefined: …` until `go mod tidy` has run; that still counts as the expected failure. Run `go mod tidy && make test-go PKG="./internal/version/... ./internal/app/..."`. Expected: two `ok` lines.
 
 **Refactor.** None needed. Re-run the command; still `ok`.
 
@@ -736,15 +795,20 @@ linters:
           msg: write to an injected io.Writer or slog.Logger
     depguard:
       rules:
-        handlers-are-leaves:
+        only-app-imports-httpapi:
           files:
-            - "!**/internal/httpapi/**"
             - "!**/internal/app/**"
+            - "!**/internal/httpapi/**"
           deny:
             - pkg: github.com/bdnix/kubelook/internal/httpapi
               desc: only internal/app may import httpapi
+        only-main-imports-app:
+          files:
+            - "!**/cmd/kubelook/**"
+            - "!**/internal/app/**"
+          deny:
             - pkg: github.com/bdnix/kubelook/internal/app
-              desc: nothing imports app
+              desc: only cmd/kubelook may import app
   exclusions:
     rules:
       - path: internal/clock/
@@ -822,13 +886,15 @@ git status --porcelain internal/     # empty: the temporary function is gone
 **Pitfalls.**
 - The exclude paths are regular expressions matched against paths relative to the module root. Do not add entries. Every new exclusion needs a row in §6 and a reason.
 - Since Go 1.22, packages without test files are reported at 0% and count against the total. Every package therefore needs tests from the commit that creates it.
+- `depguard` ignores blank (`_`) imports; the two rules therefore guard ordinary imports only. `only-app-imports-httpapi` and `only-main-imports-app` are separate rules so that `cmd/kubelook` may import `app` but not `httpapi`, and `httpapi` may not import `app`.
+- Go tools must not see `web/node_modules`: Step 0.4 adds `web/go.mod` for that.
 - If `golangci-lint config verify` rejects a key (the v2 schema changes between minor versions), run `bin/golangci-lint linters` and `bin/golangci-lint help linters` and correct only the key name; do not drop the rule.
 
 ### Step 0.4 — Web scaffold, test-first, with the web coverage gate
 
 **Goal.** A Vite + React + TypeScript app with one tested component, lint, formatting, type check, and Vitest coverage thresholds that are proven to fail.
 
-**Files.** Create under `web/`: `package.json`, `package-lock.json` (generated), `tsconfig.json`, `vite.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, `index.html`, `src/main.tsx`, `src/App.tsx`, `src/App.test.tsx`, `src/test/setup.ts`, `src/styles/theme.css`.
+**Files.** Create under `web/`: `package.json`, `package-lock.json` (generated), `tsconfig.json`, `vite.config.ts`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, `index.html`, `go.mod`, `src/main.tsx`, `src/vite-env.d.ts`, `src/App.tsx`, `src/App.test.tsx`, `src/test/setup.ts`, `src/styles/theme.css`.
 
 Inner layout of `web/src` used by all later steps:
 
@@ -854,7 +920,9 @@ src/
 ```bash
 cd web
 npm init -y
-npm pkg set name=kubelook-web private=true type=module
+npm pkg set name=kubelook-web type=module license=MIT
+npm pkg set --json private=true
+npm pkg delete main keywords author description
 npm pkg set scripts.dev="vite" scripts.build="tsc --noEmit && vite build" scripts.test="vitest run" \
   scripts.lint="eslint . --max-warnings=0" scripts.format:check="prettier --check ." scripts.typecheck="tsc --noEmit"
 npm install --save-exact react@19.3.1 react-dom@19.3.1
@@ -863,10 +931,10 @@ npm install --save-dev --save-exact typescript@6.0.3 vite@8.3.7 @vitejs/plugin-r
   @testing-library/react@16.3.3 @testing-library/user-event@14.6.9 @testing-library/jest-dom@7.0.1 \
   eslint@10.14.0 typescript-eslint@8.72.2 eslint-plugin-react-hooks@7.1.1 prettier@3.9.10 \
   @types/react@19.3.0
-npm install --save-dev @testing-library/dom@^10 @types/react-dom@^19 @types/node@^26 @eslint/js@^10
+npm install --save-dev --save-exact @eslint/js@10.0.1 @testing-library/dom@10.4.2 @types/node@26.6.6 @types/react-dom@19.3.0
 ```
 
-(The four packages in the last command have no exact version in §3; the lock file pins whatever resolves. Commit `package-lock.json`.)
+(The four packages in the last command have no version in §3; these are the versions that resolved on 2026-11-11, pinned exactly so that `package.json` has no `^` ranges. Commit `package-lock.json`.)
 
 `vite.config.ts`:
 
@@ -901,7 +969,7 @@ export default defineConfig({
 });
 ```
 
-`tsconfig.json`: `"compilerOptions": { "target": "ES2022", "lib": ["ES2022", "DOM", "DOM.Iterable"], "module": "ESNext", "moduleResolution": "bundler", "jsx": "react-jsx", "strict": true, "noUncheckedIndexedAccess": true, "noEmit": true, "skipLibCheck": true, "isolatedModules": true, "types": ["vitest/globals", "@testing-library/jest-dom"] }, "include": ["src", "vite.config.ts"]`. Do not enable Vitest globals at runtime; tests import `describe`, `it`, `expect`, `vi` from `vitest` explicitly (remove `"vitest/globals"` from `types` if the type check complains).
+`tsconfig.json`: `"compilerOptions": { "target": "ES2022", "lib": ["ES2022", "DOM", "DOM.Iterable"], "module": "ESNext", "moduleResolution": "bundler", "jsx": "react-jsx", "strict": true, "noUncheckedIndexedAccess": true, "noEmit": true, "skipLibCheck": true, "isolatedModules": true, "types": ["@testing-library/jest-dom"] }, "include": ["src", "vite.config.ts"]`. Vitest globals are off at runtime and in the type check; tests import `describe`, `it`, `expect`, `vi` from `vitest` explicitly. A test that forgets the import therefore fails `tsc`.
 
 `eslint.config.js`:
 
@@ -922,17 +990,44 @@ export default [
       'react-hooks/exhaustive-deps': 'error',
       'no-restricted-syntax': [
         'error',
-        { selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']", message: 'Cluster content must be rendered as text.' },
+        {
+          selector: "JSXAttribute[name.name='dangerouslySetInnerHTML']",
+          message: 'Cluster content must be rendered as text.',
+        },
       ],
       'no-restricted-globals': ['error', { name: 'fetch', message: 'Use api/client.ts.' }],
+      'no-restricted-properties': [
+        'error',
+        ...['window', 'globalThis', 'self'].map((object) => ({
+          object,
+          property: 'fetch',
+          message: 'Use api/client.ts.',
+        })),
+      ],
     },
+  },
+  {
+    // The one place that may call fetch.
+    files: ['src/api/client.ts', 'src/api/client.test.ts'],
+    rules: { 'no-restricted-globals': 'off', 'no-restricted-properties': 'off' },
   },
 ];
 ```
 
 `.prettierrc.json`: `{ "singleQuote": true, "printWidth": 110 }`. `.prettierignore`: `dist`, `coverage`, `package-lock.json`.
 
-`src/test/setup.ts`: `import '@testing-library/jest-dom/vitest';`
+`src/test/setup.ts`: registers the jest-dom matchers and `afterEach(cleanup)` (Testing Library only cleans up by itself when test globals are on):
+
+```ts
+import '@testing-library/jest-dom/vitest';
+import { cleanup } from '@testing-library/react';
+import { afterEach } from 'vitest';
+
+// Vitest globals are off, so Testing Library cannot register its own cleanup.
+afterEach(cleanup);
+```
+
+`go.mod` (in `web/`): a stub module (`module example.invalid/kubelook-web-ignore`, `go 1.27.4`, no code) so that `go ./...`, `go test`, coverage and the Go linters skip the Go files some npm packages ship inside `web/node_modules`. `src/vite-env.d.ts`: `/// <reference types="vite/client" />` (TypeScript 6 needs a declaration for the CSS import).
 
 `index.html`: standard Vite HTML with `<div id="root"></div>` and `<script type="module" src="/src/main.tsx"></script>`, `<title>Kubelook</title>`. No inline scripts or inline styles (the CSP in Step 1.8 forbids them).
 
@@ -953,11 +1048,11 @@ describe('App', () => {
 
 Run `make test-web FILE=src/App.test.tsx`. Expected failure: `Failed to resolve import "./App"`.
 
-**Green.** `src/App.tsx`: `export function App() { return <main><h1>Kubelook</h1></main>; }`. `src/main.tsx`: import `./styles/theme.css`, then `createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)`. `src/styles/theme.css`: `:root` custom properties for a light theme and `[data-theme='dark']` overrides (`--bg`, `--fg`, `--muted`, `--border`, `--accent`, `--danger`, `--warn`, `--ok`), plus `body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; }`.
+**Green.** `src/App.tsx`: `export function App() { return <main><h1>Kubelook</h1></main>; }`. `src/main.tsx`: import `./styles/theme.css`, look up `#root` (throw `missing #root element` if absent; the `!` assertion is banned by the strict lint rules), then `createRoot(root).render(<StrictMode><App /></StrictMode>)`. `src/styles/theme.css`: `:root` custom properties for a light theme and `[data-theme='dark']` overrides (`--bg`, `--fg`, `--muted`, `--border`, `--accent`, `--danger`, `--warn`, `--ok`), plus `body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; }`.
 
 Run the same command. Expected: `Test Files  1 passed (1)`.
 
-**Prove the web gate fails.** Add `src/lib/tmp.ts` with a function that has three branches and no test. Run `make cover-web; echo "exit=$?"`. Expected: an error line starting `ERROR: Coverage for` naming a threshold `(90%)`, and a non-zero exit. Delete `src/lib/tmp.ts`. Run `make cover-web` again: it must pass and print a coverage table with `All files | 100`.
+**Prove the web gate fails.** Add `src/lib/tmp.ts` with a function that has three branches and no test. Run `make cover-web; echo "exit=$?"`. Expected: an error line starting `ERROR: Coverage for` naming a threshold `(90%)`, and a non-zero exit. Delete `src/lib/tmp.ts`. Run `make cover-web` again: it must pass and print `Statements   : 100%` in the coverage summary (Vitest 5.1.0 prints no table when every file is fully covered).
 
 **Refactor.** None.
 
@@ -974,6 +1069,7 @@ cd web && npm run build && ls dist/index.html     # file exists
 - If `tseslint.configs.strict` is not iterable in this version, run `node -e "import('typescript-eslint').then(m=>console.log(Object.keys(m.default.configs)))"` in `web/` and use the `strict` entry as that output shows. Do not remove the strict rules.
 - If Vitest reports an unknown `coverage.thresholds` key, run `npx vitest --help` and `npx vitest run --coverage --coverage.thresholds.lines=90` to find the supported spelling. The gate must exist before continuing.
 - Never import `monaco-editor` or `@xterm/xterm` outside `src/adapters/`.
+- `npm run build` runs `tsc --noEmit` first on purpose: the Dockerfile of Step 0.6 runs only `npm run build`, and an image must never be built from code that fails type-checking. `make verify` therefore runs `tsc` twice (once in `lint`, once in `build`); that is accepted.
 
 ### Step 0.5 — Embed the web build in the Go binary
 
@@ -1319,10 +1415,10 @@ fi
 echo '```'
 ```
 
-**Red / Green.** Prove the pipeline rejects low coverage: on a throw-away branch `ci-proof`, add the untested function from Step 0.3, push, open a draft PR. Expected: job `coverage (unit tests, >= 90%)` fails and `ci-ok` fails. Close the PR and delete the branch. Then open the real PR for this step. Expected: all jobs green, and the `coverage` job summary shows the Go total and four web percentages.
+**Red / Green.** Prove the pipeline rejects low coverage on pull request 1 itself (no extra pull request): commit the untested function from Step 0.3 as `test(0.7): prove the coverage gate fails in CI` and push. Expected: job `coverage (unit tests, >= 90%)` fails and `ci-ok` fails. Then `git revert` that commit and push. Expected: all jobs green, and the `coverage` job summary shows the Go total and four web percentages.
 
 **Acceptance.**
-- The PR for this step shows eight jobs: `lint-go`, `lint-web`, `test-go`, `test-web`, `coverage (unit tests, >= 90%)`, `build`, `vuln`, `ci-ok`; all green.
+- Pull request 1 shows eight jobs: `lint-go`, `lint-web`, `test-go`, `test-web`, `coverage (unit tests, >= 90%)`, `build`, `vuln`, `ci-ok`; all green.
 - `grep -c 'uses: .*@v[0-9]' .github/workflows/*.yml` prints `0` (no tag-pinned actions).
 - `grep -L '^permissions:' .github/workflows/*.yml` prints nothing.
 
@@ -1494,6 +1590,8 @@ Job to add to `ci.yml` (and add `dependency-review` to nothing else: it only run
 
 ---
 # Phase 1 — Foundations
+
+**Delivered in pull request 2**.
 
 Outcome: `kubelook serve` starts, reads config, opens the database, runs migrations, serves the SPA, health endpoints and an authenticated-session skeleton. No sign-in yet.
 
@@ -2099,6 +2197,8 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 # Phase 2 — Sign-in and credentials
 
+**Delivered in pull request 3**.
+
 Outcome (the spec's spike, minus live data): a user signs in with Google or GitHub, pastes a Vault token or uploads a kubeconfig, and sees exactly the clusters that credential reaches. Saved credentials live encrypted in the browser.
 
 ### Step 2.1 — OAuth core: state, PKCE, provider interface
@@ -2444,6 +2544,8 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 ---
 # Phase 3 — Cluster access and live data
+
+**Delivered in pull request 4**.
 
 Outcome: opening a cluster mints credentials; lists are live through one WebSocket per tab; pod logs stream. This completes the spec's spike scope (sign-in, discovery, pods list, logs).
 
@@ -2846,6 +2948,8 @@ Command: `make test-go PKG="./internal/vault/... ./internal/httpapi/..."` and `m
 ---
 # Phase 4 — Core features
 
+**Delivered in pull request 5 (Steps 4.1–4.10) and pull request 6 (Steps 4.11–4.19)**.
+
 Outcome: the spec's "Phase 1. Core": all core kinds live, editing with dry run, actions, shells, debug containers, file browser, durable jobs and bulk actions, structured logs, field filter, exports, settings, navigation.
 
 ### Step 4.1 — Mutating resource API with audit
@@ -3182,6 +3286,8 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 **Pitfalls.** Use `Uint8Array` end to end; build base64 in chunks (no `String.fromCharCode(...bigArray)` spread, which overflows the stack).
 
+> **Pull request 6 starts here.** Pull request 5 (Steps 4.1–4.10) must be merged first.
+
 ### Step 4.11 — Durable jobs framework
 
 **Goal.** Long actions recorded before they start, run under a renewed lease, and classified by another replica if their replica dies (spec "Long actions are durable jobs").
@@ -3413,6 +3519,8 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 ---
 # Phase 5 — Platform features
+
+**Delivered in pull request 7**.
 
 Outcome: the spec's "Phase 2. Platform": CRD browser, Helm 3 and 4, Flux, resource map, Karpenter, the ecosystem modules, security views and the cluster overview.
 
@@ -3806,6 +3914,8 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 # Phase 6 — Hardening
 
+**Delivered in pull request 8**.
+
 ### Step 6.1 — Prometheus metrics
 
 **Goal.** Export the metrics the spec lists at `GET /metrics`.
@@ -3881,6 +3991,8 @@ load:
 
 ---
 # Phase 7 — Integration testing (kind + Vault)
+
+**Delivered in pull request 9** (together with Step 8.1 part A).
 
 Outcome: a suite that runs the real Kubelook image against real Vault, two real Kubernetes clusters (kind) and real PostgreSQL, locally with `make it-up && make it` and in CI. No mocks of Vault or Kubernetes. The only stand-in is the identity provider (A23).
 
@@ -4372,23 +4484,25 @@ jobs:
 
 # Phase 8 — Release packaging
 
+**Delivered in pull request 10** (Step 8.1 part A is delivered earlier, in pull request 9).
+
 Outcome: versioned multi-architecture images, the debug image, a Helm chart that installs a working console, and deployment documentation.
 
 ### Step 8.1 — Debug image and digest pin
 
 **Goal.** Publish `ghcr.io/bdnix/kubelook-netshoot` and pin Kubelook's default `debug.image` to its digest.
 
-**Files (PR 1).** Create `build/netshoot/Dockerfile` (`FROM nicolaka/netshoot:v0.16` plus OCI labels `org.opencontainers.image.source`, `…licenses=Apache-2.0`, `…description`), `.github/workflows/netshoot.yml`; add a `docker` entry for `/build/netshoot` to `.github/dependabot.yml`.
+**Files (part A, delivered in pull request 9).** Create `build/netshoot/Dockerfile` (`FROM nicolaka/netshoot:v0.16` plus OCI labels `org.opencontainers.image.source`, `…licenses=Apache-2.0`, `…description`), `.github/workflows/netshoot.yml`; add a `docker` entry for `/build/netshoot` to `.github/dependabot.yml`.
 
 `netshoot.yml`: triggers `push` to `main` with `paths: [build/netshoot/**]` and `workflow_dispatch`; top-level `permissions: contents: read`; one job with `packages: write`, `id-token: write`, `attestations: write` that reads the tag from the `FROM` line (`TAG=$(sed -n 's/^FROM nicolaka\/netshoot:\([^@ ]*\).*/\1/p' build/netshoot/Dockerfile)`), builds for `linux/amd64,linux/arm64`, pushes `ghcr.io/bdnix/kubelook-netshoot:$TAG`, runs Trivy with `exit-code: "0"` (report only: it is a third-party toolbox image; deployers may replace it via `debug.image`), and attests provenance. A new netshoot release reaches the repository as a Dependabot PR on the `FROM` line; merging it publishes the new image (this is the spec's "rebuilds whenever a new netshoot release appears").
 
-**Files (PR 2, after PR 1's workflow has pushed the image).** Create `hack/pin-netshoot.sh` (resolves `docker buildx imagetools inspect ghcr.io/bdnix/kubelook-netshoot:<tag> --format '{{json .Manifest.Digest}}'` and rewrites the constant `DefaultDebugImage` in `internal/config/defaults.go`); modify `internal/config/config_test.go`.
+**Files (part B, in pull request 10, after pull request 9 is merged and its workflow has pushed the image).** Create `hack/pin-netshoot.sh` (resolves `docker buildx imagetools inspect ghcr.io/bdnix/kubelook-netshoot:<tag> --format '{{json .Manifest.Digest}}'` and rewrites the constant `DefaultDebugImage` in `internal/config/defaults.go`); modify `internal/config/config_test.go`.
 
-**Red (PR 2).** Add the test: the default `debug.image` matches `^ghcr\.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]{64}$`. `make test-go PKG=./internal/config/...` fails (the default is still a tag). **Green.** Run `hack/pin-netshoot.sh`; test passes. **Refactor.** None.
+**Red (part B).** Add the test: the default `debug.image` matches `^ghcr\.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]{64}$`. `make test-go PKG=./internal/config/...` fails (the default is still a tag). **Green.** Run `hack/pin-netshoot.sh`; test passes. **Refactor.** None.
 
 **Acceptance.** `docker pull "$(grep -o 'ghcr.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]*' internal/config/defaults.go)"` succeeds; `make verify` → `VERIFY OK`.
 
-**Pitfalls.** PR 2 cannot start before PR 1's `netshoot` workflow run on `main` is green. The integration config keeps overriding `debug.image` with `busybox:1.37`.
+**Pitfalls.** Part B cannot start before pull request 9 is merged and its `netshoot` workflow run on `main` is green. The integration config keeps overriding `debug.image` with `busybox:1.37`.
 
 ### Step 8.2 — Helm chart
 
@@ -4494,7 +4608,7 @@ hack/it-chart.sh && KUBELOOK_IT_BASE_URL=http://localhost:18090 go test -tags in
 make it-down
 ```
 
-**Acceptance.** Every box in §9 ticked in the pull request description of this step, with the command output for the coverage lines pasted in.
+**Acceptance.** Every box in §9 ticked in the description of pull request 10, with the command output for the coverage lines pasted in.
 
 ---
 
@@ -4502,7 +4616,7 @@ make it-down
 
 The project is done when all of the following are true on `main`:
 
-1. Every step of Phases 0–8 is merged, in order, each through a pull request whose CI was green.
+1. Every step of Phases 0–8 is merged, in order, through the 10 pull requests of §7, each of which was green in CI when merged.
 2. `make verify` prints `VERIFY OK` on a clean clone. In particular: Go unit-test statement coverage ≥ 90% (`Total coverage threshold (90%) satisfied: PASS`), and web unit-test coverage ≥ 90% lines, statements and functions and ≥ 80% branches, with only the exclusions listed in §6.
 3. The `ci` workflow is green: `lint-go`, `lint-web`, `test-go`, `test-web`, `coverage (unit tests, >= 90%)`, `build`, `vuln`, `image-scan`, `chart`, `ci-ok`; and `image-push` on `main`.
 4. The `integration` workflow is green: the kind + Vault suite (`make it`), the browser suite (`make e2e`) and the chart install test.

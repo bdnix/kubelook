@@ -1,0 +1,13 @@
+/bin/
+/coverage.out
+/web/node_modules/
+/web/dist/
+/web/coverage/
+/internal/webui/dist/*
+!/internal/webui/dist/placeholder.txt
+/test/e2e/node_modules/
+/test/e2e/test-results/
+/.it/
+*.local
+/go-coverage.txt
+/web-coverage.txt

@@ -1,0 +1,10 @@
+# Unit-test coverage gate for Go. Total statement coverage must be >= 90%.
+profile: coverage.out
+threshold:
+  total: 90
+exclude:
+  paths:
+    - ^cmd/kubelook/main\.go$     # 3-line entry point, cannot run in-process
+    - ^internal/testutil/         # test helpers, not product code
+    - ^test/                      # integration/load tests (build-tagged)
+    - ^hack/                      # tooling

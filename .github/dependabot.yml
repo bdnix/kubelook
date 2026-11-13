@@ -1,0 +1,28 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly }
+    groups:
+      actions: { patterns: ["*"] }
+  - package-ecosystem: gomod
+    directory: /
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 10
+    groups:
+      kubernetes: { patterns: ["k8s.io/*", "sigs.k8s.io/*"] }
+      helm: { patterns: ["helm.sh/helm/*"] }
+      opentelemetry: { patterns: ["go.opentelemetry.io/*"] }
+      go-minor: { patterns: ["*"], update-types: [minor, patch], exclude-patterns: ["k8s.io/*", "sigs.k8s.io/*", "helm.sh/helm/*", "go.opentelemetry.io/*"] }
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly }
+    open-pull-requests-limit: 10
+    ignore:
+      - dependency-name: typescript
+        versions: [">=6.1.0"]   # typescript-eslint 8.72.2 supports < 6.1.0; lift when it supports newer
+    groups:
+      web-minor: { patterns: ["*"], update-types: [minor, patch] }
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly }
