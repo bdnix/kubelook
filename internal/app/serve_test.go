@@ -158,9 +158,9 @@ func TestServe_LogsListeningAndConfigWarnings(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
+	defer cancel()
 	var out strings.Builder
-	require.NoError(t, app.Serve(ctx, cfg, app.ServeOptions{Stdout: &out}))
+	require.NoError(t, app.Serve(ctx, cfg, app.ServeOptions{Stdout: &out, OnReady: func(app.Ready) { cancel() }}))
 	assert.Contains(t, out.String(), `"msg":"listening"`)
 	assert.Contains(t, out.String(), "auth.google.allowedDomains")
 	assert.NotContains(t, out.String(), encKey)
@@ -183,7 +183,13 @@ func TestMainWithContext_ServeCancelledContext_ExitsZero(t *testing.T) {
 	code := app.MainWithContext(ctx, []string{"serve"}, &out, &errb,
 		envFn(map[string]string{"KUBELOOK_CONFIG": cfg, "KUBELOOK_ENCRYPTION_KEY": encKey}))
 	assert.Equal(t, 0, code, errb.String())
-	assert.Contains(t, out.String(), "listening")
+	assert.Empty(t, errb.String())
+}
+
+func TestServe_CancelledBeforeStart_ReturnsNil(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	assert.NoError(t, app.Serve(ctx, loadConfig(t, ""), app.ServeOptions{Stdout: io.Discard}))
 }
 
 func TestMainWithContext_ServeFailure_Exit1WithMessage(t *testing.T) {
