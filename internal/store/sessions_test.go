@@ -84,10 +84,10 @@ func TestSessions_DeleteExpired_RemovesAbsoluteAndIdleReturningSortedHashes(t *t
 	e := newSessions(t)
 	now := t0.Add(time.Hour)
 	idle := 30 * time.Minute
-	e.create(t, "z-expired", now)                     // expires_at <= now
-	e.create(t, "a-idle", now.Add(time.Hour))         // last seen at t0 = now-60m
-	e.create(t, "fresh", now.Add(time.Hour))          // touched below
-	e.create(t, "boundary", now.Add(time.Hour))       // last seen exactly now-idle
+	e.create(t, "z-expired", now)               // expires_at <= now
+	e.create(t, "a-idle", now.Add(time.Hour))   // last seen at t0 = now-60m
+	e.create(t, "fresh", now.Add(time.Hour))    // touched below
+	e.create(t, "boundary", now.Add(time.Hour)) // last seen exactly now-idle
 	require.NoError(t, e.sessions.Touch(t.Context(), "fresh", now.Add(-time.Minute)))
 	require.NoError(t, e.sessions.Touch(t.Context(), "boundary", now.Add(-idle)))
 
