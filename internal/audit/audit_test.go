@@ -55,8 +55,8 @@ func (e env) lines(t *testing.T) []map[string]any {
 
 type row struct {
 	ID, Provider, Subject, Email, EntityID, DisplayName, KubeCtx, KubeUser string
-	Cluster, Namespace, Verb, Kind, Name, Outcome, Details                    string
-	Time                                                                      int64
+	Cluster, Namespace, Verb, Kind, Name, Outcome, Details                 string
+	Time                                                                   int64
 }
 
 func (e env) rows(t *testing.T) []row {
