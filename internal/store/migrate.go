@@ -133,3 +133,27 @@ func splitStatements(body string) []string {
 	flush()
 	return out
 }
+
+// Pending lists the migrations in fsys that have not been applied, in name order.
+// It never writes. If schema_migrations cannot be read but the database answers a ping
+// (the table does not exist yet), every migration counts as pending.
+func Pending(ctx context.Context, db *DB, fsys fs.FS) ([]string, error) {
+	names, err := migrationNames(fsys)
+	if err != nil {
+		return nil, err
+	}
+	applied, err := appliedSet(ctx, db)
+	if err != nil {
+		if pingErr := db.PingContext(ctx); pingErr != nil {
+			return nil, fmt.Errorf("checking migrations: %w", pingErr)
+		}
+		return names, nil
+	}
+	var pending []string
+	for _, n := range names {
+		if !applied[n] {
+			pending = append(pending, n)
+		}
+	}
+	return pending, nil
+}
