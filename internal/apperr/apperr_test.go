@@ -22,3 +22,10 @@ func TestSentinels_MatchThroughWrapping_AndAreDistinct(t *testing.T) {
 		}
 	}
 }
+
+func TestAPIError_ErrorText(t *testing.T) {
+	err := &apperr.APIError{Status: 403, Code: "csrf", Message: "Missing CSRF token."}
+	assert.Equal(t, "csrf: Missing CSRF token.", err.Error())
+	var target *apperr.APIError
+	assert.True(t, errors.As(fmt.Errorf("x: %w", err), &target))
+}
