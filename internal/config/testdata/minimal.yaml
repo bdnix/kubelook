@@ -1,0 +1,4 @@
+server:
+  publicURL: https://kubelook.example.com
+vault:
+  address: https://vault.example.com
