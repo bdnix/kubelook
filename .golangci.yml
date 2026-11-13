@@ -34,11 +34,14 @@ linters:
             - pkg: github.com/bdnix/kubelook/internal/httpapi
               desc: only internal/app may import httpapi
         only-main-imports-app:
+          list-mode: lax
+          allow:
+            - github.com/bdnix/kubelook/internal/apperr # not a subpackage of app: the deny entry matches by prefix
           files:
             - "!**/cmd/kubelook/**"
             - "!**/internal/app/**"
           deny:
-            - pkg: github.com/bdnix/kubelook/internal/app$
+            - pkg: github.com/bdnix/kubelook/internal/app
               desc: only cmd/kubelook may import app
   exclusions:
     rules:
