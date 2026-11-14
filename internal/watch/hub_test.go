@@ -474,8 +474,9 @@ func TestHub_Idle_LastActiveSubscriberLeaves_StopsAfterTheUsersIdleTime(t *testi
 	assert.Equal(t, 1, e.hub.Stats().Watches)
 	e.clock.Advance(time.Second)
 	assert.Equal(t, "paused", hidden.next(t))
-	assert.True(t, w.IsStopped())
+	// the subscribers are told first and the upstream stops its watch as it finishes: wait for that
 	e.hub.Close()
+	assert.True(t, w.IsStopped())
 	assert.Equal(t, 0, e.hub.Stats().Watches)
 }
 
