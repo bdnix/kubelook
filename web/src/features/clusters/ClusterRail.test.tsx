@@ -42,9 +42,10 @@ describe('ClusterRail', () => {
 
   it('labels each status dot for assistive technology', () => {
     renderApp(<ClusterRail sources={sources} favourites={[]} />);
-    expect(within(screen.getByRole('link', { name: 'a' })).getByRole('img', { name: 'connected' })).toBeInTheDocument();
-    expect(within(screen.getByRole('link', { name: 'b' })).getByRole('img', { name: 'not opened' })).toBeInTheDocument();
-    expect(within(screen.getByRole('link', { name: 'ctx2' })).getByRole('img', { name: 'disconnected' })).toBeInTheDocument();
+    const row = (name: string) => screen.getByRole('link', { name }).closest('li') as HTMLElement;
+    expect(within(row('a')).getByRole('img', { name: 'connected' })).toBeInTheDocument();
+    expect(within(row('b')).getByRole('img', { name: 'not opened' })).toBeInTheDocument();
+    expect(within(row('ctx2')).getByRole('img', { name: 'disconnected' })).toBeInTheDocument();
   });
 
   it('pins favourites on top, once', () => {
