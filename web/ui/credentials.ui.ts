@@ -42,7 +42,7 @@ test('adding a kubeconfig shows its clusters, saves a copy in this browser and r
   await expect(page.getByRole('heading', { name: 'Choose a cluster' })).toBeVisible();
 
   await rail.getByRole('link', { name: 'prod' }).click();
-  await expect(page).toHaveURL(/\/c\/k%3Awork%2Fprod$/);
+  await expect(page).toHaveURL(/\/c\/k(:|%3A)work%2Fprod\/core\/Pod$/);
 
   await page.goto('/settings');
   await expect(page.getByRole('heading', { name: 'Saved credentials' })).toBeVisible();

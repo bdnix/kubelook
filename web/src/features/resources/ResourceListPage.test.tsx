@@ -182,6 +182,42 @@ describe('ClusterPage', () => {
     expect(FakeWebSocket.last.frames).toContainEqual(expect.objectContaining({ op: 'watch.open' }));
   });
 
+  it('keeps a "/" in the cluster ID encoded when it redirects to the Pods list', async () => {
+    const store = makeLiveStore();
+    const opened: string[] = [];
+    const client = fakeClient({
+      'GET /clusters': () =>
+        jsonResponse({
+          sources: [
+            {
+              type: 'kubeconfig',
+              label: 'work',
+              status: 'ok',
+              clusters: [{ id: 'k:work/prod', name: 'prod', state: 'closed' }],
+            },
+          ],
+        }),
+      'POST /clusters/k%3Awork%2Fprod/open': () => {
+        opened.push('open');
+        return jsonResponse({ state: 'open' });
+      },
+      'GET /clusters/k%3Awork%2Fprod/discovery': () => jsonResponse(discovery),
+    });
+    renderApp(
+      <LiveContext.Provider value={store}>
+        <Routes>
+          <Route path="/c/:cluster/*" element={<ClusterPage />} />
+        </Routes>
+      </LiveContext.Provider>,
+      { client, route: '/c/k%3Awork%2Fprod' },
+    );
+    await connected();
+    expect(opened).toEqual(['open']);
+    expect(FakeWebSocket.last.frames).toContainEqual(
+      expect.objectContaining({ op: 'watch.open', d: expect.objectContaining({ cluster: 'k:work/prod' }) }),
+    );
+  });
+
   it('shows not found for unknown sub-pages', () => {
     renderApp(
       <Routes>

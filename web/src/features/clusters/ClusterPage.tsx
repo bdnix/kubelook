@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes, useParams } from 'react-router';
+import { clusterPath } from '../../lib/paths';
 import { ResourceListPage } from '../resources/ResourceListPage';
 
 function ListRoute({ cluster }: { cluster: string }) {
@@ -11,7 +12,8 @@ export function ClusterPage() {
   const { cluster = '' } = useParams();
   return (
     <Routes>
-      <Route index element={<Navigate to="core/Pod" replace />} />
+      {/* Absolute: a relative link would encode the already encoded ID a second time. */}
+      <Route index element={<Navigate to={`${clusterPath(cluster)}/core/Pod`} replace />} />
       <Route path=":group/:kind" element={<ListRoute cluster={cluster} />} />
       <Route path="*" element={<p>Page not found</p>} />
     </Routes>
