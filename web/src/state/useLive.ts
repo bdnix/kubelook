@@ -18,17 +18,18 @@ export function useLive(key: LiveKey | undefined): LiveEntry {
   const store = useContext(LiveContext) ?? appLiveStore();
   const id = key ? keyId(key) : '';
   const entry = useStore(store, (s) => s.entries[id]);
-  const { cluster, group, version, resource, namespace } = key ?? {
+  const { cluster, group, version, resource, namespace, fieldSelector } = key ?? {
     cluster: '',
     group: '',
     version: '',
     resource: '',
     namespace: '',
+    fieldSelector: undefined,
   };
   const enabled = key !== undefined;
   useEffect(() => {
     if (!enabled) return undefined;
-    return store.getState().subscribe({ cluster, group, version, resource, namespace });
-  }, [store, enabled, cluster, group, version, resource, namespace]);
+    return store.getState().subscribe({ cluster, group, version, resource, namespace, fieldSelector });
+  }, [store, enabled, cluster, group, version, resource, namespace, fieldSelector]);
   return entry ?? loadingEntry;
 }

@@ -12,6 +12,8 @@ export interface LiveKey {
   resource: string;
   /** Empty for all namespaces. */
   namespace: string;
+  /** Narrows the list, for example `metadata.name=web-1` for the details drawer. */
+  fieldSelector?: string;
 }
 
 export interface LiveEntry {
@@ -29,7 +31,8 @@ export interface LiveState {
 export const loadingEntry: LiveEntry = { status: 'loading', items: [] };
 
 export function keyId(k: LiveKey): string {
-  return [k.cluster, k.group || 'core', k.version, k.resource, k.namespace].join('|');
+  const id = [k.cluster, k.group || 'core', k.version, k.resource, k.namespace].join('|');
+  return k.fieldSelector ? `${id}|${k.fieldSelector}` : id;
 }
 
 function uidOf(o: K8sObject): string {
@@ -124,6 +127,7 @@ export function createLiveStore(socket: Socket) {
           version: key.version,
           resource: key.resource,
           namespace: key.namespace,
+          ...(key.fieldSelector ? { fieldSelector: key.fieldSelector } : {}),
         },
         { onFrame: (type, data) => onFrame(id, key, sub, type, data) },
       );

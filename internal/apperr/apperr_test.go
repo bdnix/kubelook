@@ -13,7 +13,7 @@ import (
 func TestSentinels_MatchThroughWrapping_AndAreDistinct(t *testing.T) {
 	all := []error{
 		apperr.ErrNotFound, apperr.ErrInvalid, apperr.ErrConflict, apperr.ErrForbidden,
-		apperr.ErrUnauthenticated, apperr.ErrBusy, apperr.ErrTooLarge,
+		apperr.ErrUnauthenticated, apperr.ErrBusy, apperr.ErrTooLarge, apperr.ErrUnprocessable, apperr.ErrDryRunUnsupported,
 	}
 	for i, e := range all {
 		wrapped := fmt.Errorf("doing x: %w", e)

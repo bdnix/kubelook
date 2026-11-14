@@ -65,3 +65,9 @@ export function useMe(): MeState {
   }
   return { state: 'signedIn', me: query.data };
 }
+
+/** What the server offers (file browser, node shell, …); undefined until `me` has loaded. */
+export function useFeatures(): MeFeatures | undefined {
+  const me = useMe();
+  return me.state === 'signedIn' ? me.me.features : undefined;
+}

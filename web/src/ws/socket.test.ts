@@ -44,6 +44,23 @@ describe('createSocket', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
+  it('a channel that cannot be resumed is dropped when the connection is lost, not re-opened', () => {
+    const { socket } = setup();
+    const lost = vi.fn();
+    const resumable = collect(socket);
+    socket.open('exec.open', { pod: 'p' }, { onFrame: () => undefined, onConnectionLost: lost });
+    FakeWebSocket.last.serverOpen();
+    expect(FakeWebSocket.last.frames.filter((f) => f.op === 'exec.open')).toHaveLength(1);
+    FakeWebSocket.last.close(1006);
+    expect(lost).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1000);
+    FakeWebSocket.last.serverOpen();
+    const reopened = FakeWebSocket.last.frames.map((f) => f.op);
+    expect(reopened).toContain('watch.open');
+    expect(reopened).not.toContain('exec.open');
+    expect(resumable.frames).toEqual([]);
+  });
+
   it('connects on the first open, then sends the open frame with increasing channel numbers', () => {
     const { socket } = setup();
     expect(FakeWebSocket.instances).toHaveLength(0);

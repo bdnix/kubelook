@@ -1,11 +1,12 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { ClusterPage } from '../clusters/ClusterPage';
 import { LiveContext } from '../../state/useLive';
 import { FakeWebSocket } from '../../test/FakeWebSocket';
 import { makeLiveStore } from '../../test/live';
 import { fakeClient, jsonResponse, renderApp } from '../../test/render';
-import { Route, Routes } from 'react-router';
+import { Route, Routes, useLocation } from 'react-router';
 import { ResourceListPage } from './ResourceListPage';
 
 const clusters = (state: string) => ({
@@ -229,38 +230,50 @@ describe('ClusterPage', () => {
   });
 });
 
-describe('ResourceListPage: opening a pod', () => {
-  it('opens its logs in the dock, with the pod containers', async () => {
-    const { dockStore } = await import('../../state/dock');
-    dockStore.setState({ tabs: [], active: null });
+vi.mock('../../adapters/monaco/YamlEditor', () => ({
+  YamlEditor: (p: { value: string; label: string }) => (
+    <textarea aria-label={p.label} value={p.value} readOnly />
+  ),
+}));
+
+describe('ResourceListPage: create from YAML', () => {
+  it('toggles the create panel above the list', async () => {
     mount();
+    await connected();
+    act(() => FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [], more: false } }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Create from YAML' }));
+    expect(screen.getByRole('region', { name: 'Create from YAML' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('region', { name: 'Create from YAML' })).toBeNull();
+  });
+});
+
+describe('ResourceListPage: opening a row', () => {
+  function Where() {
+    return <p data-testid="where">{useLocation().pathname}</p>;
+  }
+
+  it('navigates to the deep link of the object', async () => {
+    const store = makeLiveStore();
+    const client = fakeClient({
+      'GET /clusters': () => jsonResponse(clusters('open')),
+      'GET /clusters/v%3Aprod/discovery': () => jsonResponse(discovery),
+    });
+    renderApp(
+      <LiveContext.Provider value={store}>
+        <ResourceListPage cluster="v:prod" group="core" kind="Pod" />
+        <Where />
+      </LiveContext.Provider>,
+      { client },
+    );
     await connected();
     act(() =>
       FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [pod('1', 'web-1')], more: false } }),
     );
     const row = (await screen.findByText('web-1')).closest('[role="row"]') as HTMLElement;
     row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    await waitFor(() => expect(dockStore.getState().tabs).toHaveLength(1));
-    expect(dockStore.getState().tabs[0]).toMatchObject({
-      title: 'Logs: web-1',
-      props: { cluster: 'v:prod', namespace: 'ns', pod: 'web-1', containers: ['a'] },
-    });
-  });
-
-  it('falls back to one unnamed container when the spec lists none', async () => {
-    const { dockStore } = await import('../../state/dock');
-    dockStore.setState({ tabs: [], active: null });
-    mount();
-    await connected();
-    act(() =>
-      FakeWebSocket.last.serverSend({
-        ch: 1,
-        t: 'snapshot',
-        d: { items: [{ metadata: { uid: '9', name: 'bare', namespace: 'ns' } }], more: false },
-      }),
+    await waitFor(() =>
+      expect(screen.getByTestId('where')).toHaveTextContent('/c/v%3Aprod/ns/ns/core/Pod/web-1'),
     );
-    const row = (await screen.findByText('bare')).closest('[role="row"]') as HTMLElement;
-    row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-    await waitFor(() => expect(dockStore.getState().tabs[0]?.props.containers).toEqual(['']));
   });
 });

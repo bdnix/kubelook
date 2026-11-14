@@ -128,6 +128,13 @@ test('a pod opens its logs in the dock, which survives navigating to another pag
   const grid = page.getByRole('grid', { name: 'Pods' });
   await grid.getByText('web-1').dblclick();
 
+  // the row opens the details drawer; its Logs tab opens the log in the dock
+  await expect(page).toHaveURL(/\/c\/v(:|%3A)prod\/ns\/shop\/core\/Pod\/web-1$/);
+  const drawer = page.getByRole('complementary', { name: 'Details' });
+  await expect(drawer.getByRole('heading', { name: 'web-1' })).toBeVisible();
+  await drawer.getByRole('tab', { name: 'Logs' }).click();
+  await drawer.getByRole('button', { name: 'Open logs for web-1' }).click();
+
   const dock = page.getByRole('region', { name: 'Dock' });
   await expect(dock.getByRole('tab', { name: 'Logs: web-1' })).toBeVisible();
   await expect(dock.getByText('server listening on :8080')).toBeVisible();

@@ -37,6 +37,23 @@ describe('live store', () => {
     expect(entry()).toEqual({ status: 'loading', items: [] });
   });
 
+  it('a field selector is part of the key and is sent with watch.open', () => {
+    const { store, entry } = setup();
+    const one: LiveKey = { ...key, namespace: 'ns', fieldSelector: 'metadata.name=a' };
+    expect(keyId(one)).toBe(`${keyId({ ...key, namespace: 'ns' })}|metadata.name=a`);
+    store.getState().subscribe(one);
+    FakeWebSocket.last.serverOpen();
+    expect(FakeWebSocket.last.frames[1]?.d).toEqual({
+      cluster: 'v:prod',
+      group: 'core',
+      version: 'v1',
+      resource: 'pods',
+      namespace: 'ns',
+      fieldSelector: 'metadata.name=a',
+    });
+    expect(entry(one)).toEqual({ status: 'loading', items: [] });
+  });
+
   it('a snapshot replaces the list and the status becomes live', () => {
     const { store, entry } = setup();
     store.getState().subscribe(key);

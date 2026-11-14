@@ -1,4 +1,5 @@
 import { LogViewer } from '../logs/LogViewer';
+import { ShellTab } from '../shell/ShellTab';
 import { useDock } from '../../state/dock';
 
 /**
@@ -37,7 +38,11 @@ export function Dock({ liveBufferLines }: { liveBufferLines: number }) {
           aria-labelledby={`tab-${t.id}`}
           hidden={t.id !== active}
         >
-          <LogViewer {...t.props} maxLines={liveBufferLines} />
+          {t.kind === 'logs' ? (
+            <LogViewer {...t.props} maxLines={liveBufferLines} />
+          ) : (
+            <ShellTab {...t.props} />
+          )}
         </div>
       ))}
     </div>

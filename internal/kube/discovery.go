@@ -68,6 +68,16 @@ func (d *Discovery) Find(gvr schema.GroupVersionResource) (Resource, bool) {
 	return Resource{}, false
 }
 
+// FindKind returns the entry for an exact group version and kind.
+func (d *Discovery) FindKind(gv schema.GroupVersion, kind string) (Resource, bool) {
+	for _, r := range d.Resources {
+		if r.Group == gv.Group && r.Version == gv.Version && r.Kind == kind {
+			return r, true
+		}
+	}
+	return Resource{}, false
+}
+
 func qualified(name, group string) string {
 	if group == "" {
 		return name

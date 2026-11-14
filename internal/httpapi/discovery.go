@@ -15,6 +15,10 @@ func (d Deps) registerKube(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/clusters/{cluster}/discovery", d.discovery)
 	d.registerResources(mux, kube.NewResources(d.Kube))
 	d.registerAccess(mux, kube.NewAccess(d.Kube, d.Clock, d.sessionRegistry()))
+	d.registerOpenAPI(mux, kube.NewOpenAPI(d.Kube, d.Clock))
+	d.registerActions(mux)
+	d.registerDebug(mux)
+	d.registerSecrets(mux, kube.NewResources(d.Kube))
 }
 
 // discovery answers what the cluster serves.

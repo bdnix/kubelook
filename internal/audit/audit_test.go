@@ -256,3 +256,16 @@ func TestIdentityFrom_NothingAttached_Zero(t *testing.T) {
 	ctx := audit.WithIdentity(t.Context(), audit.Identity{AccountEmail: "e"})
 	assert.Equal(t, "e", audit.IdentityFrom(ctx).AccountEmail)
 }
+
+func TestPending_AnnotateAddsADetailToTheFinalRecordOnly(t *testing.T) {
+	e := newEnv(t)
+	p, err := e.rec.Begin(t.Context(), audit.Event{Verb: "file-view", Details: map[string]any{"path": "/etc/hosts"}})
+	require.NoError(t, err)
+	p.Annotate("size", 42)
+	p.Done(t.Context(), nil)
+	lines := e.lines(t)
+	require.Len(t, lines, 2)
+	assert.NotContains(t, lines[0]["details"], "size")
+	assert.EqualValues(t, 42, lines[1]["details"].(map[string]any)["size"])
+	assert.Equal(t, "/etc/hosts", lines[1]["details"].(map[string]any)["path"])
+}
