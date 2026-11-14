@@ -13,14 +13,32 @@ let store: VaultStore;
 beforeEach(async () => {
   globalThis.indexedDB = new IDBFactory();
   store = openVaultStore('u1');
-  await store.put({ id: 'vault_token', kind: 'vault_token', label: 'oidc-ada', sealed: 's1', savedAt: '2026-11-14T12:00:00Z' });
-  await store.put({ id: 'kubeconfig:my work', kind: 'kubeconfig', label: 'my work', sealed: 's2', savedAt: '2026-11-13T08:00:00Z' });
+  await store.put({
+    id: 'vault_token',
+    kind: 'vault_token',
+    label: 'oidc-ada',
+    sealed: 's1',
+    savedAt: '2026-11-14T12:00:00Z',
+  });
+  await store.put({
+    id: 'kubeconfig:my work',
+    kind: 'kubeconfig',
+    label: 'my work',
+    sealed: 's2',
+    savedAt: '2026-11-13T08:00:00Z',
+  });
 });
 
 function spyClient() {
   const calls: string[] = [];
-  const base = fakeClient({ 'DELETE /credentials/vault': () => new Response(null, { status: 204 }), 'DELETE /credentials/kubeconfig/my%20work': () => new Response(null, { status: 204 }) });
-  return { calls, client: { ...base, delete: <T,>(p: string, b?: unknown) => (calls.push(p), base.delete<T>(p, b)) } };
+  const base = fakeClient({
+    'DELETE /credentials/vault': () => new Response(null, { status: 204 }),
+    'DELETE /credentials/kubeconfig/my%20work': () => new Response(null, { status: 204 }),
+  });
+  return {
+    calls,
+    client: { ...base, delete: <T,>(p: string, b?: unknown) => (calls.push(p), base.delete<T>(p, b)) },
+  };
 }
 
 describe('SavedCredentials', () => {

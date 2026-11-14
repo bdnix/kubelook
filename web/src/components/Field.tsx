@@ -24,6 +24,7 @@ export function Field({ label, hint, ...rest }: FieldProps & { label: string; hi
 }
 
 function omitMultiline<T extends { multiline?: boolean }>(props: T): Omit<T, 'multiline'> {
-  const { multiline: _multiline, ...rest } = props;
+  const rest = { ...props };
+  delete rest.multiline;
   return rest;
 }

@@ -9,11 +9,30 @@ import { useVaultStore } from './context';
 import { openVaultStore, type SavedCredential, type VaultStore } from './vaultStore';
 import { KEY_CHANGED_NOTICE, TOKEN_EXPIRED_NOTICE, useRestore } from './useRestore';
 
-const vaultCopy: SavedCredential = { id: 'vault_token', kind: 'vault_token', label: 'ada', sealed: 'S1', savedAt: '2026-11-14T12:00:00Z' };
-const kubeCopy: SavedCredential = { id: 'kubeconfig:work', kind: 'kubeconfig', label: 'work', sealed: 'S2', savedAt: '2026-11-14T12:00:00Z' };
+const vaultCopy: SavedCredential = {
+  id: 'vault_token',
+  kind: 'vault_token',
+  label: 'ada',
+  sealed: 'S1',
+  savedAt: '2026-11-14T12:00:00Z',
+};
+const kubeCopy: SavedCredential = {
+  id: 'kubeconfig:work',
+  kind: 'kubeconfig',
+  label: 'work',
+  sealed: 'S2',
+  savedAt: '2026-11-14T12:00:00Z',
+};
 const status: VaultStatus = {
-  displayName: 'ada', entityId: 'e1', expiresAt: '2026-11-14T12:30:00Z', ttlSeconds: 1800, renewable: true,
-  canRenew: true, neverExpires: false, warning: false, expired: false,
+  displayName: 'ada',
+  entityId: 'e1',
+  expiresAt: '2026-11-14T12:30:00Z',
+  ttlSeconds: 1800,
+  renewable: true,
+  canRenew: true,
+  neverExpires: false,
+  warning: false,
+  expired: false,
 };
 
 let store: VaultStore;

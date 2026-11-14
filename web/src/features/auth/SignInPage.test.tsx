@@ -12,13 +12,22 @@ describe('SignInPage', () => {
   it('shows the product name and one link per provider', async () => {
     renderApp(<SignInPage />, { client: client(['github', 'google']) });
     expect(screen.getByRole('heading', { level: 1, name: 'Kubelook' })).toBeInTheDocument();
-    expect(await screen.findByRole('link', { name: 'Sign in with Google' })).toHaveAttribute('href', '/auth/google/login');
-    expect(screen.getByRole('link', { name: 'Sign in with GitHub' })).toHaveAttribute('href', '/auth/github/login');
+    expect(await screen.findByRole('link', { name: 'Sign in with Google' })).toHaveAttribute(
+      'href',
+      '/auth/google/login',
+    );
+    expect(screen.getByRole('link', { name: 'Sign in with GitHub' })).toHaveAttribute(
+      'href',
+      '/auth/github/login',
+    );
   });
 
   it('names a provider it does not know by its ID', async () => {
     renderApp(<SignInPage />, { client: client(['okta']) });
-    expect(await screen.findByRole('link', { name: 'Sign in with okta' })).toHaveAttribute('href', '/auth/okta/login');
+    expect(await screen.findByRole('link', { name: 'Sign in with okta' })).toHaveAttribute(
+      'href',
+      '/auth/okta/login',
+    );
   });
 
   it('says so when no provider is configured', async () => {
@@ -27,7 +36,9 @@ describe('SignInPage', () => {
   });
 
   it('says so when the providers cannot be loaded', async () => {
-    const broken = fakeClient({ 'GET /auth/providers': () => jsonResponse({ error: { code: 'internal', message: 'x' } }, 500) });
+    const broken = fakeClient({
+      'GET /auth/providers': () => jsonResponse({ error: { code: 'internal', message: 'x' } }, 500),
+    });
     renderApp(<SignInPage />, { client: broken });
     expect(await screen.findByText('The sign-in options could not be loaded.')).toBeInTheDocument();
   });

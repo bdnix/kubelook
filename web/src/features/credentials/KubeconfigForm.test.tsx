@@ -15,12 +15,19 @@ beforeEach(() => {
 });
 
 const ok = () =>
-  jsonResponse({ sealed: 'v1.k.sealed.copy', label: 'prod', clusters: [{ id: 'k:prod/ctx', name: 'c', context: 'ctx', user: 'u', server: 's' }] });
+  jsonResponse({
+    sealed: 'v1.k.sealed.copy',
+    label: 'prod',
+    clusters: [{ id: 'k:prod/ctx', name: 'c', context: 'ctx', user: 'u', server: 's' }],
+  });
 
 function spyClient(handler: () => Response) {
   const base = fakeClient({ 'POST /credentials/kubeconfig': handler });
   const bodies: unknown[] = [];
-  return { client: { ...base, post: <T,>(p: string, b?: unknown) => (bodies.push(b), base.post<T>(p, b)) }, bodies };
+  return {
+    client: { ...base, post: <T,>(p: string, b?: unknown) => (bodies.push(b), base.post<T>(p, b)) },
+    bodies,
+  };
 }
 
 describe('KubeconfigForm', () => {
@@ -41,7 +48,12 @@ describe('KubeconfigForm', () => {
 
     await waitFor(async () => expect(await store.list()).toHaveLength(1));
     expect(bodies).toEqual([{ label: 'prod', content: 'apiVersion: v1' }]);
-    expect((await store.list())[0]).toMatchObject({ id: 'kubeconfig:prod', kind: 'kubeconfig', label: 'prod', sealed: 'v1.k.sealed.copy' });
+    expect((await store.list())[0]).toMatchObject({
+      id: 'kubeconfig:prod',
+      kind: 'kubeconfig',
+      label: 'prod',
+      sealed: 'v1.k.sealed.copy',
+    });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['clusters'] });
     expect(screen.getByLabelText('Kubeconfig')).toHaveValue('');
     expect(screen.getByLabelText('Label')).toHaveValue('');
@@ -52,7 +64,9 @@ describe('KubeconfigForm', () => {
     renderApp(<KubeconfigForm />, { client: spyClient(ok).client, vaultStore: store });
     const file = new File(['apiVersion: v1\nkind: Config'], 'prod-cluster.yaml', { type: 'text/yaml' });
     await user.upload(screen.getByLabelText('Kubeconfig file'), file);
-    await waitFor(() => expect(screen.getByLabelText('Kubeconfig')).toHaveValue('apiVersion: v1\nkind: Config'));
+    await waitFor(() =>
+      expect(screen.getByLabelText('Kubeconfig')).toHaveValue('apiVersion: v1\nkind: Config'),
+    );
     expect(screen.getByLabelText('Label')).toHaveValue('prod-cluster');
   });
 

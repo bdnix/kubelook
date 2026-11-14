@@ -14,17 +14,38 @@ function me(over: Record<string, unknown> = {}) {
     csrfToken: 'csrf-1',
     settings: { favouriteClusters: [], watchIdleSeconds: 30, theme: 'system' },
     maintenanceBanner: '',
-    features: { kubeconfig: true, fileBrowser: true, nodeShell: false, vault: true, helmVersion: 4, modules: {} },
-    limits: { fileTransferBytes: 1, logsHistoryMaxLines: 2, logsLiveBufferLines: 3, vaultExpiryWarningSeconds: 1800 },
+    features: {
+      kubeconfig: true,
+      fileBrowser: true,
+      nodeShell: false,
+      vault: true,
+      helmVersion: 4,
+      modules: {},
+    },
+    limits: {
+      fileTransferBytes: 1,
+      logsHistoryMaxLines: 2,
+      logsLiveBufferLines: 3,
+      vaultExpiryWarningSeconds: 1800,
+    },
     vault: null,
     keyId: 'k',
     ...over,
   };
 }
 
-const oneCluster = [{ type: 'vault', label: 'Vault', status: 'ok', clusters: [{ id: 'v:prod', name: 'prod', roles: ['r'], state: 'closed' }] }];
+const oneCluster = [
+  {
+    type: 'vault',
+    label: 'Vault',
+    status: 'ok',
+    clusters: [{ id: 'v:prod', name: 'prod', roles: ['r'], state: 'closed' }],
+  },
+];
 
-function signedIn(opts: { sources?: unknown[]; me?: Record<string, unknown>; extra?: Record<string, () => Response> } = {}) {
+function signedIn(
+  opts: { sources?: unknown[]; me?: Record<string, unknown>; extra?: Record<string, () => Response> } = {},
+) {
   return fakeClient({
     'GET /me': () => jsonResponse(me(opts.me)),
     'GET /clusters': () => jsonResponse({ sources: opts.sources ?? oneCluster }),
@@ -55,26 +76,49 @@ describe('AppRoutes (signed in)', () => {
   });
 
   it('the landing page hides the forms the server does not offer', async () => {
-    const features = { kubeconfig: false, fileBrowser: true, nodeShell: false, vault: false, helmVersion: 4, modules: {} };
+    const features = {
+      kubeconfig: false,
+      fileBrowser: true,
+      nodeShell: false,
+      vault: false,
+      helmVersion: 4,
+      modules: {},
+    };
     renderApp(<AppRoutes />, { client: signedIn({ sources: [], me: { features } }) });
-    expect(await screen.findByText('This server accepts no credentials. Ask an administrator.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('This server accepts no credentials. Ask an administrator.'),
+    ).toBeInTheDocument();
   });
 
   it('treats a failing cluster list like an empty one', async () => {
-    const client = signedIn({ extra: { 'GET /clusters': () => jsonResponse({ error: { code: 'internal', message: 'x' } }, 500) } });
+    const client = signedIn({
+      extra: { 'GET /clusters': () => jsonResponse({ error: { code: 'internal', message: 'x' } }, 500) },
+    });
     renderApp(<AppRoutes />, { client });
     expect(await screen.findByRole('heading', { name: 'Add your credentials' })).toBeInTheDocument();
   });
 
   it('shows the clusters in the rail, favourites first', async () => {
     const sources = [
-      { type: 'vault', label: 'Vault', status: 'ok', clusters: [{ id: 'v:a', name: 'a', state: 'closed' }, { id: 'v:b', name: 'b', state: 'closed' }] },
+      {
+        type: 'vault',
+        label: 'Vault',
+        status: 'ok',
+        clusters: [
+          { id: 'v:a', name: 'a', state: 'closed' },
+          { id: 'v:b', name: 'b', state: 'closed' },
+        ],
+      },
     ];
     const settings = { favouriteClusters: ['v:b'], watchIdleSeconds: 30, theme: 'system' };
     renderApp(<AppRoutes />, { client: signedIn({ sources, me: { settings } }) });
     const rail = await screen.findByRole('navigation', { name: 'Clusters' });
     expect(await within(rail).findByRole('heading', { name: 'Favourites' })).toBeInTheDocument();
-    expect(within(rail).getAllByRole('link').map((l) => l.textContent)).toEqual(['b', 'a']);
+    expect(
+      within(rail)
+        .getAllByRole('link')
+        .map((l) => l.textContent),
+    ).toEqual(['b', 'a']);
   });
 
   it('/settings shows the settings with the forms and the saved credentials', async () => {
@@ -100,9 +144,18 @@ describe('AppRoutes (signed in)', () => {
   });
 
   it('restores saved copies after sign-in and tells the user when the key changed', async () => {
-    await openVaultStore('u1').put({ id: 'vault_token', kind: 'vault_token', label: 'ada', sealed: 'S1', savedAt: '2026-11-14T12:00:00Z' });
+    await openVaultStore('u1').put({
+      id: 'vault_token',
+      kind: 'vault_token',
+      label: 'ada',
+      sealed: 'S1',
+      savedAt: '2026-11-14T12:00:00Z',
+    });
     const client = signedIn({
-      extra: { 'POST /credentials/restore': () => jsonResponse({ results: [{ status: 'key_changed', message: 'x' }] }) },
+      extra: {
+        'POST /credentials/restore': () =>
+          jsonResponse({ results: [{ status: 'key_changed', message: 'x' }] }),
+      },
     });
     renderApp(<AppRoutes />, { client });
     expect(await screen.findByText(KEY_CHANGED_NOTICE)).toBeInTheDocument();
@@ -126,7 +179,9 @@ describe('AppRoutes (loading and failure)', () => {
   });
 
   it('shows an error banner when the server cannot be reached', async () => {
-    const broken = fakeClient({ 'GET /me': () => jsonResponse({ error: { code: 'internal', message: 'x' } }, 500) });
+    const broken = fakeClient({
+      'GET /me': () => jsonResponse({ error: { code: 'internal', message: 'x' } }, 500),
+    });
     renderApp(<AppRoutes />, { client: broken });
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not reach the server');
   });

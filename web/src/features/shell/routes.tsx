@@ -1,23 +1,48 @@
+import { useMemo } from 'react';
 import { Route, Routes, useParams } from 'react-router';
-import { useMe } from '../../api/me';
+import { useMe, type Me } from '../../api/me';
 import { Banner } from '../../components/Banner';
+import { SignInPage } from '../auth/SignInPage';
+import { ClusterRail } from '../clusters/ClusterRail';
+import { useClusters } from '../clusters/useClusters';
+import { AddCredentials } from '../credentials/AddCredentials';
+import { VaultStoreContext } from '../credentials/context';
+import { SavedCredentials } from '../credentials/SavedCredentials';
+import { useRestore, type RestoreState } from '../credentials/useRestore';
+import { openVaultStore } from '../credentials/vaultStore';
+import { Banners } from './Banners';
 import { Layout } from './Layout';
 
-function SignInPlaceholder() {
-  return (
-    <main>
-      <h1>Kubelook</h1>
-      <p>Sign in to continue.</p>
-    </main>
-  );
-}
-
-function ClusterPicker() {
+function Home({
+  me,
+  restore,
+  hasClusters,
+}: {
+  me: Me;
+  restore: RestoreState;
+  hasClusters: boolean | undefined;
+}) {
+  if (restore.state === 'restoring' || hasClusters === undefined) return <p role="status">Loading…</p>;
+  if (!hasClusters) {
+    return (
+      <>
+        <h1>Add your credentials</h1>
+        <p>Add a Vault token or a kubeconfig to see your clusters.</p>
+        <AddCredentials features={me.features} />
+      </>
+    );
+  }
   return <h1>Choose a cluster</h1>;
 }
 
-function SettingsPage() {
-  return <h1>Settings</h1>;
+function SettingsPage({ me }: { me: Me }) {
+  return (
+    <>
+      <h1>Settings</h1>
+      <AddCredentials features={me.features} />
+      <SavedCredentials />
+    </>
+  );
 }
 
 function ClusterPage() {
@@ -34,26 +59,50 @@ function NotFound() {
   return <p>Page not found</p>;
 }
 
+/** The signed-in app: restores saved credentials, then shows the cluster rail, banners and pages. */
+function SignedIn({ me }: { me: Me }) {
+  const restore = useRestore();
+  const clusters = useClusters();
+  const sources = clusters.data;
+  // A failed list reads as "no clusters": the user can still add credentials.
+  const hasClusters = clusters.isPending ? undefined : (sources?.length ?? 0) > 0;
+  return (
+    <Layout
+      clusterRail={<ClusterRail sources={sources ?? []} favourites={me.settings.favouriteClusters ?? []} />}
+    >
+      <Banners
+        maintenanceBanner={me.maintenanceBanner}
+        sources={sources}
+        vaultWarningSeconds={me.limits.vaultExpiryWarningSeconds}
+        notices={restore.notices}
+      />
+      <Routes>
+        <Route path="/" element={<Home me={me} restore={restore} hasClusters={hasClusters} />} />
+        <Route path="/settings" element={<SettingsPage me={me} />} />
+        <Route path="/c/:cluster/*" element={<ClusterPage />} />
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </Layout>
+  );
+}
+
 /** Everything behind sign-in: the layout and its routes. */
 export function AppRoutes() {
   const me = useMe();
+  const userId = me.state === 'signedIn' ? me.me.user.id : undefined;
+  const store = useMemo(() => (userId === undefined ? null : openVaultStore(userId)), [userId]);
   switch (me.state) {
     case 'loading':
       return <p role="status">Loading…</p>;
     case 'signedOut':
-      return <SignInPlaceholder />;
+      return <SignInPage />;
     case 'error':
       return <Banner kind="error">Could not reach the server.</Banner>;
     case 'signedIn':
       return (
-        <Layout>
-          <Routes>
-            <Route path="/" element={<ClusterPicker />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/c/:cluster/*" element={<ClusterPage />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Layout>
+        <VaultStoreContext.Provider value={store}>
+          <SignedIn me={me.me} />
+        </VaultStoreContext.Provider>
       );
   }
 }

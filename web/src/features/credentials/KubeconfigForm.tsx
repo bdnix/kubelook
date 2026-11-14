@@ -57,7 +57,12 @@ export function KubeconfigForm() {
   return (
     <form onSubmit={(e) => void submit(e)} aria-label="Add a kubeconfig">
       <Field key={fileKey} label="Kubeconfig file" type="file" onChange={(e) => void onFile(e)} />
-      <Field label="Label" value={label} onChange={(e) => setLabel(e.target.value)} hint="Shown in the cluster list." />
+      <Field
+        label="Label"
+        value={label}
+        onChange={(e) => setLabel(e.target.value)}
+        hint="Shown in the cluster list."
+      />
       <Field
         label="Kubeconfig"
         multiline

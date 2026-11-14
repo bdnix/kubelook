@@ -23,7 +23,9 @@ export function SavedCredentials() {
   async function remove(item: SavedCredential) {
     try {
       await api.delete(
-        item.kind === 'vault_token' ? '/credentials/vault' : `/credentials/kubeconfig/${encodeURIComponent(item.label)}`,
+        item.kind === 'vault_token'
+          ? '/credentials/vault'
+          : `/credentials/kubeconfig/${encodeURIComponent(item.label)}`,
       );
     } catch {
       // The session may already be gone; the browser copy is removed regardless.
@@ -38,14 +40,15 @@ export function SavedCredentials() {
     <section aria-label="Saved credentials">
       <h2>Saved credentials</h2>
       <p>
-        Removing deletes only the copy saved in this browser and the credential in your current session. Other browsers
-        keep their own copies.
+        Removing deletes only the copy saved in this browser and the credential in your current session. Other
+        browsers keep their own copies.
       </p>
       {items?.length === 0 && <p>No credentials are saved in this browser.</p>}
       <ul>
         {items?.map((item) => (
           <li key={item.id}>
-            <span>{KIND_NAMES[item.kind]}</span> <span>{item.label}</span> <small>Saved {item.savedAt.slice(0, 10)}</small>{' '}
+            <span>{KIND_NAMES[item.kind]}</span> <span>{item.label}</span>{' '}
+            <small>Saved {item.savedAt.slice(0, 10)}</small>{' '}
             <Button aria-label={`Remove ${item.label}`} onClick={() => void remove(item)}>
               Remove
             </Button>

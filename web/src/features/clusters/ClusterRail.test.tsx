@@ -37,7 +37,11 @@ describe('ClusterRail', () => {
     expect(screen.getByRole('heading', { name: 'Vault' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'prod' })).toBeInTheDocument();
     const vault = screen.getByRole('group', { name: 'Vault' });
-    expect(within(vault).getAllByRole('link').map((l) => l.textContent)).toEqual(['a', 'b']);
+    expect(
+      within(vault)
+        .getAllByRole('link')
+        .map((l) => l.textContent),
+    ).toEqual(['a', 'b']);
   });
 
   it('labels each status dot for assistive technology', () => {
@@ -52,7 +56,11 @@ describe('ClusterRail', () => {
     renderApp(<ClusterRail sources={sources} favourites={['k:prod/ctx2', 'v:gone']} />);
     const headings = screen.getAllByRole('heading').map((h) => h.textContent);
     expect(headings).toEqual(['Favourites', 'Vault', 'prod']);
-    expect(within(screen.getByRole('group', { name: 'Favourites' })).getAllByRole('link').map((l) => l.textContent)).toEqual(['ctx2']);
+    expect(
+      within(screen.getByRole('group', { name: 'Favourites' }))
+        .getAllByRole('link')
+        .map((l) => l.textContent),
+    ).toEqual(['ctx2']);
     expect(screen.getAllByRole('link', { name: 'ctx2' })).toHaveLength(1);
   });
 
@@ -87,7 +95,12 @@ describe('ClusterRail', () => {
 
   it('honours a selected role the server reports', () => {
     const withRole: Source[] = [
-      { type: 'vault', label: 'Vault', status: 'ok', clusters: [{ id: 'v:b', name: 'b', roles: ['x', 'y'], selectedRole: 'y', state: 'closed' }] },
+      {
+        type: 'vault',
+        label: 'Vault',
+        status: 'ok',
+        clusters: [{ id: 'v:b', name: 'b', roles: ['x', 'y'], selectedRole: 'y', state: 'closed' }],
+      },
     ];
     renderApp(<ClusterRail sources={withRole} favourites={[]} />);
     expect(screen.getByLabelText('Role for b')).toHaveValue('y');
@@ -99,7 +112,14 @@ describe('ClusterRail', () => {
   });
 
   it('renders cluster-supplied names as text, never as markup', () => {
-    const evil: Source[] = [{ type: 'kubeconfig', label: '<i>x</i>', status: 'ok', clusters: [{ id: 'k:l/c', name: '<b>c</b>', state: 'closed' }] }];
+    const evil: Source[] = [
+      {
+        type: 'kubeconfig',
+        label: '<i>x</i>',
+        status: 'ok',
+        clusters: [{ id: 'k:l/c', name: '<b>c</b>', state: 'closed' }],
+      },
+    ];
     renderApp(<ClusterRail sources={evil} favourites={[]} />);
     expect(screen.getByRole('link', { name: '<b>c</b>' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '<i>x</i>' })).toBeInTheDocument();

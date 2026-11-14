@@ -11,8 +11,15 @@ import { openVaultStore, type VaultStore } from './vaultStore';
 
 const SECRET = 'hvs.VERY-SECRET-TOKEN';
 const status: VaultStatus = {
-  displayName: 'oidc-ada', entityId: 'e1', expiresAt: '2026-11-14T12:30:00Z', ttlSeconds: 1800, renewable: true,
-  canRenew: true, neverExpires: false, warning: false, expired: false,
+  displayName: 'oidc-ada',
+  entityId: 'e1',
+  expiresAt: '2026-11-14T12:30:00Z',
+  ttlSeconds: 1800,
+  renewable: true,
+  canRenew: true,
+  neverExpires: false,
+  warning: false,
+  expired: false,
 };
 
 let store: VaultStore;
@@ -40,7 +47,10 @@ describe('VaultTokenForm', () => {
       'POST /credentials/vault': () => jsonResponse({ sealed: 'v1.sealed.copy.here', vault: status }),
     });
     const bodies: unknown[] = [];
-    const spying = { ...client, post: <T,>(p: string, b?: unknown) => (bodies.push(b), client.post<T>(p, b)) };
+    const spying = {
+      ...client,
+      post: <T,>(p: string, b?: unknown) => (bodies.push(b), client.post<T>(p, b)),
+    };
     renderApp(<VaultTokenForm />, { client: spying, vaultStore: store, queryClient });
 
     await user.type(screen.getByLabelText('Vault token'), SECRET);
@@ -50,7 +60,12 @@ describe('VaultTokenForm', () => {
     expect(bodies).toEqual([{ token: SECRET }]);
     const saved = await store.list();
     expect(saved).toHaveLength(1);
-    expect(saved[0]).toMatchObject({ id: 'vault_token', kind: 'vault_token', label: 'oidc-ada', sealed: 'v1.sealed.copy.here' });
+    expect(saved[0]).toMatchObject({
+      id: 'vault_token',
+      kind: 'vault_token',
+      label: 'oidc-ada',
+      sealed: 'v1.sealed.copy.here',
+    });
     expect(saved[0]?.savedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
     expect(JSON.stringify(saved)).not.toContain(SECRET);
     expect(screen.getByLabelText('Vault token')).toHaveValue('');
@@ -61,7 +76,9 @@ describe('VaultTokenForm', () => {
     const user = userEvent.setup();
     const queryClient = new QueryClient();
     const setItem = vi.spyOn(Storage.prototype, 'setItem');
-    const client = fakeClient({ 'POST /credentials/vault': () => jsonResponse({ sealed: 's', vault: status }) });
+    const client = fakeClient({
+      'POST /credentials/vault': () => jsonResponse({ sealed: 's', vault: status }),
+    });
     renderApp(<VaultTokenForm />, { client, vaultStore: store, queryClient });
 
     await user.type(screen.getByLabelText('Vault token'), SECRET);
@@ -72,7 +89,12 @@ describe('VaultTokenForm', () => {
     expect(Object.values(localStorage).join()).not.toContain(SECRET);
     expect(window.location.href).not.toContain(SECRET);
     expect(queryClient.getMutationCache().getAll()).toHaveLength(0);
-    const cached = JSON.stringify(queryClient.getQueryCache().getAll().map((q) => q.state.data));
+    const cached = JSON.stringify(
+      queryClient
+        .getQueryCache()
+        .getAll()
+        .map((q) => q.state.data),
+    );
     expect(cached).not.toContain(SECRET);
   });
 

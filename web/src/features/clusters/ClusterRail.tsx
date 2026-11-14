@@ -44,7 +44,9 @@ export function ClusterRail({ sources, favourites }: { sources: Source[]; favour
     </li>
   );
 
-  const pinned = sources.flatMap((s) => s.clusters.filter((c) => favouriteSet.has(c.id)).map((c) => row(c, s.type === 'vault')));
+  const pinned = sources.flatMap((s) =>
+    s.clusters.filter((c) => favouriteSet.has(c.id)).map((c) => row(c, s.type === 'vault')),
+  );
   if (sources.length === 0) return <p>No clusters yet.</p>;
 
   return (

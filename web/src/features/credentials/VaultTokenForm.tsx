@@ -25,7 +25,9 @@ export function VaultTokenForm() {
     setBusy(true);
     setError(undefined);
     try {
-      const { sealed, vault } = await api.post<{ sealed: string; vault: VaultStatus }>('/credentials/vault', { token });
+      const { sealed, vault } = await api.post<{ sealed: string; vault: VaultStatus }>('/credentials/vault', {
+        token,
+      });
       await store.put({
         id: 'vault_token',
         kind: 'vault_token',

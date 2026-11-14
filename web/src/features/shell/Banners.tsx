@@ -65,7 +65,10 @@ function VaultExpiry({ warningSeconds }: { warningSeconds: number }) {
   }
 
   return (
-    <Banner kind="warning" action={status.canRenew ? { label: 'Renew', onClick: () => void renew() } : undefined}>
+    <Banner
+      kind="warning"
+      action={status.canRenew ? { label: 'Renew', onClick: () => void renew() } : undefined}
+    >
       {status.canRenew ? text : `${text} ${NEW_TOKEN}`}
       {renewError && <span> {renewError}</span>}
     </Banner>

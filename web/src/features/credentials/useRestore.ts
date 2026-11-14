@@ -51,7 +51,8 @@ export function useRestore(): RestoreState {
                 break;
               case 'expired':
                 await store.remove(item.id);
-                if (r.kind === 'vault_token' && !notices.includes(TOKEN_EXPIRED_NOTICE)) notices.push(TOKEN_EXPIRED_NOTICE);
+                if (r.kind === 'vault_token' && !notices.includes(TOKEN_EXPIRED_NOTICE))
+                  notices.push(TOKEN_EXPIRED_NOTICE);
                 break;
               case 'wrong_user':
               case 'invalid':

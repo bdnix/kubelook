@@ -9,12 +9,22 @@ import { Banners } from './Banners';
 
 const NOW = '2026-11-14T12:00:00Z';
 const base: VaultStatus = {
-  displayName: 'ada', entityId: 'e', expiresAt: '2026-11-14T12:20:00Z', ttlSeconds: 1200, renewable: true,
-  canRenew: true, neverExpires: false, warning: false, expired: false,
+  displayName: 'ada',
+  entityId: 'e',
+  expiresAt: '2026-11-14T12:20:00Z',
+  ttlSeconds: 1200,
+  renewable: true,
+  canRenew: true,
+  neverExpires: false,
+  warning: false,
+  expired: false,
 };
 const none: Source[] = [];
 
-function renderBanners(props: Partial<Parameters<typeof Banners>[0]> = {}, extra: Parameters<typeof renderApp>[1] = {}) {
+function renderBanners(
+  props: Partial<Parameters<typeof Banners>[0]> = {},
+  extra: Parameters<typeof renderApp>[1] = {},
+) {
   return renderApp(
     <Banners maintenanceBanner="" sources={none} vaultWarningSeconds={1800} notices={[]} {...props} />,
     extra,
@@ -80,7 +90,8 @@ describe('Banners', () => {
     const queryClient = new QueryClient();
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
     const client = fakeClient({
-      'POST /credentials/vault/renew': () => jsonResponse({ vault: { ...base, expiresAt: '2026-11-14T12:50:00Z', ttlSeconds: 3000 } }),
+      'POST /credentials/vault/renew': () =>
+        jsonResponse({ vault: { ...base, expiresAt: '2026-11-14T12:50:00Z', ttlSeconds: 3000 } }),
     });
     renderBanners({}, { client, queryClient });
     await user.click(screen.getByRole('button', { name: 'Renew' }));
@@ -93,7 +104,8 @@ describe('Banners', () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
     vaultStatusStore.getState().set(base);
     const client = fakeClient({
-      'POST /credentials/vault/renew': () => jsonResponse({ error: { code: 'conflict', message: 'This Vault token cannot be renewed.' } }, 409),
+      'POST /credentials/vault/renew': () =>
+        jsonResponse({ error: { code: 'conflict', message: 'This Vault token cannot be renewed.' } }, 409),
     });
     renderBanners({}, { client });
     await user.click(screen.getByRole('button', { name: 'Renew' }));
@@ -104,7 +116,9 @@ describe('Banners', () => {
     vaultStatusStore.getState().set({ ...base, canRenew: false });
     renderBanners();
     expect(screen.queryByRole('button', { name: 'Renew' })).toBeNull();
-    expect(screen.getByRole('alert')).toHaveTextContent('Get a new token from Vault and paste it in settings.');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Get a new token from Vault and paste it in settings.',
+    );
   });
 
   it('says the token has expired once the time has passed, whatever the last status said', () => {
@@ -114,7 +128,9 @@ describe('Banners', () => {
       vi.advanceTimersByTime(2 * 60_000);
     });
     expect(screen.getByRole('alert')).toHaveTextContent('Your Vault token has expired.');
-    expect(screen.getByRole('alert')).toHaveTextContent('Get a new token from Vault and paste it in settings.');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Get a new token from Vault and paste it in settings.',
+    );
     expect(screen.queryByRole('button', { name: 'Renew' })).toBeNull();
   });
 
