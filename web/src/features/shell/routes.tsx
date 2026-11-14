@@ -8,6 +8,7 @@ import { ClusterPage } from '../clusters/ClusterPage';
 import { ClusterRail } from '../clusters/ClusterRail';
 import { useClusters } from '../clusters/useClusters';
 import { Dock } from '../dock/Dock';
+import { DrawerRoute } from '../details/DrawerRoute';
 import { AddCredentials } from '../credentials/AddCredentials';
 import { VaultStoreContext } from '../credentials/context';
 import { SavedCredentials } from '../credentials/SavedCredentials';
@@ -80,6 +81,12 @@ function SignedIn({ me }: { me: Me }) {
       resourceNav={
         <Routes>
           <Route path="/c/:cluster/*" element={<SidebarRoute />} />
+        </Routes>
+      }
+      drawer={
+        <Routes>
+          <Route path="/c/:cluster/ns/:namespace/:group/:kind/:name" element={<DrawerRoute />} />
+          <Route path="/c/:cluster/:group/:kind/:name" element={<DrawerRoute />} />
         </Routes>
       }
       dock={<Dock liveBufferLines={me.limits.logsLiveBufferLines} />}

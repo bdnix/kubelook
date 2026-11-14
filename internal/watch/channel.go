@@ -22,6 +22,8 @@ type openRequest struct {
 	Version   string `json:"version"`
 	Resource  string `json:"resource"`
 	Namespace string `json:"namespace"`
+	// FieldSelector narrows the watch, for example "metadata.name=web-1".
+	FieldSelector string `json:"fieldSelector"`
 }
 
 // Factory returns the "watch.open" factory for the WebSocket mux.
@@ -39,7 +41,7 @@ func (h *Hub) Factory() ws.Factory {
 		}
 		sess := c.Session()
 		key := Key{
-			SessionHash: sess.Hash, UserID: sess.UserID, Cluster: req.Cluster, Namespace: req.Namespace,
+			SessionHash: sess.Hash, UserID: sess.UserID, Cluster: req.Cluster, Namespace: req.Namespace, FieldSelector: req.FieldSelector,
 			GVR: schema.GroupVersionResource{Group: req.Group, Version: req.Version, Resource: req.Resource},
 		}
 		wc := &channel{conn: c, ch: ch}

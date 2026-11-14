@@ -253,7 +253,7 @@ func (u *upstream) establish(ctx context.Context) (stop bool) {
 	if err != nil {
 		return u.failed(ctx, kube.MapError(err))
 	}
-	opts := metav1.ListOptions{ResourceVersion: u.rv, AllowWatchBookmarks: true}
+	opts := metav1.ListOptions{ResourceVersion: u.rv, AllowWatchBookmarks: true, FieldSelector: u.key.FieldSelector}
 	res := dyn.Resource(u.key.GVR)
 	var w k8swatch.Interface
 	if u.key.Namespace != "" {
@@ -295,9 +295,9 @@ func (u *upstream) list(ctx context.Context) error {
 	res := dyn.Resource(u.key.GVR)
 	var list *unstructured.UnstructuredList
 	if u.key.Namespace != "" {
-		list, err = res.Namespace(u.key.Namespace).List(ctx, metav1.ListOptions{})
+		list, err = res.Namespace(u.key.Namespace).List(ctx, metav1.ListOptions{FieldSelector: u.key.FieldSelector})
 	} else {
-		list, err = res.List(ctx, metav1.ListOptions{})
+		list, err = res.List(ctx, metav1.ListOptions{FieldSelector: u.key.FieldSelector})
 	}
 	if err != nil {
 		return kube.MapError(err)

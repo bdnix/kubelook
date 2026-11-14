@@ -29,6 +29,7 @@ type Key struct {
 	SessionHash, UserID, Cluster string
 	GVR                          schema.GroupVersionResource
 	Namespace                    string // "" means all namespaces
+	FieldSelector                string // "" means every object; the details drawer watches one object by name
 }
 
 // Subscriber receives what an upstream sees. Its methods run on the upstream's goroutine and
