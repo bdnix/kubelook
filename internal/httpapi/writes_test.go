@@ -182,11 +182,23 @@ func TestPut_Secret_MasksRestoredAndResponseRedacted(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-func TestAuditFailure_RefusesTheActionBeforeTheAPICall(t *testing.T) {
-	e := newWriteEnv(t)
+// breakAudit makes every audit record fail.
+func breakAudit(t *testing.T, e *writeEnv) {
+	t.Helper()
 	dead := storetest.New(t)
 	e.deps.Audit = audit.NewRecorder(dead, e.fake, e.auditOut, func() string { return "x" })
 	require.NoError(t, dead.Close())
+}
+
+func forbidden(msg string) clienttesting.ReactionFunc {
+	return func(clienttesting.Action) (bool, runtime.Object, error) {
+		return true, nil, apierrors.NewForbidden(schema.GroupResource{Resource: "secrets"}, "db", errors.New(msg))
+	}
+}
+
+func TestAuditFailure_RefusesTheActionBeforeTheAPICall(t *testing.T) {
+	e := newWriteEnv(t)
+	breakAudit(t, e)
 	calls := 0
 	e.fakes.Dyn.PrependReactor("*", "configmaps", func(clienttesting.Action) (bool, runtime.Object, error) {
 		calls++

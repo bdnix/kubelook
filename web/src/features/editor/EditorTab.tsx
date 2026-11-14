@@ -1,7 +1,10 @@
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { ErrorText } from '../../components/ErrorText';
+import { bytesToBase64 } from '../../lib/bytes';
+import { parseObject, stringifyObject } from '../../lib/yaml';
 import type { K8sObject } from '../../state/live';
+import { useReveal } from '../secrets/useReveal';
 import { ConflictBanner } from './ConflictBanner';
 import { kubectlCommand } from './kubectlCommand';
 import { DiffViewer, YamlEditor } from './lazyEditors';
@@ -17,11 +20,34 @@ export interface EditorTabProps {
   canEdit: boolean;
 }
 
+function maskedKeys(text: string, kind: string): string[] {
+  if (kind !== 'Secret') return [];
+  const parsed = parseObject(text);
+  const data = parsed.ok ? (parsed.value.data as Record<string, unknown> | undefined) : undefined;
+  return Object.entries(data ?? {})
+    .filter(([, v]) => v === '********')
+    .map(([k]) => k)
+    .sort();
+}
+
 /** The YAML tab: edit, preview with a dry run, save with a full PUT. */
 export function EditorTab({ target, kind, object, canEdit }: EditorTabProps) {
   const s = useEditorState(target, object);
   const schema = useSchema(target.cluster, target.group, target.version, kind, canEdit);
   const { phase, error, previewUnsupported } = s.save;
+  const reveal = useReveal(target.cluster, target.namespace, target.name);
+  const masked = maskedKeys(s.text, kind);
+  const revealForEditing = async (key: string) => {
+    const got = await reveal.reveal([key]);
+    const value = got?.[key];
+    const parsed = parseObject(s.text);
+    if (value === undefined || !parsed.ok) return;
+    const data = {
+      ...((parsed.value.data as Record<string, unknown> | undefined) ?? {}),
+      [key]: bytesToBase64(value),
+    };
+    s.edit(stringifyObject({ ...parsed.value, data }));
+  };
   const busy = phase === 'previewing' || phase === 'saving';
   const ready = canEdit && s.dirty && s.valid && !busy;
   const showError = phase === 'error' && error !== undefined && !previewUnsupported;
@@ -50,6 +76,22 @@ export function EditorTab({ target, kind, object, canEdit }: EditorTabProps) {
           schema={schema?.schema}
           schemaRef={schema?.schemaRef}
         />
+      )}
+      {canEdit && masked.length > 0 && (
+        <section aria-label="Secret values">
+          <p>
+            Secret values show as ******** and are kept as they are. Reveal a key to change it (each reveal is
+            audited).
+          </p>
+          {masked.map((k) => (
+            <Button
+              key={k}
+              onClick={() => void revealForEditing(k)}
+              disabled={reveal.busy}
+            >{`Reveal ${k} for editing`}</Button>
+          ))}
+          <ErrorText message={reveal.error} />
+        </section>
       )}
       <ErrorText message={s.parseError} />
       <ErrorText message={s.identityError} />

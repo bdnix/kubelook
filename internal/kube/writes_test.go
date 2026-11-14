@@ -199,3 +199,20 @@ func TestDelete_PropagationPolicyAndErrors(t *testing.T) {
 	assert.ErrorIs(t, r.Delete(t.Context(), sessA, "c", secretsGVR, "ns1", "sh.helm.release.v1.web.v1", ""), apperr.ErrNotFound)
 	assert.ErrorIs(t, r.Delete(t.Context(), sessA, "c", cmGVR, "ns1", "x", "Sideways"), apperr.ErrInvalid)
 }
+
+func TestSecretData_DecodesValuesAndHidesHelmRecords(t *testing.T) {
+	r := kube.NewResources(fixture())
+	got, err := r.SecretData(t.Context(), sessA, "c", "ns1", "db")
+	require.NoError(t, err)
+	assert.Equal(t, map[string][]byte{"password": []byte("secret")}, got)
+
+	_, err = r.SecretData(t.Context(), sessA, "c", "ns1", "sh.helm.release.v1.web.v1")
+	assert.ErrorIs(t, err, apperr.ErrNotFound)
+	_, err = r.SecretData(t.Context(), sessA, "c", "ns1", "nope")
+	assert.ErrorIs(t, err, apperr.ErrNotFound)
+
+	fk := fixture()
+	_ = fk.Dyn.Tracker().Add(fakekube.Secret("ns1", "broken", map[string]any{"k": "!!!"}))
+	_, err = kube.NewResources(fk).SecretData(t.Context(), sessA, "c", "ns1", "broken")
+	assert.ErrorIs(t, err, apperr.ErrInvalid)
+}

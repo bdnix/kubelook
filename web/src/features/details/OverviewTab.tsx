@@ -8,6 +8,8 @@ import { groupOf, type ChainLink } from '../../lib/owners';
 import { resourcePath } from '../../lib/paths';
 import { podsForService, podsMountingClaim, servicesOfIngress } from '../../lib/related';
 import type { K8sObject } from '../../state/live';
+import { CertificateDetails, mayHoldCertificates } from '../secrets/CertificateDetails';
+import { SecretData } from '../secrets/SecretData';
 import { Conditions } from './Conditions';
 import { ContainerList } from './ContainerList';
 import { OwnerChain } from './OwnerChain';
@@ -260,6 +262,17 @@ export function OverviewTab({ cluster, group, kind, object, now, chain, pods }: 
       {isCore && kind === 'Pod' && <ContainerList pod={object} />}
       {WORKLOADS.includes(kind) && groupOf(getString(object, 'apiVersion')) === 'apps' && (
         <WorkloadSection object={object} />
+      )}
+      {isCore && kind === 'Secret' && (
+        <>
+          <SecretData cluster={cluster} secret={object} />
+          <CertificateDetails
+            cluster={cluster}
+            namespace={namespace}
+            name={getString(object, 'metadata.name')}
+            enabled={mayHoldCertificates(object)}
+          />
+        </>
       )}
       {isCore && kind === 'Node' && <NodeSection object={object} />}
       {isCore && kind === 'Service' && <ServiceSection cluster={cluster} object={object} pods={pods} />}

@@ -216,3 +216,60 @@ describe('EditorTab', () => {
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 });
+
+describe('EditorTab: Secrets', () => {
+  const secret: K8sObject = {
+    apiVersion: 'v1',
+    kind: 'Secret',
+    metadata: { name: 'db', namespace: 'ns', resourceVersion: '3' },
+    data: { password: '********', token: '********' },
+  };
+  const secretTarget: EditTarget = { ...target, resource: 'secrets', name: 'db' };
+
+  it('keeps masks as they are and reveals one key into the text for editing', async () => {
+    const urls: string[] = [];
+    const fetch = vi.fn((url: string) => {
+      urls.push(url);
+      return Promise.resolve(
+        url.includes('/reveal') ? jsonResponse({ data: { password: 'c2VjcmV0' } }) : jsonResponse({}),
+      );
+    });
+    renderApp(<EditorTab target={secretTarget} kind="Secret" object={secret} canEdit />, {
+      client: createClient({ fetch }),
+    });
+    const box = (await screen.findByRole('textbox', { name: 'Secret YAML' })) as HTMLTextAreaElement;
+    expect(box.value).toContain('password: "********"');
+    await userEvent.click(screen.getByRole('button', { name: 'Reveal password for editing' }));
+    await vi.waitFor(() => expect(box.value).toContain('password: c2VjcmV0'));
+    expect(box.value).toContain('token: "********"');
+    expect(screen.queryByRole('button', { name: 'Reveal password for editing' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Reveal token for editing' })).toBeInTheDocument();
+    expect(urls.some((u) => u.endsWith('/secrets/reveal'))).toBe(true);
+  });
+
+  it('read-only editors and other kinds offer no reveal', async () => {
+    renderApp(<EditorTab target={secretTarget} kind="Secret" object={secret} canEdit={false} />, {
+      client: createClient({ fetch: () => Promise.resolve(jsonResponse({})) }),
+    });
+    await screen.findByRole('textbox', { name: 'Secret YAML' });
+    expect(screen.queryByRole('region', { name: 'Secret values' })).toBeNull();
+  });
+
+  it('shows a refused reveal as text and leaves the mask', async () => {
+    const fetch = vi.fn((url: string) =>
+      Promise.resolve(
+        url.includes('/reveal')
+          ? jsonResponse({ error: { code: 'forbidden', message: 'no access' } }, 403)
+          : jsonResponse({}),
+      ),
+    );
+    renderApp(<EditorTab target={secretTarget} kind="Secret" object={secret} canEdit />, {
+      client: createClient({ fetch }),
+    });
+    await userEvent.click(await screen.findByRole('button', { name: 'Reveal token for editing' }));
+    expect(await screen.findByText('no access')).toBeInTheDocument();
+    expect((screen.getByRole('textbox', { name: 'Secret YAML' }) as HTMLTextAreaElement).value).toContain(
+      'token: "********"',
+    );
+  });
+});

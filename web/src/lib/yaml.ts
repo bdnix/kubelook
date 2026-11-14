@@ -36,3 +36,8 @@ export function splitDocuments(text: string): string[] {
     .filter((v) => v !== null && v !== undefined)
     .map((v) => stringify(v, { lineWidth: 0 }));
 }
+
+/** An object as YAML text, exactly as given (nothing is left out). */
+export function stringifyObject(obj: K8sObject): string {
+  return stringify(obj, { lineWidth: 0 });
+}

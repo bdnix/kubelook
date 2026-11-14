@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseObject, splitDocuments, toYaml } from './yaml';
+import { parseObject, splitDocuments, stringifyObject, toYaml } from './yaml';
 
 const pod = {
   apiVersion: 'v1',
@@ -61,5 +61,11 @@ describe('splitDocuments', () => {
     expect(docs[0]).toContain('a: 1');
     expect(docs[1]).toContain('b: 2');
     expect(splitDocuments('')).toEqual([]);
+  });
+});
+
+describe('stringifyObject', () => {
+  it('keeps everything, status included', () => {
+    expect(stringifyObject({ kind: 'X', status: { a: 1 } })).toBe('kind: X\nstatus:\n  a: 1\n');
   });
 });
