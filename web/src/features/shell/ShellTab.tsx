@@ -1,4 +1,5 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
+import { useApi } from '../../api/context';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { useShell, type ShellRequest } from './useShell';
@@ -8,6 +9,17 @@ const Terminal = lazy(() => import('../../adapters/xterm/Terminal').then((m) => 
 /** A shell in a container: the terminal and, once it has ended, why and a way to start a new one. */
 export function ShellTab(request: ShellRequest) {
   const shell = useShell(request);
+  const api = useApi();
+  const { cluster, namespace, pod, nodeShell } = request;
+  // A node shell is a pod of ours: closing the tab removes it.
+  useEffect(() => {
+    if (!nodeShell) return undefined;
+    return () => {
+      void api
+        .delete(`/clusters/${encodeURIComponent(cluster)}/debug/node/${encodeURIComponent(pod)}`)
+        .catch(() => undefined);
+    };
+  }, [api, cluster, namespace, pod, nodeShell]);
   const ended = shell.status === 'lost' || shell.status === 'exited' || shell.status === 'error';
   return (
     <div className="shell">

@@ -12,6 +12,7 @@ import (
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/config"
+	"github.com/bdnix/kubelook/internal/execs"
 	"github.com/bdnix/kubelook/internal/kube"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
@@ -41,6 +42,8 @@ type Deps struct {
 	Opener *cluster.Opener
 	// Audit records every mutating action; nil → the mutating cluster endpoints are not mounted.
 	Audit *audit.Recorder
+	// Debugger adds debug containers and node shells; nil → the debug endpoints are not mounted.
+	Debugger *execs.Debugger
 	// Kube reads from clusters; nil → the cluster read endpoints are not mounted.
 	Kube kube.Clients
 	// WS serves GET /api/v1/ws; nil → no WebSocket endpoint.

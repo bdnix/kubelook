@@ -8,6 +8,8 @@ export interface ShellRequest {
   namespace: string;
   pod: string;
   container: string;
+  /** Run the node shell command (the server allows it only when node shells are enabled). */
+  nodeShell?: boolean;
 }
 
 export type ShellStatus = 'connecting' | 'running' | 'exited' | 'lost' | 'error';
@@ -35,7 +37,7 @@ export function useShell(request: ShellRequest): Shell {
   const [shell, setShell] = useState<string>();
   const [exitCode, setExitCode] = useState<number>();
   const [error, setError] = useState<string>();
-  const { cluster, namespace, pod, container } = request;
+  const { cluster, namespace, pod, container, nodeShell } = request;
 
   useEffect(() => {
     if (!handle) return undefined;
@@ -47,7 +49,7 @@ export function useShell(request: ShellRequest): Shell {
     const { cols, rows } = handle.size();
     const channel = socket.open(
       'exec.open',
-      { cluster, namespace, pod, container, cols, rows },
+      { cluster, namespace, pod, container, cols, rows, ...(nodeShell ? { nodeShell: true } : {}) },
       {
         onFrame(type, data) {
           const d = (data ?? {}) as { shell?: string; data?: string; code?: number; message?: string };
@@ -90,7 +92,7 @@ export function useShell(request: ShellRequest): Shell {
       open = false;
       channel.close();
     };
-  }, [socket, handle, generation, cluster, namespace, pod, container]);
+  }, [socket, handle, generation, cluster, namespace, pod, container, nodeShell]);
 
   const attach = useCallback((h: TerminalHandle) => setHandle(h), []);
   const restart = useCallback(() => setGeneration((g) => g + 1), []);

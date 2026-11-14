@@ -164,6 +164,14 @@ describe('useShell', () => {
     expect(result.current.status).toBe('connecting');
   });
 
+  it('a node shell asks the server for the node command', () => {
+    const wrapper = socketWrapper();
+    const { result } = renderHook(() => useShell({ ...request, nodeShell: true }), { wrapper });
+    act(() => result.current.attach(fakeTerminal()));
+    act(() => FakeWebSocket.last.serverOpen());
+    expect(FakeWebSocket.last.frames[1]?.d).toMatchObject({ nodeShell: true });
+  });
+
   it('closes the channel when it unmounts', () => {
     const { unmount } = mount();
     unmount();
@@ -197,6 +205,38 @@ describe('ShellTab', () => {
     expect(await screen.findByText(LOST_MESSAGE)).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Start a new shell' }));
     expect(await screen.findByRole('status')).toHaveTextContent('Starting the shell');
+  });
+
+  it('a node shell removes its pod when the tab closes', async () => {
+    const Wrapped = socketWrapper();
+    const fetch = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
+    const { unmount } = renderApp(
+      <Wrapped>
+        <ShellTab {...request} pod="kubelook-node-shell-abcde" nodeShell />
+      </Wrapped>,
+      { client: createClient({ fetch }) },
+    );
+    await screen.findByRole('group', { name: 'Shell in app' });
+    expect(fetch).not.toHaveBeenCalled();
+    unmount();
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/v1/clusters/v%3Aprod/debug/node/kubelook-node-shell-abcde',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
+  });
+
+  it('an ordinary shell removes nothing', async () => {
+    const Wrapped = socketWrapper();
+    const fetch = vi.fn(() => Promise.resolve(jsonResponse({ ok: true })));
+    const { unmount } = renderApp(
+      <Wrapped>
+        <ShellTab {...request} />
+      </Wrapped>,
+      { client: createClient({ fetch }) },
+    );
+    await screen.findByRole('group', { name: 'Shell in app' });
+    unmount();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('shows the exit code of a finished shell', async () => {

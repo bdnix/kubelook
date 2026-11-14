@@ -13,6 +13,8 @@ export interface ShellTabProps {
   namespace: string;
   pod: string;
   container: string;
+  /** A node shell: the pod is removed when the tab closes. */
+  nodeShell?: boolean;
 }
 
 export type DockTab =

@@ -47,6 +47,7 @@ type Deps struct {
 	IdleTimeout time.Duration                                 // ≤ 0 → DefaultIdleTimeout
 	KeepAlive   func(ctx context.Context, sessionHash string) // counts an open shell as activity; nil → none
 	Guard       Guard                                         // nil → never refuses
+	NodeShell   bool                                          // allow {nodeShell: true} opens
 }
 
 type openRequest struct {
@@ -56,6 +57,8 @@ type openRequest struct {
 	Container string `json:"container"`
 	Cols      uint16 `json:"cols"`
 	Rows      uint16 `json:"rows"`
+	// NodeShell asks for the node shell command instead of bash or sh; only when node shells are enabled.
+	NodeShell bool `json:"nodeShell"`
 }
 
 // NewFactory returns the "exec.open" factory for the WebSocket mux.
@@ -79,11 +82,17 @@ func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, 
 	if req.Cluster == "" || req.Namespace == "" || req.Pod == "" {
 		return nil, fmt.Errorf("exec.open needs a cluster, a namespace and a pod: %w", apperr.ErrInvalid)
 	}
+	if req.NodeShell && !d.NodeShell {
+		return nil, fmt.Errorf("node shells are not enabled: %w", apperr.ErrNotFound)
+	}
 	if d.Guard.Busy() {
 		return nil, fmt.Errorf("The server is busy; try again in a moment.: %w", apperr.ErrBusy) //nolint:staticcheck // shown to the user
 	}
 	runCtx, cancel := context.WithCancel(ctx)
-	s := &shell{d: d, sink: sink, sess: sess, ch: ch, req: req, cancel: cancel, done: make(chan struct{}), resize: make(chan Size, 1)}
+	s := &shell{d: d, sink: sink, sess: sess, ch: ch, req: req, cancel: cancel, done: make(chan struct{}), resize: make(chan Size, 1), candidates: shellCandidates}
+	if req.NodeShell {
+		s.candidates = [][]string{NodeShellCommand}
+	}
 	s.idle = d.Clock.AfterFunc(d.IdleTimeout, func() { s.sink.CloseChannel(s.ch, "idle") })
 	if req.Cols > 0 && req.Rows > 0 {
 		s.resize <- Size{Cols: req.Cols, Rows: req.Rows}
@@ -152,6 +161,8 @@ type shell struct {
 	done   chan struct{}
 	resize chan Size
 	idle   clock.Timer
+	// candidates are the commands tried in order.
+	candidates [][]string
 
 	mu        sync.Mutex
 	stdin     *stdinQueue
@@ -305,7 +316,7 @@ func (s *shell) run(ctx context.Context) {
 			}
 		}
 	}()
-	_, err := startShell(shellCandidates, s.sent, func(cmd []string) error { return s.attempt(ctx, cmd) })
+	_, err := startShell(s.candidates, s.sent, func(cmd []string) error { return s.attempt(ctx, cmd) })
 	keep.Stop()
 	close(stopKeep)
 	reason := s.finish(ctx, err)
