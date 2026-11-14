@@ -130,3 +130,15 @@ func TestBuildDiscovery_ServerVersionIsReported(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, d)
 }
+
+func TestDiscovery_FindKind(t *testing.T) {
+	d, err := kube.BuildDiscovery(fakekube.New().Disc)
+	require.NoError(t, err)
+	r, ok := d.FindKind(schema.GroupVersion{Group: "apps", Version: "v1"}, "Deployment")
+	require.True(t, ok)
+	assert.Equal(t, "deployments", r.Resource)
+	_, ok = d.FindKind(schema.GroupVersion{Version: "v2"}, "Pod")
+	assert.False(t, ok)
+	_, ok = d.FindKind(schema.GroupVersion{Version: "v1"}, "Gadget")
+	assert.False(t, ok)
+}

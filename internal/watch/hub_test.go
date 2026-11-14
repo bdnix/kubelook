@@ -243,6 +243,28 @@ func TestHub_NamespaceKeyListsOneNamespace(t *testing.T) {
 	assert.Equal(t, 1, watches)
 }
 
+func TestHub_FieldSelector_IsSentToTheListAndTheWatchAndSplitsTheUpstream(t *testing.T) {
+	e := newHubEnv(t)
+	all, one := newRec(), newRec()
+	e.subscribe(t, sessA, "ns1", all)
+	assert.Equal(t, "snapshot rv=100 [a b]", all.next(t))
+	e.watcher(t)
+
+	k := keyFor(sessA, "ns1")
+	k.FieldSelector = "metadata.name=a"
+	_, err := e.hub.Subscribe(t.Context(), sessA, k, one)
+	require.NoError(t, err)
+	one.next(t)
+	e.watcher(t)
+
+	lists, watches := e.spy.counts()
+	assert.Equal(t, 2, lists, "a different selector is a different upstream")
+	assert.Equal(t, 2, watches)
+	assert.Equal(t, "metadata.name=a", e.spy.lists[1].FieldSelector)
+	assert.Equal(t, "metadata.name=a", e.spy.watches[1].FieldSelector)
+	assert.Empty(t, e.spy.lists[0].FieldSelector)
+}
+
 func TestHub_SecondSubscriberSharesTheUpstreamAndGetsTheCachedState(t *testing.T) {
 	e := newHubEnv(t)
 	r1 := newRec()

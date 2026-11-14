@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { SECTIONS } from '../features/shell/Sidebar';
 import { getKind, knownKinds } from './registry';
 
 describe('kind registry', () => {
@@ -8,6 +9,19 @@ describe('kind registry', () => {
     expect(a).toBe(b);
     expect(a.title).toBe('Pods');
     expect(knownKinds()).toContain(a);
+  });
+
+  it('registers every core kind once, each in a known section', () => {
+    const kinds = knownKinds();
+    const ids = kinds.map((k) => `${k.group}/${k.kind}`);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(kinds.length).toBe(35);
+    for (const k of kinds) {
+      expect(k.columns[0]?.id).toBe('name');
+      expect(k.columns.at(-1)?.id).toBe('age');
+      expect(SECTIONS).toContain(k.section);
+    }
+    expect(getKind('apps', 'Deployment').title).toBe('Deployments');
   });
 
   it('unknown kinds fall back to Name, Namespace and Age', () => {

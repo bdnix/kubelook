@@ -8,12 +8,18 @@ export interface LogTabProps {
   containers: string[];
 }
 
-export interface DockTab {
-  id: string;
-  title: string;
-  kind: 'logs';
-  props: LogTabProps;
+export interface ShellTabProps {
+  cluster: string;
+  namespace: string;
+  pod: string;
+  container: string;
+  /** A node shell: the pod is removed when the tab closes. */
+  nodeShell?: boolean;
 }
+
+export type DockTab =
+  | { id: string; title: string; kind: 'logs'; props: LogTabProps }
+  | { id: string; title: string; kind: 'shell'; props: ShellTabProps };
 
 export interface DockState {
   tabs: DockTab[];
@@ -57,6 +63,16 @@ export function logTab(props: LogTabProps): DockTab {
     id: `logs:${props.cluster}/${props.namespace}/${props.pod}`,
     title: `Logs: ${props.pod}`,
     kind: 'logs',
+    props,
+  };
+}
+
+/** Every shell is its own tab: opening the same container twice gives two terminals. */
+export function shellTab(props: ShellTabProps, serial: number): DockTab {
+  return {
+    id: `shell:${props.cluster}/${props.namespace}/${props.pod}/${props.container}/${serial}`,
+    title: `Shell: ${props.pod}/${props.container}`,
+    kind: 'shell',
     props,
   };
 }

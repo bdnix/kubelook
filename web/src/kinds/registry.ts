@@ -1,9 +1,20 @@
 import { formatAge } from '../lib/age';
 import { getString } from '../lib/path';
+import * as access from './core/access';
+import * as cluster from './core/cluster';
+import * as config from './core/config';
+import * as network from './core/network';
 import { podsKind } from './core/pods';
+import * as storage from './core/storage';
+import * as workloads from './core/workloads';
 import type { KindDescriptor } from './types';
 
-const KINDS: KindDescriptor[] = [podsKind];
+const isKind = (v: unknown): v is KindDescriptor => typeof v === 'object' && v !== null && 'columns' in v;
+
+const KINDS: KindDescriptor[] = [
+  podsKind,
+  ...[workloads, config, network, storage, cluster, access].flatMap((m) => Object.values(m).filter(isKind)),
+];
 
 /** The descriptor of a kind; kinds without one get Name, Namespace and Age. */
 export function getKind(group: string, kind: string): KindDescriptor {

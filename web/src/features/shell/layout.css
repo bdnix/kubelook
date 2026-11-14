@@ -20,6 +20,9 @@
   overflow: auto;
   padding: 1rem;
 }
+.layout-drawer:empty {
+  display: none;
+}
 .layout-drawer {
   grid-area: drawer;
   width: 28rem;

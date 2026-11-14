@@ -1,12 +1,16 @@
+import { useState } from 'react';
+import { useNavigate } from 'react-router';
 import { findResource, useDiscovery } from '../../api/discovery';
 import type { K8sObject } from '../../state/live';
 import { useOpenCluster } from '../../api/open';
 import { Banner } from '../../components/Banner';
+import { Button } from '../../components/Button';
 import { Table } from '../../components/Table';
+import { CreateFromYaml } from '../editor/CreateFromYaml';
 import { getKind } from '../../kinds/registry';
 import { useNow } from '../../lib/clock';
-import { getArray, getString } from '../../lib/path';
-import { logTab, useDock } from '../../state/dock';
+import { getString } from '../../lib/path';
+import { resourcePath } from '../../lib/paths';
 import { useLive } from '../../state/useLive';
 
 const MINUTE = 60_000;
@@ -23,21 +27,19 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   );
   const now = useNow(MINUTE);
   const descriptor = getKind(group, kind);
-  const openDock = useDock().open;
+  const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
 
-  const openLogs = (pod: K8sObject) => {
-    const containers = getArray(pod, 'spec.containers')
-      .map((c) => getString(c, 'name'))
-      .filter((n) => n !== '');
-    openDock(
-      logTab({
+  const open = (o: K8sObject) =>
+    void navigate(
+      resourcePath({
         cluster,
-        namespace: getString(pod, 'metadata.namespace'),
-        pod: getString(pod, 'metadata.name'),
-        containers: containers.length > 0 ? containers : [''],
+        namespace: getString(o, 'metadata.namespace'),
+        group,
+        kind,
+        name: getString(o, 'metadata.name'),
       }),
     );
-  };
 
   if (opened.status === 'error') return <Banner kind="error">{opened.error.message}</Banner>;
   if (opened.status === 'opening') return <p role="status">Opening the cluster…</p>;
@@ -54,6 +56,9 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   return (
     <>
       <h1>{descriptor.title}</h1>
+      {descriptor.note && <p>{descriptor.note}</p>}
+      <Button onClick={() => setCreating(!creating)}>{creating ? 'Close' : 'Create from YAML'}</Button>
+      {creating && <CreateFromYaml cluster={cluster} />}
       {live.status === 'paused' && (
         <Banner kind="info">Live updates paused. They resume when this tab is visible.</Banner>
       )}
@@ -70,7 +75,7 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
           }
           now={now}
           statusOf={descriptor.status}
-          onOpen={descriptor.kind === 'Pod' && descriptor.group === '' ? (pod) => openLogs(pod) : undefined}
+          onOpen={open}
         />
       )}
     </>

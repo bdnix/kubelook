@@ -34,6 +34,11 @@ export interface SocketDeps {
 /** What a channel hears: every frame the server sends for it (`opened`, `snapshot`, `error`, …). */
 export interface ChannelHandlers {
   onFrame(type: string, data: unknown): void;
+  /**
+   * Channels that cannot be resumed (a shell is a running process) set this: when the connection drops the
+   * channel is forgotten instead of re-opened on the next connection, and this is called.
+   */
+  onConnectionLost?(): void;
 }
 
 export interface Channel {
@@ -105,6 +110,11 @@ export function createSocket(deps: SocketDeps): Socket {
       if (ws !== socket) return;
       ws = null;
       if (disposed) return;
+      for (const r of [...records.values()]) {
+        if (!r.handlers.onConnectionLost) continue;
+        records.delete(r.ch);
+        r.handlers.onConnectionLost();
+      }
       if (ev.code === SESSION_ENDED) {
         ended = true;
         endedListeners.forEach((fn) => fn());

@@ -27,4 +27,6 @@ export interface KindDescriptor {
   /** The kind's health, shown as a badge in the column with this id. */
   status?: (obj: K8sObject) => Status;
   actions?: string[];
+  /** A note shown above the list (for example a deprecation). */
+  note?: string;
 }

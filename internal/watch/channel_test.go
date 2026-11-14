@@ -132,6 +132,20 @@ func TestChannel_LargeSnapshotIsSplitIntoFramesOfFiveHundred(t *testing.T) {
 	assert.Equal(t, []any{true, true, false}, more)
 }
 
+func TestChannel_OpenPassesTheFieldSelectorToTheUpstream(t *testing.T) {
+	e := newChanEnv(t)
+	c := e.connect(t)
+	req := openReq("ns1")
+	req["fieldSelector"] = "metadata.name=a"
+	sendOp(t, c, "watch.open", 1, req)
+	require.Equal(t, "opened", recvFrame(t, c).T)
+	require.Equal(t, "snapshot", recvFrame(t, c).T)
+	e.spy.mu.Lock()
+	defer e.spy.mu.Unlock()
+	require.NotEmpty(t, e.spy.lists)
+	assert.Equal(t, "metadata.name=a", e.spy.lists[0].FieldSelector)
+}
+
 func TestChannel_EmptySnapshotIsOneFrame(t *testing.T) {
 	e := newChanEnv(t, func(e *hubEnv) { e.items = nil })
 	c := e.connect(t)

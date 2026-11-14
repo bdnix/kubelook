@@ -8,10 +8,6 @@ A browser-based Kubernetes console. Sign in with a Vault token or an uploaded ku
 
 Goals, features, architecture, security model and delivery plan are in [`docs/spec.md`](docs/spec.md). Feedback on the spec is the most useful contribution right now.
 
-## Plan
-
-The step-by-step implementation plan is in [`PLAN.md`](PLAN.md).
-
 ## License
 
 [MIT](LICENSE) © 2026 bdnix

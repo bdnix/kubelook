@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Route, Routes } from 'react-router';
+import { Route, Routes, useParams } from 'react-router';
 import { useMe, type Me } from '../../api/me';
 import { useStatus, type ServerStatus } from '../../api/status';
 import { Banner } from '../../components/Banner';
@@ -8,6 +8,7 @@ import { ClusterPage } from '../clusters/ClusterPage';
 import { ClusterRail } from '../clusters/ClusterRail';
 import { useClusters } from '../clusters/useClusters';
 import { Dock } from '../dock/Dock';
+import { DrawerRoute } from '../details/DrawerRoute';
 import { AddCredentials } from '../credentials/AddCredentials';
 import { VaultStoreContext } from '../credentials/context';
 import { SavedCredentials } from '../credentials/SavedCredentials';
@@ -15,6 +16,7 @@ import { useRestore, type RestoreState } from '../credentials/useRestore';
 import { openVaultStore } from '../credentials/vaultStore';
 import { Banners } from './Banners';
 import { Layout } from './Layout';
+import { ResourceSidebar } from './Sidebar';
 
 function Home({
   me,
@@ -48,6 +50,11 @@ function SettingsPage({ me }: { me: Me }) {
   );
 }
 
+function SidebarRoute() {
+  const { cluster = '' } = useParams();
+  return <ResourceSidebar cluster={cluster} />;
+}
+
 function NotFound() {
   return <p>Page not found</p>;
 }
@@ -70,6 +77,17 @@ function SignedIn({ me }: { me: Me }) {
           favourites={me.settings.favouriteClusters ?? []}
           vaultUnreachable={vaultDown}
         />
+      }
+      resourceNav={
+        <Routes>
+          <Route path="/c/:cluster/*" element={<SidebarRoute />} />
+        </Routes>
+      }
+      drawer={
+        <Routes>
+          <Route path="/c/:cluster/ns/:namespace/:group/:kind/:name" element={<DrawerRoute />} />
+          <Route path="/c/:cluster/:group/:kind/:name" element={<DrawerRoute />} />
+        </Routes>
       }
       dock={<Dock liveBufferLines={me.limits.logsLiveBufferLines} />}
     >

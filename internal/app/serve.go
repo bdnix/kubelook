@@ -19,6 +19,8 @@ import (
 	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
+	"github.com/bdnix/kubelook/internal/execs"
+	"github.com/bdnix/kubelook/internal/files"
 	"github.com/bdnix/kubelook/internal/httpapi"
 	"github.com/bdnix/kubelook/internal/kube"
 	"github.com/bdnix/kubelook/internal/logs"
@@ -158,9 +160,18 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		Source: logs.NewKubeSource(kubeClients), Clock: o.Clock, Audit: c.audit, MaxLinesPerSecond: cfg.Logs.MaxLinesPerSecond,
 		KeepAlive: mgr.KeepAlive,
 	}))
+	c.ws.Register("exec.open", execs.NewFactory(execs.Deps{
+		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit,
+		IdleTimeout: time.Duration(cfg.Shell.IdleTimeout), KeepAlive: mgr.KeepAlive, NodeShell: cfg.NodeShell.IsEnabled(),
+	}))
+	c.ws.Register("file.open", files.NewFactory(files.Deps{
+		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit, Enabled: cfg.FileBrowser.IsEnabled(),
+		MaxTransferBytes: cfg.FileBrowser.MaxTransferBytes, KeepAlive: mgr.KeepAlive,
+	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, WS: c.ws, VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, WS: c.ws,
+		Debugger: execs.NewDebugger(execs.DebuggerDeps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit, Rand: o.Rand, Debug: cfg.Debug, NodeShell: cfg.NodeShell}), VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil

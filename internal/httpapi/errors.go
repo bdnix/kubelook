@@ -19,6 +19,7 @@ var (
 	ErrUnauthenticated = apperr.ErrUnauthenticated
 	ErrBusy            = apperr.ErrBusy
 	ErrTooLarge        = apperr.ErrTooLarge
+	ErrUnprocessable   = apperr.ErrUnprocessable
 )
 
 // maxBodyBytes bounds every JSON request body.
@@ -48,7 +49,9 @@ func classify(err error) (status int, code, message string, known bool) {
 		code   string
 	}{
 		{apperr.ErrClusterUnavailable, http.StatusNotFound, "cluster_unavailable"}, // before ErrNotFound, which it also matches
+		{apperr.ErrDryRunUnsupported, http.StatusUnprocessableEntity, "dry_run_unsupported"},
 		{ErrNotFound, http.StatusNotFound, "not_found"},
+		{ErrUnprocessable, http.StatusUnprocessableEntity, "unprocessable"},
 		{ErrInvalid, http.StatusBadRequest, "bad_request"},
 		{ErrConflict, http.StatusConflict, "conflict"},
 		{ErrForbidden, http.StatusForbidden, "forbidden"},

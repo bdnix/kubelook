@@ -205,10 +205,16 @@ func TestStream_RateCap_ExtraLinesAreDroppedAndReported(t *testing.T) {
 	e.src.rd.feed(t, strings.Repeat("2026-11-14T12:00:00Z x\n", 3000))
 	assert.Len(t, linesOf(e.sink.next(t)), 500)
 	assert.Len(t, linesOf(e.sink.next(t)), 500)
-	e.clock.Advance(100 * time.Millisecond)
-	f := e.sink.next(t)
-	assert.Equal(t, "dropped", f.Typ)
-	assert.EqualValues(t, 2000, f.D["count"])
+	// The last lines may still be on their way to the stream when the first tick fires, so the count can
+	// arrive in more than one frame.
+	dropped := 0
+	for dropped < 2000 {
+		e.clock.Advance(100 * time.Millisecond)
+		f := e.sink.next(t)
+		require.Equal(t, "dropped", f.Typ)
+		dropped += int(f.D["count"].(float64))
+	}
+	assert.Equal(t, 2000, dropped)
 
 	e.clock.Advance(time.Second) // the bucket is full again
 	e.src.rd.feed(t, strings.Repeat("2026-11-14T12:00:09Z y\n", 5))
