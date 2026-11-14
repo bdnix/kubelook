@@ -8,6 +8,9 @@ import { errorText } from '../credentials/errors';
 import type { Source } from '../clusters/useClusters';
 
 const MINUTE = 60_000;
+/** Shown while Vault cannot be reached (also the reason Vault clusters cannot be opened). */
+export const VAULT_DOWN =
+  "Vault is unreachable. Open clusters keep working until their credentials expire; new Vault clusters can't be opened.";
 const NEW_TOKEN = 'Get a new token from Vault and paste it in settings.';
 
 export interface BannersProps {
@@ -17,11 +20,20 @@ export interface BannersProps {
   vaultWarningSeconds: number;
   /** One-off messages, such as what restoring the saved credentials found. */
   notices: string[];
+  /** The server says Vault cannot be reached (`GET /api/v1/status`). */
+  vaultUnreachable?: boolean;
 }
 
 /** Everything the app wants the user to know at the top of the page. */
-export function Banners({ maintenanceBanner, sources, vaultWarningSeconds, notices }: BannersProps) {
-  const unreachable = sources?.some((s) => s.type === 'vault' && s.status === 'unreachable') ?? false;
+export function Banners({
+  maintenanceBanner,
+  sources,
+  vaultWarningSeconds,
+  notices,
+  vaultUnreachable = false,
+}: BannersProps) {
+  const unreachable =
+    vaultUnreachable || (sources?.some((s) => s.type === 'vault' && s.status === 'unreachable') ?? false);
   return (
     <div className="banners">
       {maintenanceBanner !== '' && <Banner kind="info">{maintenanceBanner}</Banner>}
@@ -30,7 +42,7 @@ export function Banners({ maintenanceBanner, sources, vaultWarningSeconds, notic
           {n}
         </Banner>
       ))}
-      {unreachable && <Banner kind="error">Vault is unreachable.</Banner>}
+      {unreachable && <Banner kind="error">{VAULT_DOWN}</Banner>}
       <VaultExpiry warningSeconds={vaultWarningSeconds} />
     </div>
   );

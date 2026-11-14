@@ -1,10 +1,13 @@
 import { useMemo } from 'react';
-import { Route, Routes, useParams } from 'react-router';
+import { Route, Routes } from 'react-router';
 import { useMe, type Me } from '../../api/me';
+import { useStatus, type ServerStatus } from '../../api/status';
 import { Banner } from '../../components/Banner';
 import { SignInPage } from '../auth/SignInPage';
+import { ClusterPage } from '../clusters/ClusterPage';
 import { ClusterRail } from '../clusters/ClusterRail';
 import { useClusters } from '../clusters/useClusters';
+import { Dock } from '../dock/Dock';
 import { AddCredentials } from '../credentials/AddCredentials';
 import { VaultStoreContext } from '../credentials/context';
 import { SavedCredentials } from '../credentials/SavedCredentials';
@@ -45,16 +48,6 @@ function SettingsPage({ me }: { me: Me }) {
   );
 }
 
-function ClusterPage() {
-  const { cluster } = useParams();
-  return (
-    <>
-      <h1>Cluster</h1>
-      <p>{cluster}</p>
-    </>
-  );
-}
-
 function NotFound() {
   return <p>Page not found</p>;
 }
@@ -66,14 +59,25 @@ function SignedIn({ me }: { me: Me }) {
   const sources = clusters.data;
   // A failed list reads as "no clusters": the user can still add credentials.
   const hasClusters = clusters.isPending ? undefined : (sources?.length ?? 0) > 0;
+  const status = useStatus();
+  const vault = status.data?.vault as ServerStatus['vault'] | null | undefined;
+  const vaultDown = vault?.configured === true && !vault.reachable;
   return (
     <Layout
-      clusterRail={<ClusterRail sources={sources ?? []} favourites={me.settings.favouriteClusters ?? []} />}
+      clusterRail={
+        <ClusterRail
+          sources={sources ?? []}
+          favourites={me.settings.favouriteClusters ?? []}
+          vaultUnreachable={vaultDown}
+        />
+      }
+      dock={<Dock liveBufferLines={me.limits.logsLiveBufferLines} />}
     >
       <Banners
         maintenanceBanner={me.maintenanceBanner}
         sources={sources}
         vaultWarningSeconds={me.limits.vaultExpiryWarningSeconds}
+        vaultUnreachable={vaultDown}
         notices={restore.notices}
       />
       <Routes>

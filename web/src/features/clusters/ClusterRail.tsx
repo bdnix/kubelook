@@ -1,6 +1,7 @@
 import { useId, useState } from 'react';
 import { Link } from 'react-router';
 import { clusterPath } from '../../lib/paths';
+import { VAULT_DOWN } from '../shell/Banners';
 import type { ClusterEntry, ClusterState, Source } from './useClusters';
 
 const STATE_LABELS: Record<ClusterState, string> = {
@@ -20,14 +21,29 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 }
 
 /** The cluster rail: favourites first, then one group per credential source. */
-export function ClusterRail({ sources, favourites }: { sources: Source[]; favourites: string[] }) {
+export function ClusterRail({
+  sources,
+  favourites,
+  vaultUnreachable = false,
+}: {
+  sources: Source[];
+  favourites: string[];
+  /** Closed Vault clusters cannot be opened while Vault is down. */
+  vaultUnreachable?: boolean;
+}) {
   const [roles, setRoles] = useState<Record<string, string>>({});
   const favouriteSet = new Set(favourites);
 
   const row = (c: ClusterEntry, vault: boolean) => (
     <li key={c.id}>
       <span role="img" aria-label={STATE_LABELS[c.state]} className={`dot dot-${c.state}`} />
-      <Link to={clusterPath(c.id)}>{c.name}</Link>
+      {vault && vaultUnreachable && c.state === 'closed' ? (
+        <button type="button" disabled title={VAULT_DOWN} aria-label={`Open ${c.name}. ${VAULT_DOWN}`}>
+          {c.name}
+        </button>
+      ) : (
+        <Link to={clusterPath(c.id)}>{c.name}</Link>
+      )}
       {vault && c.roles && c.roles.length > 1 && (
         <select
           aria-label={`Role for ${c.name}`}
