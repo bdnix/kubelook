@@ -192,3 +192,62 @@ func TestAuditIdentity_IncludesTheVaultIdentityWhenATokenIsInTheSession(t *testi
 	assert.Equal(t, "oidc-grace", after.VaultDisplayName)
 	assert.Equal(t, "google", after.AccountProvider)
 }
+
+const apiKubeconfig = `apiVersion: v1
+kind: Config
+clusters:
+- name: c
+  cluster: {server: "https://api.example:6443", certificate-authority-data: Y2E=}
+users:
+- name: u
+  user: {token: api-static-token}
+contexts:
+- name: ctx
+  context: {cluster: c, user: u}
+`
+
+func TestCredentials_Kubeconfig_UploadRestoreDelete(t *testing.T) {
+	e := newCredEnv(t)
+	body, err := json.Marshal(map[string]string{"label": "work", "content": apiKubeconfig})
+	require.NoError(t, err)
+	rec := e.post(http.MethodPost, "/api/v1/credentials/kubeconfig", string(body))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	var up struct {
+		Sealed   string
+		Label    string
+		Clusters []struct{ ID, Name, Context, User, Server string }
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &up))
+	assert.Equal(t, "work", up.Label)
+	assert.NotEmpty(t, up.Sealed)
+	require.Len(t, up.Clusters, 1)
+	assert.Equal(t, "k:work/ctx", up.Clusters[0].ID)
+	assert.Equal(t, "https://api.example:6443", up.Clusters[0].Server)
+	assert.NotContains(t, rec.Body.String(), "api-static-token")
+	assert.NotContains(t, e.logs.String(), "api-static-token")
+
+	del := e.post(http.MethodDelete, "/api/v1/credentials/kubeconfig/work", "")
+	assert.Equal(t, http.StatusNoContent, del.Code)
+
+	res := e.post(http.MethodPost, "/api/v1/credentials/restore", `{"items":[{"sealed":"`+up.Sealed+`"}]}`)
+	require.Equal(t, http.StatusOK, res.Code)
+	assert.Contains(t, res.Body.String(), `"status":"ok"`)
+	assert.Contains(t, res.Body.String(), `"kind":"kubeconfig"`)
+}
+
+func TestCredentials_Kubeconfig_Rejections(t *testing.T) {
+	e := newCredEnv(t)
+	exec := strings.Replace(apiKubeconfig, "user: {token: api-static-token}", "user: {exec: {apiVersion: client.authentication.k8s.io/v1beta1, command: aws}}", 1)
+	b, _ := json.Marshal(map[string]string{"label": "work", "content": exec})
+	rec := e.post(http.MethodPost, "/api/v1/credentials/kubeconfig", string(b))
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+	assert.Contains(t, rec.Body.String(), "exec credential plugins are not supported")
+
+	assert.Equal(t, http.StatusBadRequest, e.post(http.MethodPost, "/api/v1/credentials/kubeconfig", `{"label":"","content":"x"}`).Code)
+	assert.Equal(t, http.StatusBadRequest, e.post(http.MethodPost, "/api/v1/credentials/kubeconfig", `nope`).Code)
+
+	no := false
+	e.deps.Config.Kubeconfig.Enabled = &no
+	b, _ = json.Marshal(map[string]string{"label": "work", "content": apiKubeconfig})
+	assert.Equal(t, http.StatusNotFound, e.post(http.MethodPost, "/api/v1/credentials/kubeconfig", string(b)).Code)
+}
