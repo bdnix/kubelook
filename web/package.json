@@ -14,6 +14,7 @@
   "private": true,
   "dependencies": {
     "@tanstack/react-query": "5.107.1",
+    "idb": "8.0.4",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-router": "8.5.1",
@@ -32,6 +33,7 @@
     "@vitest/coverage-v8": "5.1.0",
     "eslint": "10.14.0",
     "eslint-plugin-react-hooks": "7.1.1",
+    "fake-indexeddb": "6.2.8",
     "jsdom": "31.0.0",
     "prettier": "3.9.10",
     "typescript": "6.0.3",
