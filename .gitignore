@@ -11,3 +11,6 @@
 *.local
 /go-coverage.txt
 /web-coverage.txt
+
+web/test-results/
+web/playwright-report/

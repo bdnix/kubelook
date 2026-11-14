@@ -6,17 +6,17 @@ The `ci` workflow (`.github/workflows/ci.yml`) runs on every pull request and on
 
 | Job | Proves |
 | --- | --- |
-| `lint-go` | `golangci-lint` is clean (includes formatting, the import rules and the ban on direct `time.Now`/`fmt.Print*`) |
-| `lint-web` | ESLint, Prettier and the TypeScript type check pass |
-| `test-go` | Go unit tests pass with `-race` and shuffled order |
-| `test-web` | Web unit tests pass |
-| `coverage (unit tests, >= 90%)` | Go statement coverage is at least 90%; web lines, statements and functions are at least 90% and branches at least 80%. The job summary shows the numbers |
+| `backend (lint, unit tests, coverage >= 90%)` | `golangci-lint` is clean (formatting, import rules, ban on direct `time.Now`/`fmt.Print*`); Go unit tests pass with `-race` and shuffled order; total statement coverage is at least 90%. The job summary shows the number |
+| `frontend (lint, type check, unit tests, coverage >= 90%)` | ESLint, Prettier and the TypeScript checks (app and UI tests) pass; web unit tests pass; lines, statements and functions are at least 90% and branches at least 80% |
+| `ui (Playwright, Chromium)` | The built web app works in a real browser: user journeys with the API answered by the tests (`web/ui`). Failures upload the report and traces |
 | `build` | The web app builds, is embedded and the Go binary builds and runs `version` |
 | `vuln` | `govulncheck` finds no reachable Go vulnerability and `npm audit` finds no high or critical production dependency advisory |
 | `image-scan` | The container image builds, runs, and has no fixable HIGH or CRITICAL vulnerability (Trivy) |
 | `dependency-review` | Pull requests add no dependency with a high-severity advisory (pull requests only) |
 | `ci-ok` | Every job above except `dependency-review` succeeded. This is the single required check |
 | `image-push` | On `main` only: publishes `ghcr.io/bdnix/kubelook` for `linux/amd64` and `linux/arm64` with SBOM and provenance |
+
+Lint and tests of one side share a job (one checkout, one toolchain setup, one cache), and the coverage run is the unit-test run, so no test executes twice. Locally: `make lint-be lint-fe`, `make test-be`, `make test-fe`, `make cover`, `make test-ui` (needs Chromium: `cd web && npx playwright install --with-deps chromium`).
 
 ## Coverage rules
 

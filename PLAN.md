@@ -176,7 +176,7 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 | `idb` | 8.0.4 | Promise wrapper for IndexedDB |
 | ESLint, `typescript-eslint`, `eslint-plugin-react-hooks` | 10.14.0, 8.72.2, 7.1.1 | Lint |
 | Prettier | 3.9.10 | Formatting |
-| `@playwright/test` | 1.65.0 | Browser end-to-end tests (Phase 7 only) |
+| `@playwright/test` | 1.65.0 | Browser UI tests of the web app with a mocked API (`web/ui`, from Phase 2, run in CI job `ui`) and full-stack browser tests (`test/e2e`, Phase 7) |
 | CSS | plain CSS files with custom properties | No UI framework: fewer dependencies, themes via variables |
 
 ### Tooling, images, CI
@@ -275,8 +275,9 @@ Package dependency rule (enforced by review, and by `depguard` in Step 0.3): `in
 
 | Command | What it runs | Passing output ends with |
 | --- | --- | --- |
-| `make test-go PKG=./internal/x/...` | `go test -race -count=1 -shuffle=on $(PKG)` | `ok  	github.com/bdnix/kubelook/internal/x` |
-| `make test-web FILE=src/x.test.tsx` | `cd web && npx vitest run $(FILE)` | `Test Files  1 passed` |
+| `make test-be PKG=./internal/x/...` | `go test -race -count=1 -shuffle=on $(PKG)` | `ok  	github.com/bdnix/kubelook/internal/x` |
+| `make test-fe FILE=src/x.test.tsx` | `cd web && npx vitest run $(FILE)` | `Test Files  1 passed` |
+| `make test-ui` | `cd web && npx playwright test` (builds the app, serves it, drives Chromium) | `N passed` |
 | `make lint` | golangci-lint, ESLint, Prettier check, `tsc --noEmit` | `LINT OK` |
 | `make cover` | Go and web unit tests with coverage and both gates | `COVERAGE OK` |
 | `make build` | web build, embed, Go build to `bin/kubelook` | `BUILD OK` |
@@ -357,6 +358,13 @@ Package dependency rule (enforced by review, and by `depguard` in Step 0.3): `in
   | `web/src/**/*.test.*`, `web/src/test/**`, `web/src/**/*.d.ts` | Tests and type declarations |
 
   There is no generated code in this plan. If any is ever added, it must be listed here with a reason in the same pull request.
+
+### UI tests (browser, run on every pull request)
+
+- **What they cover:** what jsdom cannot prove: the built app in real Chromium, real IndexedDB (saved credential copies surviving a reload), real navigation and URL encoding, keyboard and focus behaviour, and the user journeys of a phase end to end through the screen. Every phase that adds screens adds UI tests for its main journeys in the same pull request (Phase 2: sign-in page and its error texts, adding a kubeconfig, the cluster rail, restore after reload, key-change notice).
+- **How:** Playwright (`web/ui/*.ui.ts`, config `web/playwright.config.ts`) serves the production build with `vite preview` and answers `/api/v1/**` from the tests with `page.route`. No backend, Vault or cluster is involved, so they take seconds and never flake on infrastructure. Locators are role- and text-based (`getByRole`, `getByLabel`), assertions are auto-waiting, and there is no `waitForTimeout`.
+- **Run:** `make test-ui` locally (set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to reuse an installed Chromium), CI job `ui`. Failures upload the Playwright report and traces. They are not coverage-counted. `make verify` does not run them because it must work without a browser.
+- **Relation to the other layers:** unit tests (jsdom) prove component logic; UI tests prove the screens in a real browser against a stand-in API; the Phase 7 browser tests (`test/e2e`) prove the same screens against the real stack, including Monaco and xterm.
 
 ### Integration tests (separate CI job, never counted in coverage)
 
@@ -454,7 +462,7 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X github.com/bdnix/kubelook/internal/version.Version=$(VERSION) -X github.com/bdnix/kubelook/internal/version.Commit=$(COMMIT)
 COVER_TOOL := github.com/vladopajic/go-test-coverage/v2@v2.23.0
 
-.PHONY: tools fmt lint lint-go lint-web test test-go test-web cover cover-go cover-web build build-web build-go image verify clean
+.PHONY: tools fmt lint lint-be lint-fe test test-be test-fe test-ui cover cover-be cover-fe build build-fe build-be image verify clean
 
 tools:
 	hack/install-tools.sh
@@ -463,43 +471,49 @@ fmt:
 	golangci-lint fmt
 	cd web && npx prettier --write .
 
-lint-go:
+lint-be:
 	golangci-lint run
 
-lint-web:
+lint-fe:
 	cd web && npm run lint && npm run format:check && npm run typecheck
 
-lint: lint-go lint-web
+lint: lint-be lint-fe
 	@echo "LINT OK"
 
-test-go:
+test-be:
 	go test -race -count=1 -shuffle=on $(PKG)
 
-test-web:
+test-fe:
 	cd web && npx vitest run $(FILE)
 
-test: test-go test-web
+test: test-be test-fe
 
-cover-go:
+# Browser UI tests (Playwright, Chromium): the built web app with the API answered by the tests.
+# Needs a browser: `cd web && npx playwright install --with-deps chromium`, or set
+# PLAYWRIGHT_CHROMIUM_EXECUTABLE to an existing Chromium. Not part of `verify` (it needs a browser).
+test-ui:
+	cd web && npx playwright test
+
+cover-be:
 	go test -race -count=1 -shuffle=on -covermode=atomic -coverprofile=coverage.out ./...
 	go run $(COVER_TOOL) --config=.testcoverage.yml
 
-cover-web:
+cover-fe:
 	cd web && npx vitest run --coverage
 
-cover: cover-go cover-web
+cover: cover-be cover-fe
 	@echo "COVERAGE OK"
 
-build-web:
+build-fe:
 	cd web && npm run build
 	mkdir -p internal/webui/dist
 	find internal/webui/dist -mindepth 1 ! -name placeholder.txt -delete
 	cp -R web/dist/. internal/webui/dist/
 
-build-go:
+build-be:
 	CGO_ENABLED=0 go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN)/kubelook ./cmd/kubelook
 
-build: build-web build-go
+build: build-fe build-be
 	@echo "BUILD OK"
 
 image:
@@ -672,7 +686,7 @@ Run:
 
 ```bash
 go get github.com/stretchr/testify@v1.12.1
-make test-go PKG="./internal/version/... ./internal/app/..."
+make test-be PKG="./internal/version/... ./internal/app/..."
 ```
 
 Expected failure: build errors `undefined: version.String`, `undefined: app.Main` (packages do not exist yet).
@@ -744,14 +758,14 @@ import (
 func main() { os.Exit(app.Main(os.Args[1:], os.Stdout, os.Stderr, os.Getenv)) }
 ```
 
-The code above already satisfies the linters of Step 0.3 (package comments, checked-or-discarded write errors, no unused parameter name). The first Red run fails with `missing go.sum entry … go.yaml.in/yaml/v3` instead of `undefined: …` until `go mod tidy` has run; that still counts as the expected failure. Run `go mod tidy && make test-go PKG="./internal/version/... ./internal/app/..."`. Expected: two `ok` lines.
+The code above already satisfies the linters of Step 0.3 (package comments, checked-or-discarded write errors, no unused parameter name). The first Red run fails with `missing go.sum entry … go.yaml.in/yaml/v3` instead of `undefined: …` until `go mod tidy` has run; that still counts as the expected failure. Run `go mod tidy && make test-be PKG="./internal/version/... ./internal/app/..."`. Expected: two `ok` lines.
 
 **Refactor.** None needed. Re-run the command; still `ok`.
 
 **Acceptance.**
 
 ```bash
-make test-go                                   # all packages ok
+make test-be                                   # all packages ok
 go run ./cmd/kubelook version                  # kubelook dev (commit unknown)
 go run ./cmd/kubelook; echo "exit=$?"          # usage line, exit=2
 ```
@@ -861,12 +875,12 @@ func untested(a int) int {
 
 var _ = untested
 EOF
-make cover-go; echo "exit=$?"
+make cover-be; echo "exit=$?"
 ```
 
 Expected: output contains `Total coverage threshold (90%) satisfied:	FAIL` and `exit=2` (make reports the tool's exit status 1 as its own failure). If it prints `PASS`, the gate is not working: stop and fix `.testcoverage.yml`.
 
-**Green.** Remove the temporary function (`git checkout internal/version/version.go`). Run `make cover-go`. Expected output contains:
+**Green.** Remove the temporary function (`git checkout internal/version/version.go`). Run `make cover-be`. Expected output contains:
 
 ```
 Total coverage threshold (90%) satisfied:	PASS
@@ -878,8 +892,8 @@ Total test coverage: 100% (…)
 **Acceptance.**
 
 ```bash
-make lint-go      # 0 issues.
-make cover-go     # … satisfied: PASS
+make lint-be      # 0 issues.
+make cover-be     # … satisfied: PASS
 git status --porcelain internal/     # empty: the temporary function is gone
 ```
 
@@ -1046,21 +1060,21 @@ describe('App', () => {
 });
 ```
 
-Run `make test-web FILE=src/App.test.tsx`. Expected failure: `Failed to resolve import "./App"`.
+Run `make test-fe FILE=src/App.test.tsx`. Expected failure: `Failed to resolve import "./App"`.
 
 **Green.** `src/App.tsx`: `export function App() { return <main><h1>Kubelook</h1></main>; }`. `src/main.tsx`: import `./styles/theme.css`, look up `#root` (throw `missing #root element` if absent; the `!` assertion is banned by the strict lint rules), then `createRoot(root).render(<StrictMode><App /></StrictMode>)`. `src/styles/theme.css`: `:root` custom properties for a light theme and `[data-theme='dark']` overrides (`--bg`, `--fg`, `--muted`, `--border`, `--accent`, `--danger`, `--warn`, `--ok`), plus `body { margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; }`.
 
 Run the same command. Expected: `Test Files  1 passed (1)`.
 
-**Prove the web gate fails.** Add `src/lib/tmp.ts` with a function that has three branches and no test. Run `make cover-web; echo "exit=$?"`. Expected: an error line starting `ERROR: Coverage for` naming a threshold `(90%)`, and a non-zero exit. Delete `src/lib/tmp.ts`. Run `make cover-web` again: it must pass and print `Statements   : 100%` in the coverage summary (Vitest 5.1.0 prints no table when every file is fully covered).
+**Prove the web gate fails.** Add `src/lib/tmp.ts` with a function that has three branches and no test. Run `make cover-fe; echo "exit=$?"`. Expected: an error line starting `ERROR: Coverage for` naming a threshold `(90%)`, and a non-zero exit. Delete `src/lib/tmp.ts`. Run `make cover-fe` again: it must pass and print `Statements   : 100%` in the coverage summary (Vitest 5.1.0 prints no table when every file is fully covered).
 
 **Refactor.** None.
 
 **Acceptance.**
 
 ```bash
-make lint-web      # no output from eslint/prettier/tsc errors
-make cover-web     # table printed; no ERROR lines
+make lint-fe      # no output from eslint/prettier/tsc errors
+make cover-fe     # table printed; no ERROR lines
 cd web && npm run build && ls dist/index.html     # file exists
 ```
 
@@ -1090,7 +1104,7 @@ cd web && npm run build && ls dist/index.html     # file exists
 | wrong method | as above | `POST /` | 405 |
 | embedded FS is usable | — | `webui.FS()` | non-nil, `fs.Stat(fsys, "placeholder.txt")` succeeds |
 
-Run `make test-go PKG=./internal/webui/...`. Expected failure: `undefined: webui.Handler`.
+Run `make test-be PKG=./internal/webui/...`. Expected failure: `undefined: webui.Handler`.
 
 **Green.**
 
@@ -1129,7 +1143,7 @@ make verify        # ends with VERIFY OK  (first time the full gate works)
 ```
 
 **Pitfalls.**
-- `//go:embed all:dist` needs at least one file in `dist/` at compile time; that is why `placeholder.txt` is committed and `make build-web` and `make clean` never delete it.
+- `//go:embed all:dist` needs at least one file in `dist/` at compile time; that is why `placeholder.txt` is committed and `make build-fe` and `make clean` never delete it.
 - Clean the URL path with `path.Clean` and reject anything containing `..` before reading from the file system.
 
 ### Step 0.6 — Dockerfile
@@ -1197,7 +1211,7 @@ docker inspect kubelook:dev --format '{{.Config.User}}'    # 65532:65532
 
 ### Step 0.7 — CI workflow: lint, test, coverage, build, vulnerability check
 
-**Goal.** `.github/workflows/ci.yml` with separate jobs, least privilege, SHA-pinned actions, caching, concurrency control and a coverage job that fails below 90% and reports coverage in the job summary.
+**Goal.** `.github/workflows/ci.yml` with one job per side (`backend`, `frontend`) plus `ui`, `build` and `vuln`, least privilege, SHA-pinned actions, caching, concurrency control and a coverage job that fails below 90% and reports coverage in the job summary.
 
 **Files.** Create `.github/workflows/ci.yml`, `hack/coverage-summary.sh`.
 
@@ -1244,9 +1258,12 @@ defaults:
     shell: bash
 
 jobs:
-  lint-go:
+  # One job per side: lint and tests share one checkout, one toolchain setup and one cache.
+  # The coverage run IS the unit-test run (Go with -race and shuffle), so nothing runs twice.
+  backend:
+    name: backend (lint, unit tests, coverage >= 90%)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1257,42 +1274,27 @@ jobs:
       - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0
-
-  lint-web:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Unit tests with coverage gate (>= 90%)
+        run: make cover-be 2>&1 | tee go-coverage.txt
+      - name: Report coverage
+        if: ${{ !cancelled() }}
+        run: hack/coverage-summary.sh be >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() }}
         with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: web/.nvmrc
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-        working-directory: web
-      - run: make lint-web
+          name: coverage-be
+          path: coverage.out
+          if-no-files-found: warn
+          retention-days: 14
 
-  test-go:
+  frontend:
+    name: frontend (lint, type check, unit tests, coverage >= 90%)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - run: make test-go
-
-  test-web:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: web/.nvmrc
@@ -1300,46 +1302,61 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
         working-directory: web
-      - run: make test-web
-
-  coverage:
-    name: coverage (unit tests, >= 90%)
-    runs-on: ubuntu-24.04
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: web/.nvmrc
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-        working-directory: web
-      - name: Go unit-test coverage gate (>= 90%)
-        id: go
-        run: make cover-go 2>&1 | tee go-coverage.txt
-      - name: Web unit-test coverage gate (>= 90%)
-        id: web
-        if: ${{ !cancelled() }}
-        run: make cover-web 2>&1 | tee web-coverage.txt
+      - run: make lint-fe
+      - name: Unit tests with coverage gate (lines >= 90%, branches >= 80%)
+        run: make cover-fe 2>&1 | tee web-coverage.txt
       - name: Report coverage
         if: ${{ !cancelled() }}
-        run: hack/coverage-summary.sh >> "$GITHUB_STEP_SUMMARY"
+        run: hack/coverage-summary.sh fe >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:
-          name: coverage
+          name: coverage-fe
           path: |
-            coverage.out
             web/coverage/lcov.info
             web/coverage/coverage-summary.json
           if-no-files-found: warn
           retention-days: 14
+
+  # Browser UI tests: the built app in real Chromium with the API answered by the tests.
+  # The full-stack browser tests (real backend, Vault, clusters) are Step 7.10.
+  ui:
+    name: ui (Playwright, Chromium)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - name: Cache Playwright browsers
+        id: browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+        if: steps.browsers.outputs.cache-hit != 'true'
+        working-directory: web
+      - run: npx playwright install-deps chromium
+        if: steps.browsers.outputs.cache-hit == 'true'
+        working-directory: web
+      - run: make test-ui
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ failure() }}
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report
+            web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
 
   build:
     runs-on: ubuntu-24.04
@@ -1383,7 +1400,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: ${{ always() }}
-    needs: [lint-go, lint-web, test-go, test-web, coverage, build, vuln]
+    needs: [backend, frontend, ui, build, vuln]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -1394,31 +1411,42 @@ jobs:
           for r in $results; do [ "$r" = "success" ] || exit 1; done
 ```
 
-`hack/coverage-summary.sh` (prints Markdown; executable):
+`hack/coverage-summary.sh` (prints Markdown; executable; `be` or `fe` as argument):
 
 ```bash
 #!/usr/bin/env bash
+# Usage: coverage-summary.sh be|fe — prints the coverage numbers as Markdown for the job summary.
 set -euo pipefail
 echo "## Unit-test coverage (gate: 90%)"
 echo
-echo "### Go"
-echo '```'
-grep -E 'Total (coverage threshold|test coverage)' go-coverage.txt || echo "no Go coverage output"
-echo '```'
-echo "### Web"
-echo '```'
-if [ -f web/coverage/coverage-summary.json ]; then
-  node -e 'const t=require("./web/coverage/coverage-summary.json").total;for(const k of ["lines","statements","functions","branches"])console.log(k.padEnd(11),t[k].pct+"%")'
-else
-  echo "no web coverage output"
-fi
-echo '```'
+case "${1:-}" in
+be)
+  echo "### Backend"
+  echo '```'
+  grep -E 'Total (coverage threshold|test coverage)' go-coverage.txt || echo "no Go coverage output"
+  echo '```'
+  ;;
+fe)
+  echo "### Frontend"
+  echo '```'
+  if [ -f web/coverage/coverage-summary.json ]; then
+    node -e 'const t=require("./web/coverage/coverage-summary.json").total;for(const k of ["lines","statements","functions","branches"])console.log(k.padEnd(11),t[k].pct+"%")'
+  else
+    echo "no web coverage output"
+  fi
+  echo '```'
+  ;;
+*)
+  echo "usage: $0 be|fe" >&2
+  exit 2
+  ;;
+esac
 ```
 
-**Red / Green.** Prove the pipeline rejects low coverage on pull request 1 itself (no extra pull request): commit the untested function from Step 0.3 as `test(0.7): prove the coverage gate fails in CI` and push. Expected: job `coverage (unit tests, >= 90%)` fails and `ci-ok` fails. Then `git revert` that commit and push. Expected: all jobs green, and the `coverage` job summary shows the Go total and four web percentages.
+**Red / Green.** Prove the pipeline rejects low coverage on pull request 1 itself (no extra pull request): commit the untested function from Step 0.3 as `test(0.7): prove the coverage gate fails in CI` and push. Expected: job `backend (lint, unit tests, coverage >= 90%)` fails and `ci-ok` fails. Then `git revert` that commit and push. Expected: all jobs green, and the `backend` and `frontend` job summaries show the Go total and the four web percentages.
 
 **Acceptance.**
-- Pull request 1 shows eight jobs: `lint-go`, `lint-web`, `test-go`, `test-web`, `coverage (unit tests, >= 90%)`, `build`, `vuln`, `ci-ok`; all green.
+- Pull request 1 shows these jobs, all green: `backend (lint, unit tests, coverage >= 90%)`, `frontend (lint, type check, unit tests, coverage >= 90%)`, `ui (Playwright, Chromium)`, `build`, `vuln`, `ci-ok`. Lint and tests of one side share a job (one checkout, one toolchain setup, one cache), and the coverage run is the unit-test run, so no test executes twice.
 - `grep -c 'uses: .*@v[0-9]' .github/workflows/*.yml` prints `0` (no tag-pinned actions).
 - `grep -L '^permissions:' .github/workflows/*.yml` prints nothing.
 
@@ -1626,7 +1654,7 @@ Step format from here on: **Goal · Files · Red · Green · Refactor · Accepta
 | `MigrateOnStart` default | sqlite → `true`; postgres → `false`; explicit value wins | |
 | `CookieSecure()` | `https://…` → true; `http://…` → false | |
 
-Command: `make test-go PKG=./internal/config/...`. Expected failure: `undefined: config.Load`.
+Command: `make test-be PKG=./internal/config/...`. Expected failure: `undefined: config.Load`.
 
 **Green.** Struct (JSON tags because `sigs.k8s.io/yaml` converts YAML to JSON; use `yaml.UnmarshalStrict`):
 
@@ -1698,7 +1726,7 @@ Keys and defaults (key → Go type → default):
 
 **Refactor.** Move validation into `func (c *Config) validate() error` that collects all problems with `errors.Join`. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/config/...` → `ok`. `make cover-go` → `PASS`.
+**Acceptance.** `make test-be PKG=./internal/config/...` → `ok`. `make cover-be` → `PASS`.
 
 **Pitfalls.**
 - `sigs.k8s.io/yaml` uses `json` tags, not `yaml` tags.
@@ -1719,7 +1747,7 @@ Keys and defaults (key → Go type → default):
 - `fake.BlockUntil(n)` returns once `n` timers/tickers are registered (lets a test wait until a goroutine has armed its timer, without sleeping).
 - Concurrent `Advance` and `NewTimer` under `-race` do not race.
 
-Command: `make test-go PKG=./internal/clock/...`. Expected failure: `undefined: clock.NewFake`.
+Command: `make test-be PKG=./internal/clock/...`. Expected failure: `undefined: clock.NewFake`.
 
 **Green.**
 
@@ -1751,7 +1779,7 @@ func Rand(seed string) io.Reader
 
 **Refactor.** None beyond naming. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/clock/...` → `ok` (run it with `-count=20` once: `go test -race -count=20 ./internal/clock/...`).
+**Acceptance.** `make test-be PKG=./internal/clock/...` → `ok` (run it with `-count=20` once: `go test -race -count=20 ./internal/clock/...`).
 
 **Pitfalls.** `internal/clock` and `internal/testutil` are the only places allowed to use package `time` functions that read or wait on real time (lint exclusion from Step 0.3). `internal/testutil` is excluded from coverage but `internal/clock` is not.
 
@@ -1772,7 +1800,7 @@ func Rand(seed string) io.Reader
 - Tampered ciphertext → `ErrDecrypt`. Malformed envelope (3 parts, bad base64, version `v2`) → `ErrMalformed`.
 - `AAD("saved-credential", "user-1")` returns `[]byte("saved-credential|user-1")`; a purpose containing `|` panics (programming error).
 
-Command: `make test-go PKG=./internal/crypto/...`. Expected failure: `undefined: crypto.NewSealer`.
+Command: `make test-be PKG=./internal/crypto/...`. Expected failure: `undefined: crypto.NewSealer`.
 
 **Green.**
 
@@ -1794,7 +1822,7 @@ Purposes used later (constants in this package): `PurposeSavedCredential` (`save
 
 **Refactor.** Extract `parseEnvelope`. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/crypto/...` → `ok`. Compute the fixed vector independently: `head -c 32 /dev/zero | sha256sum | cut -c1-16` prints `66687aadf862bd77`.
+**Acceptance.** `make test-be PKG=./internal/crypto/...` → `ok`. Compute the fixed vector independently: `head -c 32 /dev/zero | sha256sum | cut -c1-16` prints `66687aadf862bd77`.
 
 **Pitfalls.** Use `crypto/aes` + `cipher.NewGCM` from the standard library only. Never reuse a nonce: always read 12 fresh bytes from the injected reader and return an error if the read fails.
 
@@ -1815,7 +1843,7 @@ Purposes used later (constants in this package): `PurposeSavedCredential` (`save
 - The embedded migrations (`store.Migrations()`) apply cleanly to an empty SQLite database.
 - `storetest.New(t)` returns a migrated SQLite `*DB` in `t.TempDir()` and closes it in `t.Cleanup`.
 
-Command: `make test-go PKG=./internal/store/...`. Expected failure: `undefined: store.Open`.
+Command: `make test-be PKG=./internal/store/...`. Expected failure: `undefined: store.Open`.
 
 **Green.**
 
@@ -1843,7 +1871,7 @@ func Migrate(ctx context.Context, db *DB, fsys fs.FS) error
 
 **Refactor.** Share the rebind-and-run code between `DB` and `Tx` through one unexported interface. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/store/...` → `ok`.
+**Acceptance.** `make test-be PKG=./internal/store/...` → `ok`.
 
 **Pitfalls.**
 - Import the drivers for side effects only: `_ "modernc.org/sqlite"` (driver name `sqlite`) and `_ "github.com/jackc/pgx/v5/stdlib"` (driver name `pgx`).
@@ -1880,7 +1908,7 @@ CREATE TABLE user_settings (
 - `PutSettings` then `GetSettings` round-trips every field; `updated_at` = now.
 - `PutSettings` rejects `WatchIdleSeconds` outside 30…300 with `store.ErrInvalid`.
 
-Command: `make test-go PKG=./internal/store/...`. Expected failure: `undefined: store.NewUsers`.
+Command: `make test-be PKG=./internal/store/...`. Expected failure: `undefined: store.NewUsers`.
 
 **Green.**
 
@@ -1906,7 +1934,7 @@ Production `newID` is `store.NewID` = 16 random bytes, lowercase hex (add it her
 
 **Refactor.** Add helpers `ms(t time.Time) int64` and `fromMS(int64) time.Time` in `internal/store/time.go` with tests; use them everywhere. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/store/...` → `ok`.
+**Acceptance.** `make test-be PKG=./internal/store/...` → `ok`.
 
 **Pitfalls.** Use `INSERT … ON CONFLICT (provider, subject) DO UPDATE SET … RETURNING id` — supported by both SQLite ≥ 3.35 and PostgreSQL. Never key users by email (spec).
 
@@ -1942,13 +1970,13 @@ CREATE TABLE session_credentials (
 - `PutCredential` upserts by (session, kind, ref); `GetCredential` returns sealed text and expiry or `ErrNotFound`; `ListCredentials(hash, kind)` sorted by ref; `DeleteCredential`.
 - Putting a credential for a missing session → error (foreign key).
 
-Command: `make test-go PKG=./internal/store/...`. Expected failure: `undefined: store.NewSessions`.
+Command: `make test-be PKG=./internal/store/...`. Expected failure: `undefined: store.NewSessions`.
 
 **Green.** `type Sessions struct{…}` with the methods named above; `type SessionRow struct{ Hash, UserID, CSRFToken string; CreatedAt, LastSeenAt, ExpiresAt time.Time }`; `type CredentialRow struct{ Kind, Ref, Sealed string; ExpiresAt time.Time }`.
 
 **Refactor.** None. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/store/...` → `ok`.
+**Acceptance.** `make test-be PKG=./internal/store/...` → `ok`.
 
 **Pitfalls.** The store never sees plaintext: it stores the envelope string produced by `crypto.Sealer`. The session ID itself is never stored, only `hex(sha256(id))`.
 
@@ -1983,7 +2011,7 @@ Cases for cleanup: `Cleanup(ctx, db, clock, retentionDays)`: `0` → deletes not
 
 `app.Main("audit-cleanup")` cases: with `KUBELOOK_AUDIT_CLEANUP_DATABASE_URL` unset and driver postgres → exit 1 and message; with SQLite config → opens `database.sqlitePath`, runs cleanup with `audit.retentionDays`, prints `audit-cleanup: deleted N records`, exit 0.
 
-Command: `make test-go PKG="./internal/audit/... ./internal/app/..."`. Expected failure: `undefined: audit.NewRecorder`.
+Command: `make test-be PKG="./internal/audit/... ./internal/app/..."`. Expected failure: `undefined: audit.NewRecorder`.
 
 **Green.**
 
@@ -2011,7 +2039,7 @@ In `app.Main`, add the `audit-cleanup` case: load config; choose DB options (`KU
 
 **Refactor.** Put the stdout JSON shape in one struct `line` shared by success and failure paths. Re-run.
 
-**Acceptance.** `make test-go PKG="./internal/audit/... ./internal/app/..."` → `ok`.
+**Acceptance.** `make test-be PKG="./internal/audit/... ./internal/app/..."` → `ok`.
 
 **Pitfalls.** The recorder only inserts. It must never `UPDATE` or `DELETE` (the PostgreSQL role cannot, A14). Write to stdout under a mutex so lines never interleave.
 
@@ -2034,7 +2062,7 @@ In `app.Main`, add the `audit-cleanup` case: load config; choose DB options (`KU
 - Request body limit: `decodeJSON` rejects bodies over 1 MiB with 413 and unknown fields with 400.
 - Access log: one `slog` record per request with method, route pattern, status, duration (from the fake clock), request ID; never the query string.
 
-Command: `make test-go PKG=./internal/httpapi/...`. Expected failure: `undefined: httpapi.New`.
+Command: `make test-be PKG=./internal/httpapi/...`. Expected failure: `undefined: httpapi.New`.
 
 **Green.**
 
@@ -2060,7 +2088,7 @@ Use `http.NewServeMux()` with method patterns (`mux.HandleFunc("GET /healthz", �
 
 **Refactor.** Each middleware is `func(http.Handler) http.Handler`; compose with `chain(h, mws...)`. Re-run.
 
-**Acceptance.** `make test-go PKG="./internal/httpapi/... ./internal/apperr/..."` → `ok`.
+**Acceptance.** `make test-be PKG="./internal/httpapi/... ./internal/apperr/..."` → `ok`.
 
 **Pitfalls.**
 - `style-src 'unsafe-inline'` is required by Monaco and xterm (they set inline styles); `script-src` stays strict. This is the plan's CSP; the spec defers the exact value to the security review.
@@ -2087,7 +2115,7 @@ Use `http.NewServeMux()` with method patterns (`mux.HandleFunc("GET /healthz", �
 - Middleware `CSRF`: `POST` without `X-CSRF-Token` → 403 `csrf`; wrong token → 403; right token → passes; `GET` needs none. Comparison uses `subtle.ConstantTimeCompare`.
 - Public routes (`/healthz`, `/readyz`, `/metrics`, `/auth/…`, `GET /api/v1/auth/providers`, static files) pass without a session.
 
-Command: `make test-go PKG="./internal/session/... ./internal/httpapi/..."`. Expected failure: `undefined: session.NewManager`.
+Command: `make test-be PKG="./internal/session/... ./internal/httpapi/..."`. Expected failure: `undefined: session.NewManager`.
 
 **Green.**
 
@@ -2114,7 +2142,7 @@ func FromContext(ctx context.Context) (Session, bool)
 
 **Refactor.** Merge the watchdog and sweep loops into one `run(ctx, interval, fn)` helper. Add `goleak.VerifyTestMain` (`go get go.uber.org/goleak@v1.3.0`). Re-run.
 
-**Acceptance.** `make test-go PKG="./internal/session/... ./internal/httpapi/..."` → `ok`.
+**Acceptance.** `make test-be PKG="./internal/session/... ./internal/httpapi/..."` → `ok`.
 
 **Pitfalls.**
 - Closers must not be called while holding the registry mutex (they may call `unregister`).
@@ -2134,7 +2162,7 @@ func FromContext(ctx context.Context) (Session, bool)
 - `Main("migrate")` with SQLite config → exit 0, stdout `migrate: schema is up to date`; with postgres and no `KUBELOOK_MIGRATE_DATABASE_URL` → exit 1 naming the variable.
 - A `SIGTERM`-equivalent: `Main` receives its context from `opts`; test passes an already-cancelled context and expects exit 0.
 
-Command: `make test-go PKG=./internal/app/...`. Expected failure: `undefined: app.Serve`.
+Command: `make test-be PKG=./internal/app/...`. Expected failure: `undefined: app.Serve`.
 
 **Green.**
 
@@ -2183,13 +2211,13 @@ kill %1                             # process exits 0
 - Routes: `/` → cluster picker placeholder; `/settings` → settings placeholder; `/c/:cluster/*` → cluster placeholder showing the **decoded** cluster ID (`/c/k%3Aprod%2Fctx` shows `k:prod/ctx`); unknown → "Page not found". Signed-out state renders the sign-in placeholder on every route.
 - Theme store: default `system`; `setTheme('dark')` sets `document.documentElement.dataset.theme = 'dark'` and persists to `localStorage` key `kubelook.theme`.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green.** Implement. `web/src/test/render.tsx` exports `renderApp(ui, { route, client })` wrapping `MemoryRouter`, a fresh `QueryClient` (`retry: false`) and an `ApiContext` provider. `App.tsx` composes `QueryClientProvider` → `ApiContext` → `BrowserRouter` → routes.
 
 **Refactor.** Route path builders in `web/src/lib/paths.ts` (`clusterPath(id)`, `resourcePath({cluster, namespace, group, kind, name})`) with tests for encoding (cluster IDs containing `/` and `:`; empty group written as `core`). Re-run.
 
-**Acceptance.** `make test-web` → all passed. `make cover-web` → no threshold errors. `make build` → `BUILD OK`; opening `http://localhost:8080/` (server from Step 1.10) shows the sign-in placeholder.
+**Acceptance.** `make test-fe` → all passed. `make cover-fe` → no threshold errors. `make build` → `BUILD OK`; opening `http://localhost:8080/` (server from Step 1.10) shows the sign-in placeholder.
 
 **Pitfalls.** `fetch` is banned by lint outside `api/client.ts`; pass it in (`createClient({ fetch: window.fetch.bind(window) })` in `main.tsx`). Use `encodeURIComponent` for every path segment.
 
@@ -2214,7 +2242,7 @@ Outcome (the spec's spike, minus live data): a user signs in with Google or GitH
 - Unknown provider → 404.
 - Callback validation (`parseCallback`): missing cookie → `ErrState`; `state` query ≠ cookie state → `ErrState`; cookie older than 10 minutes (fake clock) → `ErrState`; cookie sealed for another provider → `ErrState`; `error=access_denied` in the query → `ErrDenied`; valid → returns code and verifier, and the cookie is cleared.
 
-Command: `make test-go PKG=./internal/auth/...`. Expected failure: `undefined: auth.NewHandlers`.
+Command: `make test-be PKG=./internal/auth/...`. Expected failure: `undefined: auth.NewHandlers`.
 
 **Green.**
 
@@ -2234,7 +2262,7 @@ Use `oauth2.GenerateVerifier`-equivalent built from the injected `io.Reader` (32
 
 **Refactor.** None. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/auth/...` → `ok`.
+**Acceptance.** `make test-be PKG=./internal/auth/...` → `ok`.
 
 **Pitfalls.** The state cookie is sealed, not just signed, so the verifier is not readable by page scripts or proxies. Never accept a `redirect` parameter from the query (open redirect): after sign-in the user always goes to `/`.
 
@@ -2252,13 +2280,13 @@ Use `oauth2.GenerateVerifier`-equivalent built from the injected `io.Reader` (32
 - Token response without `id_token` → error.
 - The domain comparison is case-insensitive; the `hd` claim is used, never the email's domain part.
 
-Command: `make test-go PKG=./internal/auth/...`. Expected failure: `undefined: auth.NewGoogle`.
+Command: `make test-be PKG=./internal/auth/...`. Expected failure: `undefined: auth.NewGoogle`.
 
 **Green.** `func NewGoogle(ctx context.Context, cfg GoogleConfig, c clock.Clock, hc *http.Client) (Provider, error)`; `oidc.NewProvider(oidc.ClientContext(ctx, hc), cfg.IssuerURL)`; verifier `provider.Verifier(&oidc.Config{ClientID: cfg.ClientID, Now: c.Now})`; scopes `openid email profile`; ID token from `tok.Extra("id_token")`.
 
 **Refactor.** Extract `allowed(domains []string, hd string) bool`. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/auth/...` → `ok`.
+**Acceptance.** `make test-be PKG=./internal/auth/...` → `ok`.
 
 **Pitfalls.** `oidc.NewProvider` performs discovery at construction: construct providers lazily on first use with a `sync.Once`-style retry, so the server starts even when Google is briefly unreachable (test: issuer down at construction, up later → login works).
 
@@ -2277,13 +2305,13 @@ Command: `make test-go PKG=./internal/auth/...`. Expected failure: `undefined: a
 - `/user` non-200 → error. Null email → empty string (allowed).
 - Requests carry `Authorization: Bearer <token>`, `Accept: application/vnd.github+json`, `X-GitHub-Api-Version: 2022-11-28`.
 
-Command: `make test-go PKG=./internal/auth/...`. Expected failure: `undefined: auth.NewGitHub`.
+Command: `make test-be PKG=./internal/auth/...`. Expected failure: `undefined: auth.NewGitHub`.
 
 **Green.** `func NewGitHub(cfg GitHubConfig, hc *http.Client) Provider`; OAuth endpoints `<baseURL>/login/oauth/authorize` and `<baseURL>/login/oauth/access_token`; API calls to `<apiBaseURL>`.
 
 **Refactor.** One `getJSON(ctx, url, token, &v) (status int, err error)` helper. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/auth/...` → `ok`.
+**Acceptance.** `make test-be PKG=./internal/auth/...` → `ok`.
 
 **Pitfalls.** Limit response bodies with `io.LimitReader(resp.Body, 1<<20)`. Close bodies (lint `bodyclose`).
 
@@ -2301,7 +2329,7 @@ Command: `make test-go PKG=./internal/auth/...`. Expected failure: `undefined: a
 - Logout → 204; cookie cleared; session row gone; registry closers called; audit `sign-out`. Logout without CSRF token → 403.
 - Audit identity middleware: every request with a session gets `audit.WithIdentity` filled from the user (Vault identity is added in Step 2.7).
 
-Command: `make test-go PKG="./internal/auth/... ./internal/httpapi/..."`. Expected failure: assertion failures / undefined handler fields.
+Command: `make test-be PKG="./internal/auth/... ./internal/httpapi/..."`. Expected failure: assertion failures / undefined handler fields.
 
 **Green.** Implement; wire providers in `serve.go` from config (a provider exists only when its client ID is set).
 
@@ -2332,7 +2360,7 @@ Command: `make test-go PKG="./internal/auth/... ./internal/httpapi/..."`. Expect
 
 Plus: every request sends `X-Vault-Token` and `X-Vault-Request: true`; 403 → `ErrPermissionDenied` (wrapping Vault's `errors[0]`); 404 → `ErrNotFound`; 400 **and 500** with an `errors` list → `*ResponseError{Status, Messages}` (Vault 2.2.1 answers 500 when a secrets engine fails, for example a bad CA on `creds`; that is not an outage); connection refused, timeout, or 502/503/504 → `ErrUnreachable`; a response over 4 MiB → error; context cancellation propagates; the token never appears in any returned error string (test with a token value and `assert.NotContains`).
 
-Command: `make test-go PKG=./internal/vault/...`. Expected failure: `undefined: vault.NewClient`.
+Command: `make test-be PKG=./internal/vault/...`. Expected failure: `undefined: vault.NewClient`.
 
 **Green.**
 
@@ -2350,7 +2378,7 @@ func NewClient(address string, hc *http.Client) *Client     // hc has a 15 s tim
 
 **Refactor.** One `do(ctx, method, path, token, in, out)` function for all six. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/vault/...` → `ok`.
+**Acceptance.** `make test-be PKG=./internal/vault/...` → `ok`.
 
 **Pitfalls.** Mount paths in Vault's responses end with `/` (`kubernetes/prod/`). `mount` arguments in this API are always the full mount path without the trailing slash (`kubernetes/prod`). `ttl` is sent as a Go duration string.
 
@@ -2379,7 +2407,7 @@ func NewClient(address string, hc *http.Client) *Client     // hc has a 15 s tim
 | 250 mounts | — | exactly one `Mounts` call and `ceil(250*3/100)` capability calls; result sorted by name |
 | Vault unreachable | — | error wrapping `ErrUnreachable` |
 
-Command: `make test-go PKG=./internal/vault/...`. Expected failure: `undefined: vault.Discover`.
+Command: `make test-be PKG=./internal/vault/...`. Expected failure: `undefined: vault.Discover`.
 
 **Green.**
 
@@ -2391,7 +2419,7 @@ func can(caps []string, want string) bool    // root → true; deny → false; e
 
 **Refactor.** None. Re-run.
 
-**Acceptance.** `make test-go PKG=./internal/vault/...` → `ok`.
+**Acceptance.** `make test-be PKG=./internal/vault/...` → `ok`.
 
 **Pitfalls.** Capability paths are sent without a leading slash and without `v1/`: `kubernetes/prod/config`, `kubernetes/prod/creds/devops-role`.
 
@@ -2422,7 +2450,7 @@ API:
 - Audit identity now includes the Vault entity ID and display name whenever a Vault token is in the session.
 - `vault.address` empty → all four endpoints 404 and `me.features.vault=false`.
 
-Command: `make test-go PKG="./internal/cluster/... ./internal/httpapi/..."`. Expected failure: `undefined: cluster.NewCredentials`.
+Command: `make test-be PKG="./internal/cluster/... ./internal/httpapi/..."`. Expected failure: `undefined: cluster.NewCredentials`.
 
 **Green.**
 
@@ -2475,7 +2503,7 @@ Cluster IDs are `k:<label>/<context>`. `File.RESTConfig(context string) (*rest.C
 
 HTTP cases: `kubeconfig.enabled=false` → 404; upload stores session credential `kubeconfig` (ref = label), returns a sealed copy (kind `kubeconfig`, label, content); restore of a kubeconfig copy re-parses it; delete removes the credential, its clusters' `cluster_cred` rows and closes their connections; uploading an existing label replaces it.
 
-Command: `make test-go PKG="./internal/kubeconfig/... ./internal/cluster/... ./internal/httpapi/..."`. Expected failure: `undefined: kubeconfig.Parse`.
+Command: `make test-be PKG="./internal/kubeconfig/... ./internal/cluster/... ./internal/httpapi/..."`. Expected failure: `undefined: kubeconfig.Parse`.
 
 **Green.** Use `clientcmd.Load(content)` then validate every `AuthInfo`, `Cluster` and context before building anything.
 
@@ -2503,7 +2531,7 @@ API: `GET /api/v1/clusters` → `{ sources:[{ type:"vault"|"kubeconfig", label, 
 - Vault token expired → `status:"expired"`, its clusters `state:"disconnected"`.
 - `Registry.Resolve(ctx, sess, clusterID)` returns a `Ref{ID, Source, Mount, Roles, Label, Context}` or `apperr.ErrNotFound` for any ID not in the session (another user's kubeconfig cluster and a non-existent one are indistinguishable → HTTP 404 `cluster_unavailable` with the spec's message `This cluster isn't available in your session. If it comes from a kubeconfig, upload that kubeconfig first.`).
 
-Command: `make test-go PKG="./internal/cluster/... ./internal/httpapi/..."`. Expected failure: `undefined: cluster.NewRegistry`.
+Command: `make test-be PKG="./internal/cluster/... ./internal/httpapi/..."`. Expected failure: `undefined: cluster.NewRegistry`.
 
 **Green.** Implement as specified; the cache is an in-memory map keyed by session hash with entries dropped by a registry closer when the session ends.
 
@@ -2530,13 +2558,13 @@ Command: `make test-go PKG="./internal/cluster/... ./internal/httpapi/..."`. Exp
 - `Banners`: maintenance banner from `me.maintenanceBanner`; Vault expiry warning with remaining time (fake timers; updates each minute) and a **Renew** button when `canRenew`; without `canRenew` the text tells the user to get a new token from Vault and paste it in settings; expired state text; "Vault is unreachable" banner when the Vault source status is `unreachable`.
 - No credentials yet → `AddCredentials` is the landing page with both forms (kubeconfig form hidden when `features.kubeconfig` is false; Vault form hidden when `features.vault` is false).
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green.** Implement. Text is plain React children everywhere.
 
 **Refactor.** Shared `Field`, `Button`, `ErrorText` components in `web/src/components/` with their own tests. Re-run.
 
-**Acceptance.** `make test-web` passes; `make cover-web` passes; `make verify` → `VERIFY OK`.
+**Acceptance.** `make test-fe` passes; `make cover-fe` passes; `make verify` → `VERIFY OK`.
 
 **Pitfalls.** IndexedDB access is asynchronous: in tests `await` the store calls, and use `findBy…` queries rather than timers. Safari may clear IndexedDB (spec); treat an empty store as normal.
 
@@ -2572,7 +2600,7 @@ API: `POST /api/v1/clusters/{cluster}/open` `{role?}` → `{state:"open", server
 - OIDC kubeconfig: ID token with `exp` in the past (fake clock) → refresh against a `fakeoidc` issuer using `refresh_token`, `client-id`, optional `client-secret`, optional `idp-certificate-authority-data`; new ID token used; when the issuer returns a new refresh token, the session's kubeconfig credential is updated **and** a new sealed browser copy is queued as a `pending_copy` credential, returned by `/credentials/pending` until acknowledged.
 - Session end deletes `cluster_cred` rows (cascade) and drops in-memory caches; no lease revocation call exists (assert the fake has no revoke endpoint hit).
 
-Command: `make test-go PKG="./internal/cluster/... ./internal/httpapi/..."`. Expected failure: `undefined: cluster.NewOpener`.
+Command: `make test-be PKG="./internal/cluster/... ./internal/httpapi/..."`. Expected failure: `undefined: cluster.NewOpener`.
 
 **Green.**
 
@@ -2614,7 +2642,7 @@ API: `GET /api/v1/clusters/{cluster}/discovery` → `{ serverVersion, resources:
 - Cached 60 s per session+cluster (fake clock); `Invalidate` forces a refresh (used after CRD changes).
 - HTTP: unknown cluster → 404 `cluster_unavailable`; result sorted by group, then resource.
 
-Command: `make test-go PKG="./internal/kube/... ./internal/httpapi/..."`. Expected failure: `undefined: kube.NewClients`.
+Command: `make test-be PKG="./internal/kube/... ./internal/httpapi/..."`. Expected failure: `undefined: kube.NewClients`.
 
 **Green.**
 
@@ -2651,7 +2679,7 @@ type Resource struct{ Group, Version, Resource, Kind string; Namespaced bool; Ve
 - `redact.Unmask(edited, live)` for saves: every `data` value equal to `Mask` is replaced by the live object's value for that key; a masked key that no longer exists live → `ErrConflict`; non-masked values pass through; non-Secrets returned unchanged.
 - Property test: for 200 generated Secrets (deterministic generator from `testutil.Rand`), no original data value appears anywhere in the JSON of the redacted object.
 
-Command: `make test-go PKG=./internal/redact/...`. Expected failure: `undefined: redact.Apply`.
+Command: `make test-be PKG=./internal/redact/...`. Expected failure: `undefined: redact.Apply`.
 
 **Green.** Implement with `unstructured` helpers (`unstructured.NestedMap`, `SetNestedField`, `RemoveNestedField`).
 
@@ -2673,7 +2701,7 @@ API:
 
 **Red.** Cases (fakekube): list namespaced with and without `namespace`; cluster-scoped; selectors passed through; `limit` default 500, max 5000; `core` maps to the empty group; unknown resource → 404; API `Forbidden` → 403 with the API server's message as text; `NotFound` → 404; every returned object passed through `redact.Apply` (a Secret's values are masked; a Helm release Secret is absent from lists and 404 on get); items keep API order.
 
-Command: `make test-go PKG="./internal/kube/... ./internal/httpapi/..."`. Expected failure: `undefined: kube.NewResources`.
+Command: `make test-be PKG="./internal/kube/... ./internal/httpapi/..."`. Expected failure: `undefined: kube.NewResources`.
 
 **Green.**
 
@@ -2708,7 +2736,7 @@ API: `POST /api/v1/clusters/{cluster}/access` `{checks:[{verb, group, resource, 
 - Shell check helper `CanExec(ns, pod)` = `create` on `pods/exec` (spec: Kubernetes 1.35 requires `create` for WebSocket exec).
 - More than 100 checks → 400.
 
-Command: `make test-go PKG="./internal/kube/... ./internal/httpapi/..."`. Expected failure: `undefined: kube.NewAccess`.
+Command: `make test-be PKG="./internal/kube/... ./internal/httpapi/..."`. Expected failure: `undefined: kube.NewAccess`.
 
 **Green.** `func (a *Access) Can(ctx, sess, clusterID string, c Check) (bool, string, error)` and `CanAll`.
 
@@ -2743,7 +2771,7 @@ Protocol (JSON text frames, A16):
 - Any non-pong client frame calls `session.Manager.KeepAlive`.
 - No goroutine leaks (`goleak`).
 
-Command: `make test-go PKG="./internal/ws/... ./internal/httpapi/..."`. Expected failure: `undefined: ws.NewMux`.
+Command: `make test-be PKG="./internal/ws/... ./internal/httpapi/..."`. Expected failure: `undefined: ws.NewMux`.
 
 **Green.**
 
@@ -2845,13 +2873,13 @@ Each upstream runs one goroutine owning its cache (`map[types.UID]*unstructured.
 - `StatusBadge`: text plus an icon with an accessible label; colour is never the only signal.
 - `ResourceListPage`: given a cluster and kind, calls `/open` if the cluster is not open, subscribes, shows the table; shows "You don't have permission to list <kind>" on a `forbidden` error; shows "Live updates paused" on `paused`.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green.** Implement. The WebSocket URL is `(location.protocol === 'https:' ? 'wss' : 'ws') + '://' + location.host + '/api/v1/ws'`.
 
 **Refactor.** Move column helpers (`get(obj, 'status.phase')`) to `web/src/lib/path.ts` with tests. Re-run.
 
-**Acceptance.** `make test-web` and `make cover-web` pass. Manual check is deferred to the integration phase; nothing else to run.
+**Acceptance.** `make test-fe` and `make cover-fe` pass. Manual check is deferred to the integration phase; nothing else to run.
 
 **Pitfalls.** jsdom has no layout: the table takes `viewportHeight` from a prop with a default measured via `ResizeObserver` (inject a fake in tests). `Table` must not re-render all rows on every event: key rows by `metadata.uid`.
 
@@ -2877,7 +2905,7 @@ Channel: `logs.open` `d = {cluster, namespace, pod, container, follow, tailLines
 - While open, `KeepAlive` is called on each tick (A12).
 - API errors (pod not found, forbidden, container not ready) → `error` frame with the API message as text.
 
-Command: `make test-go PKG=./internal/logs/...`. Expected failure: `undefined: logs.NewFactory`.
+Command: `make test-be PKG=./internal/logs/...`. Expected failure: `undefined: logs.NewFactory`.
 
 **Green.**
 
@@ -2909,13 +2937,13 @@ Read with a `bufio.Reader` and `ReadSlice('\n')` handling `bufio.ErrBufferFull` 
 - `LogViewer`: container picker; follow toggle (auto-scroll only while at the bottom); timestamps toggle; tail size and "since" selectors; "previous instance" toggle; client-side search (plain or regex, invalid regex shows an inline error and filters nothing) with matches wrapped in `<mark>`; download of the current buffer as text (uses an injected `saveFile(name, blob)`); lines are rendered as text nodes.
 - `Dock`: tabs for open items; closing a tab closes its channel; tabs survive route changes (state lives in `state/dock.ts`); the dock is a `region` named "Dock"; each tab is keyboard reachable.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green.** Implement; the log list uses the same windowing helper as `Table`.
 
 **Refactor.** Extract `highlight(text, query)` to `web/src/lib/highlight.ts` with tests. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** Build regexes with `new RegExp(source, 'gi')` inside `try/catch`; cap highlighted matches per line at 100 to avoid pathological patterns freezing the tab.
 
@@ -2933,7 +2961,7 @@ API: `GET /api/v1/status` → `{vault:{configured, reachable, since}}`.
 - `/status` reflects the monitor. With `vault.address` empty → `configured:false`.
 - Web: banner "Vault is unreachable. Open clusters keep working until their credentials expire; new Vault clusters can't be opened." appears when `reachable:false` and disappears when it returns (query polled every 15 s with fake timers); the open button for closed Vault clusters is disabled with that explanation; kubeconfig clusters unaffected.
 
-Command: `make test-go PKG="./internal/vault/... ./internal/httpapi/..."` and `make test-web`. Expected failure: `undefined: vault.NewMonitor`.
+Command: `make test-be PKG="./internal/vault/... ./internal/httpapi/..."` and `make test-fe`. Expected failure: `undefined: vault.NewMonitor`.
 
 **Green.** Implement.
 
@@ -2975,7 +3003,7 @@ API (same paths as Step 3.4):
 - `apply`: each YAML document is resolved through discovery (`apiVersion`+`kind`); existing object → update using the live `resourceVersion`; missing → create; results per document, continuing after a failed document; unknown kind → that document's `error`; more than 100 documents or over 1 MiB total → 413.
 - Delete of a missing object → 404.
 
-Command: `make test-go PKG="./internal/kube/... ./internal/httpapi/..."`. Expected failure: new methods undefined.
+Command: `make test-be PKG="./internal/kube/... ./internal/httpapi/..."`. Expected failure: new methods undefined.
 
 **Green.** Add `Create`, `Update`, `Patch`, `Delete` to `kube.Resources`; handlers wrap them with a helper `audited(ctx, ev, func() error) error` (in `internal/httpapi/audited.go`) used by every later mutating handler.
 
@@ -3030,13 +3058,13 @@ Columns per kind (besides Name, Namespace where namespaced, and Age, which every
 
 **Red.** For each descriptor: a table-driven test over two or three fixture objects asserting every column's value and the status. `quantity.ts`: parse Kubernetes quantities (`100m`, `1`, `512Mi`, `2Gi`, `1e3`) to numbers and format bytes/cores. `Sidebar`: sections in the spec's order (Overview, Workloads, Config, Network, Storage, Access Control, Helm, FluxCD, Resource Map, Pod Files, modules, Custom Resources, Events); a kind is hidden when discovery does not serve it; a kind is hidden when the access check says the user cannot `list` it (after the SSAR-backed answer arrives; while loading it is shown); an empty section is hidden; the current item has `aria-current="page"`.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green.** Implement descriptors as data plus small pure functions. Register them in `registry.ts`.
 
 **Refactor.** Shared column builders (`ageColumn`, `conditionStatus(type)`, `countColumn(path)`) in `web/src/kinds/columns.ts` with tests. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** Column functions must tolerate missing fields (objects mid-creation): add one fixture with only `metadata` per kind.
 
@@ -3055,11 +3083,11 @@ Command: `make test-web`. Expected failure: unresolved imports.
 - Object deleted while open → banner "This object was deleted." and actions disabled.
 - All cluster text is rendered as text; URLs in annotations become `SafeLink`s.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement; move selector matching to `web/src/lib/selectors.ts` (`matchLabels`, `matchExpressions`) with tests. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** The drawer subscribes to a single-object watch by listing with `fieldSelector=metadata.name=<name>` through the same live store (key includes the selector) so it stays live even when the list view is filtered.
 
@@ -3079,7 +3107,7 @@ Command: `make test-web`. Expected failure: unresolved imports.
 - `kubectlCommand(action)`: returns the equivalent command for each action type, e.g. `kubectl replace -f -` with the namespace flag, `kubectl delete pod web-1 -n default`, `kubectl scale deployment/web --replicas=3 -n default`; arguments are shell-quoted (test names with spaces and quotes).
 - Schema: the editor component receives `schema` (fetched from the openapi endpoint for the object's group/version) and `schemaRef` for the kind; unit test only that the hook requests the right URL and passes the result on.
 
-Command: `make test-go PKG=./internal/httpapi/...` and `make test-web`. Expected failure: unresolved imports / undefined handler.
+Command: `make test-be PKG=./internal/httpapi/...` and `make test-fe`. Expected failure: unresolved imports / undefined handler.
 
 **Green.** Implement. In tests, `vi.mock('../../adapters/monaco/YamlEditor', …)` with a `<textarea>` stand-in that calls `onChange`.
 
@@ -3114,7 +3142,7 @@ API: `POST /api/v1/clusters/{cluster}/actions` `{action, target:{group, version,
 
 **Red.** One test per row asserting the exact patch type and body (capture the fake client's actions), the audit records (requested + success), and kind validation (action on the wrong kind → 400). Extra cases: rollback to a missing revision → 404; `setImage` with an unknown container → 400; eviction blocked by a PodDisruptionBudget (API 429) → 409 with the message "Cannot evict: a PodDisruptionBudget would be violated."; `replicas` negative → 400; image string empty or containing whitespace → 400. Web: the action menu shows only actions listed for the kind; each is disabled with a tooltip "missing permission: <verb> <resource>" when the access check denies it; destructive actions (delete, evict, rollback, restart) require confirmation naming the object; dialogs validate input; errors are shown as text; "Copy as kubectl" is offered in every dialog.
 
-Command: `make test-go PKG="./internal/actions/... ./internal/httpapi/..."` and `make test-web`. Expected failure: `undefined: actions.New`.
+Command: `make test-be PKG="./internal/actions/... ./internal/httpapi/..."` and `make test-fe`. Expected failure: `undefined: actions.New`.
 
 **Green.**
 
@@ -3144,7 +3172,7 @@ API: `POST /api/v1/clusters/{cluster}/secrets/reveal` `{namespace, name, keys?:[
 - Certificates: `certs.Parse(data map[string][]byte)` finds every PEM `CERTIFICATE` block in every key (chains included, in order), returns metadata only; `PRIVATE KEY` blocks are ignored and no part of them appears in the output (assert); non-PEM keys ignored; malformed certificate → entry with `error` text; `expiresInSeconds` from the clock (negative when expired); audit verb `certificate-view`.
 - Web: values hidden until "Reveal" per key or "Reveal all"; revealed values shown as text with a copy button, and hidden again when the drawer closes; a Secret that has PEM certificates shows a certificate table with a warning style under 30 days to expiry; binary values (non-UTF-8 after base64 decoding) shown as "binary, N bytes" with a download button.
 
-Command: `make test-go PKG="./internal/certs/... ./internal/httpapi/..."` and `make test-web`. Expected failure: `undefined: certs.Parse`.
+Command: `make test-be PKG="./internal/certs/... ./internal/httpapi/..."` and `make test-fe`. Expected failure: `undefined: certs.Parse`.
 
 **Green / Refactor.** Implement with `encoding/pem` and `crypto/x509`. Generate test certificates in the test with `x509.CreateCertificate` and a fixed serial and validity. Re-run.
 
@@ -3171,7 +3199,7 @@ Channel: `exec.open` `d = {cluster, namespace, pod, container, cols, rows}`; ops
 
 Web cases: `useShell` opens the channel, forwards terminal input as base64, writes output to the terminal handle, sends resize on size change, shows "The server connection was lost and the shell session ended." with a "Start a new shell" button when the socket drops or `closed` arrives (A26), container picker lists running containers including running init containers and ephemeral containers.
 
-Command: `make test-go PKG=./internal/execs/...` and `make test-web`. Expected failure: `undefined: execs.NewFactory`.
+Command: `make test-be PKG=./internal/execs/...` and `make test-fe`. Expected failure: `undefined: execs.NewFactory`.
 
 **Green.**
 
@@ -3222,7 +3250,7 @@ Profiles (the names of `kubectl debug`; this table is the definition):
 - Node shell: disabled (`nodeShell.enabled=false`) → 404. Enabled: creates a pod `kubelook-node-shell-<5 chars>` in namespace `default` with `nodeName`, `hostPID`, `hostNetwork`, `hostIPC`, privileged container from `nodeShell.image` running `sleep infinity`, tolerations for all taints, `restartPolicy: Never`, label `app.kubernetes.io/managed-by=kubelook`; audited; the shell command for it is `nsenter -t 1 -m -u -i -n -p -- /bin/sh`; DELETE removes the pod; closing the shell tab calls DELETE.
 - Web: the dialog states before adding: "A debug container stays in the pod until the pod is deleted. Kubernetes doesn't allow removing it." ; profile picker; target container picker for multi-container pods; the action is hidden without `patch` on `pods/ephemeralcontainers` and the shell without `create` on `pods/exec`.
 
-Command: `make test-go PKG="./internal/execs/... ./internal/httpapi/..."` and `make test-web`. Expected failure: `undefined: execs.NewDebugger`.
+Command: `make test-be PKG="./internal/execs/... ./internal/httpapi/..."` and `make test-fe`. Expected failure: `undefined: execs.NewDebugger`.
 
 **Green / Refactor.** Implement; share "wait for container running via watch" as `waitContainerRunning(ctx, typed, ns, pod, container, clock, timeout)`. Re-run.
 
@@ -3260,7 +3288,7 @@ Channel: `file.open` `d = {cluster, namespace, pod, container}`. Every later op 
 - `fileBrowser.enabled=false` → `file.open` answers `error` code `not_found`.
 - Missing utilities (`ls` not found) → "This container has no shell utilities; the file browser can't work here."
 
-Command: `make test-go PKG=./internal/files/...`. Expected failure: `undefined: files.NewFactory`.
+Command: `make test-be PKG=./internal/files/...`. Expected failure: `undefined: files.NewFactory`.
 
 **Green.** Implement; non-TTY exec with separate stdout/stderr buffers (stderr capped at 4 KiB and returned as the error message text).
 
@@ -3278,11 +3306,11 @@ Command: `make test-go PKG=./internal/files/...`. Expected failure: `undefined: 
 
 **Red.** Cases: breadcrumbs navigate; filter box filters names; list shows type icon with label, mode, size (human), modified, symlink target; opening a text file loads it into the editor adapter with language from the extension; Save sends `expect` from the opened stat and shows "The file changed in the container after you opened it." on conflict; binary files show "Binary file" with Download only; truncated files are read-only with a notice; upload by button and by drag-and-drop, multiple files and directories (directories are packed by `tarWriter.ts`, a minimal ustar writer with tests for header checksum, long names > 100 bytes rejected with a clear error, and padding); progress display; download saves through the injected `saveFile`; delete asks for confirmation naming the path; errors as text; the page has namespace, pod and container pickers (container picker includes running init containers only); panel hidden when `features.fileBrowser` is false or the user lacks `create` on `pods/exec`.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement; share chunking/base64 helpers in `web/src/lib/bytes.ts` with tests. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** Use `Uint8Array` end to end; build base64 in chunks (no `String.fromCharCode(...bigArray)` spread, which overflows the stack).
 
@@ -3323,7 +3351,7 @@ API: `GET /api/v1/jobs?active=true|false` (the user's jobs, newest first, max 10
 - Shutdown (`Runner.Close`) cancels running jobs; they stay `running` until recovery classifies them.
 - Web: jobs panel in the dock lists jobs with status, progress text, message; polls every 3 s only while any job is active (fake timers); `interrupted` rows show the offered buttons; visible in any tab.
 
-Command: `make test-go PKG="./internal/store/... ./internal/jobs/... ./internal/httpapi/..."` and `make test-web`. Expected failure: `undefined: jobs.NewRunner`.
+Command: `make test-be PKG="./internal/store/... ./internal/jobs/... ./internal/httpapi/..."` and `make test-fe`. Expected failure: `undefined: jobs.NewRunner`.
 
 **Green.**
 
@@ -3364,7 +3392,7 @@ API: actions `cordon`, `uncordon`, `taintAdd {key,value,effect}`, `taintRemove {
 - Bulk `Recover`: `interrupted` listing which items were done (from persisted progress), offers `retry` (the retry skips nothing: it is a new job with the remaining items, built by the UI).
 - Web: selecting rows shows the bulk bar with the actions valid for the kind; the confirmation dialog **lists every object by name** and requires an explicit confirm; for drain it shows the emptyDir note; progress shown from the job.
 
-Command: `make test-go PKG="./internal/actions/... ./internal/httpapi/..."` and `make test-web`. Expected failure: `undefined: actions.NewDrainHandler`.
+Command: `make test-be PKG="./internal/actions/... ./internal/httpapi/..."` and `make test-fe`. Expected failure: `undefined: actions.NewDrainHandler`.
 
 **Green / Refactor.** Implement; `podFilter(pod) (evict bool, reason string)` as a pure function with a table test. Re-run.
 
@@ -3391,7 +3419,7 @@ Web cases:
 - Scrolling to the top triggers `logs.history` once per step and prepends lines; shows "Beginning of the available log" at `historyEnd`.
 - Export: text or NDJSON (`{"time","pod","container","message"}` per line) after the audit call succeeds; failure → nothing saved and an error shown.
 
-Command: `make test-go PKG="./internal/logs/... ./internal/httpapi/..."` and `make test-web`. Expected failure: assertion failures / unresolved imports.
+Command: `make test-be PKG="./internal/logs/... ./internal/httpapi/..."` and `make test-fe`. Expected failure: assertion failures / unresolved imports.
 
 **Green / Refactor.** Implement. Re-run.
 
@@ -3416,11 +3444,11 @@ Grammar of the query bar (A17): `expr := term (("AND"|"OR") term)*`, `AND` binds
 - Download: the filtered objects as YAML (multi-document) or JSON (a `List`), from the already-redacted live store.
 - `toJq.ts`: produces `kubectl get <resource> [-n ns | -A] -o json | jq '.items[] | select(<expr>)'` for every operator, with proper jq string escaping; and a `yq` variant.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Hand-written tokenizer and recursive-descent parser (no dependency). Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** Evaluate filters with `useMemo` keyed on the list version and the parsed filter, not per render.
 
@@ -3432,7 +3460,7 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 **Red.** Cases: CSV per RFC 4180 (quotes doubled; fields with comma, quote or newline quoted; CRLF line ends; UTF-8 BOM); any cell whose first character is `=`, `+`, `-` or `@` (also after leading whitespace, tab or carriage return) is prefixed with a single quote `'`; CSV contains the visible columns of the current (filtered, sorted) list; JSON export contains the redacted objects; Secret values never appear (they are masked upstream; assert with a Secret fixture); file name `<cluster>-<kind>-<yyyyMMdd-HHmmss>.csv` from the injected clock.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement. Re-run.
 
@@ -3450,7 +3478,7 @@ API: `GET /api/v1/settings` → `Settings`; `PUT /api/v1/settings` (whole docume
 
 **Red.** Cases: round trip; validation errors → 400 (`watchIdleSeconds` outside 30–300, more than 200 favourites, filter set name empty, document over 256 KiB); settings belong to the user, not the session (a second session of the same user sees them); the watch hub reads the new idle value on the next subscription. Web: favourites toggle from the cluster rail persists; idle timeout slider 30 s–5 min; column chooser per kind (order and visibility) used by `Table`; theme selector; "Saved credentials" section from Step 2.10; a "Paste a new Vault token" box that replaces the token **without** closing terminals, log streams or editors (assert no dock tab is closed and the socket is not reconnected); the page contains no admin or permission settings.
 
-Command: `make test-go PKG=./internal/httpapi/...` and `make test-web`. Expected failure: handler undefined.
+Command: `make test-be PKG=./internal/httpapi/...` and `make test-fe`. Expected failure: handler undefined.
 
 **Green / Refactor.** Implement; optimistic updates with rollback on error in `api/settings.ts`. Re-run.
 
@@ -3473,11 +3501,11 @@ Command: `make test-go PKG=./internal/httpapi/...` and `make test-web`. Expected
 - Accessibility: every interactive element reachable by Tab; visible focus style; status icons have text labels; dialogs trap focus and restore it.
 - Screen size: below 1024 px width a banner says "Kubelook is designed for desktop browsers."
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** Each browser window has its own WebSocket; the pop-out re-opens channels for the tabs it takes over (shell tabs cannot move: moving one shows the "start a new shell" prompt).
 
@@ -3491,7 +3519,7 @@ API: `GET /api/v1/clusters/{cluster}/metrics/pods?namespace=` and `/metrics/node
 
 **Red.** Cases: `metrics.k8s.io/v1beta1` not served → `{available:false}` (no error); quantities converted (`250m` → 250, `128Mi` → 134217728, nanocores `n` suffix); Prometheus not configured for the cluster → `{available:false}`; configured → queries `<url>/api/v1/query_range` with these fixed templates only: pod CPU `sum(rate(container_cpu_usage_seconds_total{namespace="<ns>",pod="<name>",container!=""}[5m]))`, pod memory `sum(container_memory_working_set_bytes{namespace="<ns>",pod="<name>",container!=""})`, node CPU `sum(rate(node_cpu_seconds_total{mode!="idle",instance=~"<name>.*"}[5m]))`, node memory `node_memory_MemTotal_bytes{instance=~"<name>.*"} - node_memory_MemAvailable_bytes{instance=~"<name>.*"}`; label values are escaped (test a name containing `"` and `\`); Prometheus errors → `available:false` with a message; `minutes` limited to 1–1440. Web: polls every 30 s while the view is visible (fake timers, paused when hidden); pods and nodes lists gain CPU and Memory columns when available; usage bars on node details against allocatable.
 
-Command: `make test-go PKG="./internal/metrics/... ./internal/httpapi/..."` and `make test-web`. Expected failure: `undefined: metrics.New`.
+Command: `make test-be PKG="./internal/metrics/... ./internal/httpapi/..."` and `make test-fe`. Expected failure: `undefined: metrics.New`.
 
 **Green / Refactor.** Implement. Re-run.
 
@@ -3507,11 +3535,11 @@ Command: `make test-go PKG="./internal/metrics/... ./internal/httpapi/..."` and 
 
 **Red.** Cases for `whoCan({verb, group, resource, namespace}, {roles, clusterRoles, roleBindings, clusterRoleBindings})`: ClusterRoleBinding to a ClusterRole with a matching rule → subject listed for all namespaces; RoleBinding in the namespace to a Role or to a ClusterRole → subject listed for that namespace only; wildcards `*`; `resourceNames`-restricted rules are listed with the note "only named objects"; aggregated ClusterRoles use their already-aggregated `rules`; subjects de-duplicated and sorted (kind, namespace, name); a binding whose role is missing is listed under "dangling bindings". Page: pickers for verb, resource (from discovery) and namespace; table of subjects with the binding and role linked; a notice when the user cannot list one of the four kinds ("Results may be incomplete: you can't list ClusterRoleBindings").
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement as a pure function plus a thin page. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** This view reflects RBAC objects only; say so on the page ("Other authorizers, if any, are not shown.").
 
@@ -3538,11 +3566,11 @@ Outcome: the spec's "Phase 2. Platform": CRD browser, Helm 3 and 4, Flux, resour
 - Create: `SchemaForm` generates inputs from the schema for `string` (with `enum` → select), `integer`, `number`, `boolean`, `object` (nested group), `array` of scalars (add/remove rows); marks `required`; any schema node it cannot render (`oneOf`, `x-kubernetes-preserve-unknown-fields`, `additionalProperties`, arrays of objects deeper than 2 levels) becomes an embedded YAML field for that node; the form's value and the raw YAML tab stay in sync both ways; submit goes through the dry-run preview of Step 4.4.
 - Edit and delete use the standard editor and actions.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement; `schemaToFields(schema)` as a pure function with tests. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** CRD schemas can be recursive or huge: cap rendering depth at 8 and fall back to YAML below that.
 
@@ -3570,7 +3598,7 @@ Module definitions (the single source of truth, in `registry.go`):
 
 **Red.** Cases: each module active/inactive from a fake discovery; `modules.keda.enabled: false` → inactive with `reason:"disabled"` and its kinds **not** claimed (they reappear under Custom Resources); Karpenter 0.x (`karpenter.sh/v1beta1` only) → inactive, kinds unclaimed; `permissions` active without any CRDs but claims only served kinds; kinds of a claimed group that the module does not list (KEDA `ScaledJob`, `TriggerAuthentication`) stay unclaimed; result sorted by name. Web: `useModules(cluster)`; `ModuleGate name="keda"` renders children only when active; sidebar shows module entries in the spec's order with "Security" holding `trivy` and `permissions`.
 
-Command: `make test-go PKG="./internal/modules/... ./internal/httpapi/..."` and `make test-web`. Expected failure: `undefined: modules.Detect`.
+Command: `make test-be PKG="./internal/modules/... ./internal/httpapi/..."` and `make test-fe`. Expected failure: `undefined: modules.Detect`.
 
 **Green.** `func Detect(d *kube.Discovery, cfg map[string]config.Module) []Status`.
 
@@ -3609,7 +3637,7 @@ Read that output before writing the adapter. Verified facts: `func (cfg *Configu
 - The manifest passes through `redact.Manifest` (a Secret in the test chart has masked values in the output).
 - `getter.go`: `NewRESTClientGetter(cfg *rest.Config, namespace string)` implements `genericclioptions.RESTClientGetter` (`ToRESTConfig`, `ToDiscoveryClient` with an in-memory cache, `ToRESTMapper`, `ToRawKubeConfigLoader` returning the namespace); tested against `fakekube`'s `httptest` API server for discovery.
 
-Command: `make test-go PKG=./internal/helm/...`. Expected failure: `undefined: helm4.New`.
+Command: `make test-be PKG=./internal/helm/...`. Expected failure: `undefined: helm4.New`.
 
 **Green.**
 
@@ -3652,7 +3680,7 @@ In this step the write methods return `errors.New("not implemented")` and have o
 
 **Red.** The **same test table** as Step 5.3, run against the Helm 3 adapter: put the shared cases in `internal/testutil/helmtest/conformance.go` as `func RunReadConformance(t *testing.T, newDriver func(t *testing.T) helm.Driver, seed func(…))` and call it from both adapters' tests (refactor Step 5.3's tests to use it — still green). Factory cases: `helm.version: 4` → Helm 4 driver; `3` → Helm 3; anything else → error; each driver gets its own temporary working directory under the job's temp dir.
 
-Command: `make test-go PKG=./internal/helm/...`. Expected failure: `undefined: helm3.New`.
+Command: `make test-be PKG=./internal/helm/...`. Expected failure: `undefined: helm3.New`.
 
 **Green.** Implement; `factory.go`:
 
@@ -3690,7 +3718,7 @@ API (all under `/api/v1/clusters/{cluster}/helm`):
 - Session repositories are stored as `helm_repo` session credentials (sealed), gone at sign-out (A20).
 - Memory guard busy → `POST /jobs` answers 503 `server_busy`.
 
-Command: `make test-go PKG="./internal/helm/... ./internal/httpapi/..."`. Expected failure: conformance failures (`not implemented`).
+Command: `make test-be PKG="./internal/helm/... ./internal/httpapi/..."`. Expected failure: conformance failures (`not implemented`).
 
 **Green.** Implement. Per job: `workDir := os.MkdirTemp("", "kubelook-helm-*")`, set the SDK's repository cache/config and registry config paths inside it (look up the exact option names with `go doc helm.sh/helm/v4/pkg/cli.EnvSettings` and `go doc helm.sh/helm/v4/pkg/action.ChartPathOptions`, and the v3 equivalents), `defer os.RemoveAll(workDir)`.
 
@@ -3711,11 +3739,11 @@ Command: `make test-go PKG="./internal/helm/... ./internal/httpapi/..."`. Expect
 
 **Red.** Cases: the list polls every 15 s while visible (releases are not watchable; fake timers) and shows Name, Namespace, Status, Chart, App version, Revision, Updated; details tabs Values (hidden until "Reveal", which calls the audited endpoint; hidden again on close), Manifest (read-only, Secrets masked), Notes (text only), Hooks, History; upgrade dialog edits values YAML, then shows two diffs — values (old revealed vs new) and manifest (`/preview`) — before the Confirm button is enabled; install dialog picks a repository or OCI reference, chart, version, namespace, release name; rollback picks a revision; uninstall and test confirm first; each action submits a job and shows its progress row; `interrupted` jobs show Retry / Roll back / Uninstall as offered; actions disabled with a reason when the access check denies creating Secrets in the namespace; the page states which Helm major version the console uses (`me.features.helmVersion`).
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** Helm notes and hook output are cluster-supplied text: text nodes only.
 
@@ -3738,7 +3766,7 @@ Suspend mechanism per kind (from the spec):
 
 **Red.** Cases: actions `fluxReconcile`, `fluxSuspend`, `fluxResume` send the exact patch for each row (one test per kind family); the API version used is the one discovery reports as served (test a cluster serving `kustomize.toolkit.fluxcd.io/v1beta2` only and one serving `v1`); reconcile on a suspended object → 409 "Resume the object before reconciling."; suspend on FluxReport → 400; audit verbs `flux-reconcile`, `flux-suspend`, `flux-resume`. Inventory endpoint `GET /api/v1/clusters/{cluster}/flux/inventory?group=&kind=&namespace=&name=` → `{entries:[{group, version, kind, namespace, name}]}`: Kustomization → parse `.status.inventory.entries[].id` (`<namespace>_<name>_<group>_<kind>`, empty namespace for cluster-scoped, version from `.v`); HelmRelease with `.status.inventory` (Flux ≥ 2.8) → same parsing; HelmRelease without it → load the Helm release named by `.status.history[0].name`/`namespace` (fallback: `spec.releaseName` or `<targetNamespace>-<name>` rules of helm-controller: use `status.storageNamespace` and the release name from `status.history[0]`; when absent return an empty list with `note:"inventory unavailable"`) through the Helm driver and list the objects in its manifest.
 
-Command: `make test-go PKG="./internal/flux/... ./internal/actions/... ./internal/httpapi/..."`. Expected failure: `undefined: flux.Kinds`.
+Command: `make test-be PKG="./internal/flux/... ./internal/actions/... ./internal/httpapi/..."`. Expected failure: `undefined: flux.Kinds`.
 
 **Green / Refactor.** `flux.Kinds` is a table `[]Kind{Group, Kind, SuspendVia}`; `parseInventoryID(id, v string)`. Re-run.
 
@@ -3760,11 +3788,11 @@ Command: `make test-go PKG="./internal/flux/... ./internal/actions/... ./interna
 - `forceLayout.ts`: wraps `d3-force` with a fixed seed and a fixed number of ticks (300) run synchronously, so the layout is deterministic (test: same input → same coordinates).
 - `Graph`: SVG with zoom (wheel), pan (drag background), node drag; nodes are focusable buttons with accessible names "<kind> <name>, <status>"; click opens details; hover shows facts.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** `d3-force` uses `Math.random` only through `simulation.randomSource`: set it to a seeded generator. Never run the simulation on a timer in tests.
 
@@ -3778,7 +3806,7 @@ Channel: `map.open` `d = {cluster, namespaces:[…], focus?:{group, kind, namesp
 
 **Red.** `Build(objects)` cases, one per row of the spec's table: Pod → ConfigMaps/Secrets/PVCs via `envFrom`, `env[].valueFrom.secretKeyRef`, and volumes (`configMap`, `secret`, `persistentVolumeClaim`); Deployment/StatefulSet/DaemonSet → their pods (through owner references, via ReplicaSets for Deployments) and their Helm release (annotations `meta.helm.sh/release-name` + `meta.helm.sh/release-namespace`, label `app.kubernetes.io/managed-by=Helm`); Service → pods matched by selector; Ingress → backend Services and TLS Secrets; HTTPRoute/GRPCRoute → `backendRefs` Services; documented non-links produce no edge (`configMapKeyRef`, projected volumes, Ingress `defaultBackend`); node `status` for pods is the phase; nodes carry names only (assert the JSON of the graph contains no `data` field and no value from the ConfigMap/Secret fixtures); deterministic ordering of nodes and edges. Channel cases: subscribes to hub watches for each needed kind as the user; a kind the user cannot list is left out and named in `omittedKinds`; changes are debounced; `focus` restricts the graph to the focused object's connected component (for the "Resources" map in details). Web: page with namespace selection, legend (colour and icon per kind, pod colour by phase, failed pods marked with an icon and label), hover facts, click → details; the related-map panel for Deployment, DaemonSet, StatefulSet, Pod, Service, Ingress details.
 
-Command: `make test-go PKG=./internal/resourcemap/...` and `make test-web`. Expected failure: `undefined: resourcemap.Build`.
+Command: `make test-be PKG=./internal/resourcemap/...` and `make test-fe`. Expected failure: `undefined: resourcemap.Build`.
 
 **Green / Refactor.** Implement; reuse `Graph` and `forceLayout` from Step 5.8. Re-run.
 
@@ -3802,11 +3830,11 @@ Command: `make test-go PKG=./internal/resourcemap/...` and `make test-web`. Expe
 - Node details gain a Karpenter section for managed nodes (pool and claim links, instance and capacity type, zone, conditions, `karpenter.sh/do-not-disrupt` annotation, disruption taint `karpenter.sh/disrupted`).
 - NodeOverlay UI appears only when the kind is served.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** All data comes from live lists; no backend code is added in this step.
 
@@ -3823,7 +3851,7 @@ Command: `make test-web`. Expected failure: unresolved imports.
 - Gateway API: overview counting Ready / Not Ready / In Progress / Unknown per kind (from `Accepted`/`Programmed`/`Ready` conditions: any `False` → Not Ready; all `True` → Ready; any `Unknown` → In Progress; none → Unknown) and the events of those objects; one list per served kind (generic columns plus Hostnames, Parents, Class where the fields exist); details link `parentRefs`, `backendRefs` and `gatewayClassName` to their objects.
 - Each module's entries disappear when the module is inactive.
 
-Command: `make test-go PKG=./internal/actions/...` and `make test-web`. Expected failure: unresolved imports.
+Command: `make test-be PKG=./internal/actions/...` and `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement. Re-run.
 
@@ -3839,11 +3867,11 @@ Command: `make test-go PKG=./internal/actions/...` and `make test-web`. Expected
 
 **Red.** Cases: columns Condition (`SecretCreated` status), Reason, Path(s) (`spec.path` or `spec.paths`), Engine (`spec.secretEngine`: KV or PKI), Secret, Age; details show the condition's status, reason, message, last transition; `stale` badge when the condition's `observedGeneration` < `metadata.generation`; link to the Secret of the same name (masked values, audited reveal, certificate details as usual); a Secret labelled `created-by: vault-secrets-operator` links back and warns "Edits will be overwritten by the operator."; `consumers.ts` finds Deployments, StatefulSets and DaemonSets whose pod template uses the Secret through `envFrom.secretRef`, `env[].valueFrom.secretKeyRef` or a `secret` volume; "Restart consumers" confirms, then calls the `restart` action per workload; the cluster overview count of VaultSecrets with `SecretCreated=False` is exposed as `useVaultSecretHealth()`; no Vault API is ever called by this module (no network calls other than the Kubernetes resource API in tests).
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement; `consumers.ts` shares the reference-walking code with the resource-map legend docs only by behaviour, not by import (server vs browser). Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** HashiCorp's own Vault Secrets Operator uses other CRDs and must stay in the generic browser.
 
@@ -3861,7 +3889,7 @@ Command: `make test-web`. Expected failure: unresolved imports.
 - `trivyRescan` deletes the report after a confirmation that says "The operator should scan again after the report is deleted (not confirmed for every operator version)."; audit `module-action`.
 - Export CSV/JSON of findings through `lib/csv.ts` (formula neutralisation applies to titles).
 
-Command: `make test-go PKG="./internal/redact/... ./internal/actions/..."` and `make test-web`. Expected failure: assertion failures / unresolved imports.
+Command: `make test-be PKG="./internal/redact/... ./internal/actions/..."` and `make test-fe`. Expected failure: assertion failures / unresolved imports.
 
 **Green / Refactor.** Implement. Re-run.
 
@@ -3886,11 +3914,11 @@ Risk rules (A18), highest matching level wins:
 
 **Red.** Cases: `effectiveRules(serviceAccount, bindings, roles)` resolves RoleBindings and ClusterRoleBindings (subjects of kind `ServiceAccount`, and groups `system:serviceaccounts` and `system:serviceaccounts:<ns>`); `riskLevel(rules, scope)` per table row (one test per condition, plus wildcards in resources and API groups); list sorted by level then name with the rules that caused the level; always available, even with no CRDs; Kyverno: policies (`kyverno.io` ClusterPolicy, Policy) with `Ready` condition and `spec.validationFailureAction`, violations from `wgpolicyk8s.io` PolicyReport/ClusterPolicyReport results with `result: fail` grouped by policy (a note states this source is unconfirmed until the spike finding is recorded); Gatekeeper: constraints (every kind in `constraints.gatekeeper.sh`) with `spec.enforcementAction`, `status.totalViolations`, and `status.violations`; when `totalViolations` exceeds the listed violations show "Showing N of M violations (Gatekeeper keeps a limited number per constraint)."; Kyverno and Gatekeeper sections hidden when their CRDs are not served; no action buttons anywhere.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement; reuse `web/src/lib/rbac.ts`. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass.
+**Acceptance.** `make test-fe`, `make cover-fe` pass.
 
 **Pitfalls.** Risk levels are an aid, not a verdict: the page says "Based on RBAC rules only."
 
@@ -3902,11 +3930,11 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 **Red.** Cases for `triage.ts` (pure): failing pods (phase `Failed`, or a container waiting with `CrashLoopBackOff`/`ImagePullBackOff`/`ErrImagePull`/`CreateContainerConfigError`); pending pods joined with the message of their latest `FailedScheduling` event; running-but-not-ready pods with the failing condition (`Ready`/`ContainersReady` message) and failing readiness container names; node health counts (ready, not ready, cordoned, under pressure); warning events bucketed per 5 minutes for the timeline (from the injected `now`, over the events the cluster holds). Page: sections above plus Flux failure count (when Flux is served), Helm failure count (releases with status `failed` or `pending-*`), VaultSecret failures (module active), Karpenter summary (module active); each number links to the filtered list; sections the user cannot list are hidden.
 
-Command: `make test-web`. Expected failure: unresolved imports.
+Command: `make test-fe`. Expected failure: unresolved imports.
 
 **Green / Refactor.** Implement. Re-run.
 
-**Acceptance.** `make test-web`, `make cover-web` pass; `make verify` → `VERIFY OK`.
+**Acceptance.** `make test-fe`, `make cover-fe` pass; `make verify` → `VERIFY OK`.
 
 **Pitfalls.** The overview opens several watches at once; it must unsubscribe all of them on leave (test with the fake socket: zero open channels after unmount).
 
@@ -3926,7 +3954,7 @@ Command: `make test-web`. Expected failure: unresolved imports.
 
 **Red.** Cases (a fresh `prometheus.NewRegistry()` per test; assert with `testutil.ToFloat64` / `testutil.CollectAndCompare`): `kubelook_sessions_active` (gauge), `kubelook_watches_active`, `kubelook_watch_subscribers`, `kubelook_watch_cached_objects`, `kubelook_watches_per_user` (histogram), `kubelook_ws_connections`, `kubelook_ws_dropped_messages_total{channel}`, `kubelook_log_streams_active`, `kubelook_log_lines_dropped_total`, `kubelook_exec_sessions_active`, `kubelook_vault_request_duration_seconds{endpoint,outcome}`, `kubelook_kube_request_duration_seconds{verb,outcome}`, `kubelook_http_requests_total{route,method,status}`, `kubelook_http_request_duration_seconds{route}`, `kubelook_jobs{type,status}`, `kubelook_refused_requests_total{kind}`, `kubelook_build_info{version,commit}`; label values never contain user, cluster, namespace or object names (cardinality and privacy); `/metrics` is served without a session and contains `kubelook_build_info`.
 
-Command: `make test-go PKG="./internal/telemetry/... ./internal/httpapi/..."`. Expected failure: `undefined: telemetry.NewMetrics`.
+Command: `make test-be PKG="./internal/telemetry/... ./internal/httpapi/..."`. Expected failure: `undefined: telemetry.NewMetrics`.
 
 **Green / Refactor.** Each package receives a narrow interface (for example `watch.Metrics{ SetWatches(n int); … }`) with a no-op default, so earlier tests keep passing unchanged. Kubernetes request latency is measured with a `rest.Config.WrapTransport` round-tripper. Re-run.
 
@@ -3944,7 +3972,7 @@ Command: `make test-go PKG="./internal/telemetry/... ./internal/httpapi/..."`. E
 
 **Red.** Cases (with the SDK's in-memory span exporter `tracetest.NewInMemoryExporter`): a request to `/healthz` through the instrumented handler produces one server span named by the route pattern; a Vault client call inside it produces a child client span; span attributes never include tokens, the query string or request bodies; `telemetry.otlpEndpoint` empty → a no-op tracer provider and no exporter goroutines (goleak); log records written inside a traced request carry `trace_id` and `span_id`; the logger's level comes from `KUBELOOK_LOG_LEVEL` (`debug|info|warn|error`, default `info`); shutdown flushes the provider.
 
-Command: `make test-go PKG=./internal/telemetry/...`. Expected failure: `undefined: telemetry.NewTracing`.
+Command: `make test-be PKG=./internal/telemetry/...`. Expected failure: `undefined: telemetry.NewTracing`.
 
 **Green / Refactor.** Implement. Re-run.
 
@@ -3960,7 +3988,7 @@ Command: `make test-go PKG=./internal/telemetry/...`. Expected failure: `undefin
 
 **Red.** Cases (injected `usage func() uint64` and `limit func() uint64`): usage below the threshold → `Busy() == false`; at or above → true; limit 0 or unknown → never busy; the value is sampled at most once per second on the fake clock; when busy: a new `watch.open` gets `error` code `server_busy` with message "The server is busy. Try again shortly.", a new `exec.open` likewise, `POST /helm/jobs` → 503; existing watches and shells keep working (assert events still flow); each refusal increments `kubelook_refused_requests_total{kind}`. Production readers: `limit` reads `/sys/fs/cgroup/memory.max` (value `max` → fall back to `debug.SetMemoryLimit(-1)` unless it is `math.MaxInt64`); `usage` reads `runtime/metrics` `/memory/classes/total:bytes` minus `/memory/classes/heap/released:bytes`. Test the file parser with a temp file path injected.
 
-Command: `make test-go PKG="./internal/telemetry/... ./internal/watch/... ./internal/execs/..."`. Expected failure: `undefined: telemetry.NewMemGuard`.
+Command: `make test-be PKG="./internal/telemetry/... ./internal/watch/... ./internal/execs/..."`. Expected failure: `undefined: telemetry.NewMemGuard`.
 
 **Green / Refactor.** Implement. Re-run.
 
@@ -4498,7 +4526,7 @@ Outcome: versioned multi-architecture images, the debug image, a Helm chart that
 
 **Files (part B, in pull request 10, after pull request 9 is merged and its workflow has pushed the image).** Create `hack/pin-netshoot.sh` (resolves `docker buildx imagetools inspect ghcr.io/bdnix/kubelook-netshoot:<tag> --format '{{json .Manifest.Digest}}'` and rewrites the constant `DefaultDebugImage` in `internal/config/defaults.go`); modify `internal/config/config_test.go`.
 
-**Red (part B).** Add the test: the default `debug.image` matches `^ghcr\.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]{64}$`. `make test-go PKG=./internal/config/...` fails (the default is still a tag). **Green.** Run `hack/pin-netshoot.sh`; test passes. **Refactor.** None.
+**Red (part B).** Add the test: the default `debug.image` matches `^ghcr\.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]{64}$`. `make test-be PKG=./internal/config/...` fails (the default is still a tag). **Green.** Run `hack/pin-netshoot.sh`; test passes. **Refactor.** None.
 
 **Acceptance.** `docker pull "$(grep -o 'ghcr.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]*' internal/config/defaults.go)"` succeeds; `make verify` → `VERIFY OK`.
 
@@ -4618,7 +4646,7 @@ The project is done when all of the following are true on `main`:
 
 1. Every step of Phases 0–8 is merged, in order, through the 10 pull requests of §7, each of which was green in CI when merged.
 2. `make verify` prints `VERIFY OK` on a clean clone. In particular: Go unit-test statement coverage ≥ 90% (`Total coverage threshold (90%) satisfied: PASS`), and web unit-test coverage ≥ 90% lines, statements and functions and ≥ 80% branches, with only the exclusions listed in §6.
-3. The `ci` workflow is green: `lint-go`, `lint-web`, `test-go`, `test-web`, `coverage (unit tests, >= 90%)`, `build`, `vuln`, `image-scan`, `chart`, `ci-ok`; and `image-push` on `main`.
+3. The `ci` workflow is green: `backend`, `frontend`, `ui`, `build`, `vuln`, `image-scan`, `chart`, `ci-ok`; and `image-push` on `main`.
 4. The `integration` workflow is green: the kind + Vault suite (`make it`), the browser suite (`make e2e`) and the chart install test.
 5. Every feature in `docs/spec.md` "Functional requirements", "Authentication and cluster discovery", "Security model" and "Architecture" maps to a merged step (the mapping is the step titles of Phases 2–6), or is listed in §1 as out of scope with a reason.
 6. Release artifacts can be produced: the `release` workflow file is valid, the chart installs a working console in kind (Step 8.3), and the image runs as non-root on a distroless base with no fixable HIGH or CRITICAL vulnerabilities at release time.
@@ -4632,8 +4660,8 @@ Run on a clean clone at the final commit. Every line must be true.
 **Build and unit tests**
 - [ ] `make tools` → `TOOLS OK`
 - [ ] `make lint` → `LINT OK` (golangci-lint 0 issues, ESLint 0 warnings, Prettier clean, `tsc` clean, `DOCS OK`)
-- [ ] `make cover-go` → `Total coverage threshold (90%) satisfied:	PASS` and `Total test coverage:` ≥ 90%
-- [ ] `make cover-web` → no `ERROR: Coverage` lines; `All files` row shows lines, statements, functions ≥ 90 and branches ≥ 80
+- [ ] `make cover-be` → `Total coverage threshold (90%) satisfied:	PASS` and `Total test coverage:` ≥ 90%
+- [ ] `make cover-fe` → no `ERROR: Coverage` lines; `All files` row shows lines, statements, functions ≥ 90 and branches ≥ 80
 - [ ] `.testcoverage.yml` and `web/vite.config.ts` exclusions are exactly those of §6 (`git diff` against the lists in this plan shows no extra paths)
 - [ ] `grep -rn "time\.Sleep" --include=*_test.go internal/ web/src 2>/dev/null | wc -l` → `0`
 - [ ] `go test -race -count=3 -shuffle=on ./...` → all `ok` (no flaky tests)
@@ -4644,7 +4672,7 @@ Run on a clean clone at the final commit. Every line must be true.
 - [ ] Every workflow has top-level `permissions: contents: read`; write permissions appear only on `image-push`, `netshoot`, and the `release` jobs
 - [ ] Every workflow has a `concurrency` block; every job has `timeout-minutes`
 - [ ] `.github/dependabot.yml` covers `github-actions`, `gomod`, `npm` (`/web`), `docker` (`/` and `/build/netshoot`)
-- [ ] Latest `ci` run on `main` is green, including `coverage (unit tests, >= 90%)` and `image-scan`
+- [ ] Latest `ci` run on `main` is green, including `backend`, `frontend`, `ui` and `image-scan`
 - [ ] `ghcr.io/bdnix/kubelook:main` exists and `docker run --rm ghcr.io/bdnix/kubelook:main version` works
 
 **Integration (real Vault, real Kubernetes)**

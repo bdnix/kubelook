@@ -7,7 +7,8 @@
     "build": "tsc --noEmit && vite build",
     "lint": "eslint . --max-warnings=0",
     "format:check": "prettier --check .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.ui.json",
+    "ui-test": "playwright test"
   },
   "license": "MIT",
   "type": "module",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.65.0",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
