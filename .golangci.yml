@@ -33,6 +33,13 @@ linters:
           deny:
             - pkg: github.com/bdnix/kubelook/internal/httpapi
               desc: only internal/app may import httpapi
+        no-disk-in-files:
+          files:
+            - "**/internal/files/**"
+            - "!$test"
+          deny:
+            - pkg: os
+              desc: the file browser never touches the server's disk
         only-main-imports-app:
           list-mode: lax
           allow:

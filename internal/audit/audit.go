@@ -160,6 +160,13 @@ func (r *Recorder) Begin(ctx context.Context, ev Event) (*Pending, error) {
 	return &Pending{r: r, ev: ev, requestID: requestID}, nil
 }
 
+// Annotate adds a detail that is known only after the action ran, such as a size. It is recorded with the
+// final outcome.
+func (p *Pending) Annotate(key string, value any) {
+	p.ev.Details = maps.Clone(p.ev.Details)
+	p.ev.Details[key] = value
+}
+
 // Done records the final outcome with the same requestId. A failure to store it is
 // already visible as a stdout line with "recorded": false.
 func (p *Pending) Done(ctx context.Context, actionErr error) {
