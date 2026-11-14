@@ -133,6 +133,26 @@ describe('ResourceListPage', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  it('shows the columns of the saved column preset, in its order', async () => {
+    mount('open', {
+      'GET /settings': () =>
+        jsonResponse({
+          favouriteClusters: [],
+          namespaceFilters: {},
+          columnPresets: { '/Pod': ['status', 'name'] },
+          filterSets: [],
+          watchIdleSeconds: 30,
+          theme: 'system',
+        }),
+    });
+    await connected();
+    act(() => FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [pod('1', 'web-1')], more: false } }));
+    await screen.findByText('web-1');
+    await waitFor(() =>
+      expect(screen.getAllByRole('columnheader').map((h) => h.textContent?.trim()).filter(Boolean)).toEqual(['Status', 'Name']),
+    );
+  });
+
   it('opens a cluster that is not open before listing', async () => {
     mount('closed', { 'GET /clusters/v%3Aprod/discovery': () => jsonResponse(discovery) });
     expect(screen.getByRole('status')).toHaveTextContent('Opening the cluster');
