@@ -3,6 +3,7 @@ import { useClusters } from './useClusters';
 import { NoAccessPage } from '../shell/NoAccessPage';
 import { clusterPath } from '../../lib/paths';
 import { PodFilesPage } from '../files/PodFilesPage';
+import { WhoCanPage } from '../rbac/WhoCanPage';
 import { ResourceListPage } from '../resources/ResourceListPage';
 
 function ListRoute({ cluster }: { cluster: string }) {
@@ -23,6 +24,7 @@ export function ClusterPage() {
       {/* Absolute: a relative link would encode the already encoded ID a second time. */}
       <Route index element={<Navigate to={`${clusterPath(cluster)}/core/Pod`} replace />} />
       <Route path="pod-files" element={<PodFilesPage cluster={cluster} />} />
+      <Route path="who-can" element={<WhoCanPage cluster={cluster} />} />
       <Route path=":group/:kind" element={<ListRoute cluster={cluster} />} />
       {/* The details drawer is its own route in the layout; the list stays behind it. */}
       <Route path=":group/:kind/:name" element={<ListRoute cluster={cluster} />} />

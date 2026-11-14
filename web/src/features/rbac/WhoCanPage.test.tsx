@@ -7,8 +7,26 @@ import { WhoCanPage } from './WhoCanPage';
 const discovery = {
   serverVersion: 'v1.35.0',
   resources: [
-    { group: '', version: 'v1', resource: 'pods', kind: 'Pod', namespaced: true, verbs: ['list'], preferred: true, servedVersions: ['v1'] },
-    { group: 'apps', version: 'v1', resource: 'deployments', kind: 'Deployment', namespaced: true, verbs: ['list'], preferred: true, servedVersions: ['v1'] },
+    {
+      group: '',
+      version: 'v1',
+      resource: 'pods',
+      kind: 'Pod',
+      namespaced: true,
+      verbs: ['list'],
+      preferred: true,
+      servedVersions: ['v1'],
+    },
+    {
+      group: 'apps',
+      version: 'v1',
+      resource: 'deployments',
+      kind: 'Deployment',
+      namespaced: true,
+      verbs: ['list'],
+      preferred: true,
+      servedVersions: ['v1'],
+    },
   ],
 };
 const rule = { apiGroups: [''], resources: ['pods'], verbs: ['delete'] };
@@ -23,11 +41,23 @@ function mount(extra: Record<string, () => Response> = {}) {
       [`GET ${base}/roles?limit=5000`]: list([]),
       [`GET ${base}/clusterroles?limit=5000`]: list([{ metadata: { name: 'pod-killer' }, rules: [rule] }]),
       [`GET ${base}/rolebindings?limit=5000`]: list([
-        { metadata: { name: 'rb', namespace: 'dev' }, roleRef: { kind: 'ClusterRole', name: 'pod-killer' }, subjects: [{ kind: 'ServiceAccount', name: 'builder', namespace: 'dev' }] },
+        {
+          metadata: { name: 'rb', namespace: 'dev' },
+          roleRef: { kind: 'ClusterRole', name: 'pod-killer' },
+          subjects: [{ kind: 'ServiceAccount', name: 'builder', namespace: 'dev' }],
+        },
       ]),
       [`GET ${base}/clusterrolebindings?limit=5000`]: list([
-        { metadata: { name: 'crb' }, roleRef: { kind: 'ClusterRole', name: 'pod-killer' }, subjects: [{ kind: 'User', name: 'ada' }] },
-        { metadata: { name: 'dead' }, roleRef: { kind: 'ClusterRole', name: 'gone' }, subjects: [{ kind: 'User', name: 'bob' }] },
+        {
+          metadata: { name: 'crb' },
+          roleRef: { kind: 'ClusterRole', name: 'pod-killer' },
+          subjects: [{ kind: 'User', name: 'ada' }],
+        },
+        {
+          metadata: { name: 'dead' },
+          roleRef: { kind: 'ClusterRole', name: 'gone' },
+          subjects: [{ kind: 'User', name: 'bob' }],
+        },
       ]),
       ...extra,
     }),
@@ -50,13 +80,19 @@ describe('WhoCanPage', () => {
   it('offers the verbs and the resources the cluster serves', async () => {
     mount();
     const verbs = await screen.findByLabelText('Verb');
-    expect(within(verbs).getAllByRole('option').map((o) => o.textContent)).toEqual(
-      expect.arrayContaining(['get', 'list', 'delete', '*']),
+    expect(
+      within(verbs)
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(expect.arrayContaining(['get', 'list', 'delete', '*']));
+    await waitFor(() =>
+      expect(within(screen.getByLabelText('Resource')).getAllByRole('option').length).toBeGreaterThan(2),
     );
-    await waitFor(() => expect(within(screen.getByLabelText('Resource')).getAllByRole('option').length).toBeGreaterThan(2));
-    expect(within(screen.getByLabelText('Resource')).getAllByRole('option').map((o) => o.textContent)).toEqual(
-      expect.arrayContaining(['pods', 'deployments (apps)']),
-    );
+    expect(
+      within(screen.getByLabelText('Resource'))
+        .getAllByRole('option')
+        .map((o) => o.textContent),
+    ).toEqual(expect.arrayContaining(['pods', 'deployments (apps)']));
   });
 
   it('lists who can, with the scope and the binding and role as links', async () => {
@@ -64,7 +100,13 @@ describe('WhoCanPage', () => {
     await ask();
     const table = await screen.findByRole('table', { name: 'Who can delete pods' });
     const rows = within(table).getAllByRole('row').slice(1);
-    expect(rows.map((r) => within(r).getAllByRole('cell').map((c) => c.textContent))).toEqual([
+    expect(
+      rows.map((r) =>
+        within(r)
+          .getAllByRole('cell')
+          .map((c) => c.textContent),
+      ),
+    ).toEqual([
       ['ServiceAccount dev/builder', 'dev', 'rb', 'pod-killer'],
       ['User ada', 'All namespaces', 'crb', 'pod-killer'],
     ]);
@@ -88,7 +130,12 @@ describe('WhoCanPage', () => {
     await screen.findByRole('table', { name: 'Who can delete pods' });
     await userEvent.type(screen.getByLabelText('Namespace'), 'qa');
     const table = await screen.findByRole('table', { name: 'Who can delete pods in qa' });
-    expect(within(table).getAllByRole('row').slice(1).map((r) => r.textContent)).toEqual([expect.stringContaining('User ada')]);
+    expect(
+      within(table)
+        .getAllByRole('row')
+        .slice(1)
+        .map((r) => r.textContent),
+    ).toEqual([expect.stringContaining('User ada')]);
   });
 
   it('lists the bindings whose role is missing', async () => {
@@ -103,7 +150,9 @@ describe('WhoCanPage', () => {
     mount();
     await userEvent.selectOptions(await screen.findByLabelText('Verb'), 'create');
     await userEvent.selectOptions(screen.getByLabelText('Resource'), 'pods');
-    expect(await screen.findByText('No subject has this permission through the bindings you can list.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No subject has this permission through the bindings you can list.'),
+    ).toBeInTheDocument();
   });
 
   it('warns when the user cannot list one of the four kinds', async () => {
@@ -112,7 +161,9 @@ describe('WhoCanPage', () => {
         jsonResponse({ error: { code: 'forbidden', message: 'denied' } }, 403),
     });
     await ask();
-    expect(await screen.findByText("Results may be incomplete: you can't list ClusterRoleBindings.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Results may be incomplete: you can't list ClusterRoleBindings."),
+    ).toBeInTheDocument();
     expect(await screen.findByRole('table', { name: 'Who can delete pods' })).toBeInTheDocument();
   });
 
@@ -120,13 +171,17 @@ describe('WhoCanPage', () => {
     const denied = () => jsonResponse({ error: { code: 'forbidden', message: 'denied' } }, 403);
     mount({ [`GET ${base}/roles?limit=5000`]: denied, [`GET ${base}/rolebindings?limit=5000`]: denied });
     await ask();
-    expect(await screen.findByText("Results may be incomplete: you can't list Roles and RoleBindings.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Results may be incomplete: you can't list Roles and RoleBindings."),
+    ).toBeInTheDocument();
   });
 
   it('warns when a list was cut short', async () => {
     mount({ [`GET ${base}/roles?limit=5000`]: () => jsonResponse({ items: [], continue: 'more' }) });
     await ask();
-    expect(await screen.findByText('Results may be incomplete: Roles has more than 5000 objects.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('Results may be incomplete: Roles has more than 5000 objects.'),
+    ).toBeInTheDocument();
   });
 
   it('shows the restriction of a rule that names objects', async () => {

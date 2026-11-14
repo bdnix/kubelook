@@ -36,7 +36,16 @@ describe('Sidebar', () => {
   it('shows the sections that have items, in the order of the spec, with the kinds the cluster serves', () => {
     renderApp(<Sidebar cluster="v:prod" discovery={discovery} canList={all} />);
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
-    expect(headings).toEqual(['Workloads', 'Config', 'Network', 'Storage', 'Cluster', 'Pod Files', 'Events']);
+    expect(headings).toEqual([
+      'Workloads',
+      'Config',
+      'Network',
+      'Storage',
+      'Cluster',
+      'Access Control',
+      'Pod Files',
+      'Events',
+    ]);
     const workloads = within(screen.getByRole('region', { name: 'Workloads' }));
     expect(workloads.getAllByRole('link').map((l) => l.textContent)).toEqual(['Pods', 'Deployments']);
     expect(screen.queryByRole('link', { name: 'StatefulSets' })).toBeNull();
@@ -48,6 +57,10 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: 'Deployments' })).toHaveAttribute(
       'href',
       '/c/k%3Aprod%2Fctx/apps/Deployment',
+    );
+    expect(screen.getByRole('link', { name: 'Who can…' })).toHaveAttribute(
+      'href',
+      '/c/k%3Aprod%2Fctx/who-can',
     );
     expect(screen.getByRole('link', { name: 'Pod Files' })).toHaveAttribute(
       'href',

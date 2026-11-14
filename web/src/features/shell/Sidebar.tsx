@@ -31,6 +31,7 @@ interface Item {
 
 /** Pages that are not Kubernetes kinds. Later pull requests add Overview, Helm, FluxCD and the others here. */
 const PAGES: { section: string; title: string; path: string }[] = [
+  { section: 'Access Control', title: 'Who can…', path: 'who-can' },
   { section: 'Pod Files', title: 'Pod Files', path: 'pod-files' },
 ];
 
