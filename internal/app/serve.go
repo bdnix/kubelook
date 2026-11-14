@@ -24,6 +24,7 @@ import (
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/vault"
+	"github.com/bdnix/kubelook/internal/watch"
 	"github.com/bdnix/kubelook/internal/webui"
 	"github.com/bdnix/kubelook/internal/ws"
 )
@@ -61,6 +62,7 @@ type components struct {
 	audit    *audit.Recorder
 	opener   *cluster.Opener
 	ws       *ws.Mux
+	hub      *watch.Hub
 	handler  http.Handler
 }
 
@@ -131,12 +133,23 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	})
 	clusters.SetStates(opener.StateOf)
 	c.opener = opener
+	kubeClients := kube.NewClients(kube.Deps{Config: opener, Clock: o.Clock, Closers: mgr.Registry()})
 	publicURL, err := url.Parse(cfg.Server.PublicURL)
 	if err != nil {
 		return fail(fmt.Errorf("parsing server.publicURL: %w", err))
 	}
+	c.hub = watch.NewHub(watch.Deps{
+		Clients: kubeClients, Clock: o.Clock, Log: log, Closers: mgr.Registry(), MaxPerUser: cfg.Watch.MaxPerUser,
+		IdleSeconds: func(ctx context.Context, userID string) int {
+			st, err := c.users.GetSettings(ctx, userID)
+			if err != nil {
+				return 0
+			}
+			return st.WatchIdleSeconds
+		},
+	})
 	c.ws = ws.NewMux(ws.Deps{Clock: o.Clock, Log: log, Sessions: mgr, PublicHost: publicURL.Host, Fail: httpapi.ErrorWriter(log)})
-	kubeClients := kube.NewClients(kube.Deps{Config: opener, Clock: o.Clock, Closers: mgr.Registry()})
+	c.ws.Register("watch.open", c.hub.Factory())
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
 		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, WS: c.ws, KeyID: sealer.KeyID(),
@@ -217,6 +230,7 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 	}
 
 	c.ws.Shutdown() // open sockets close with 1001
+	c.hub.Close()
 	for _, h := range c.sessions.Registry().Hashes() {
 		if err := c.sessions.Registry().Close(h); err != nil {
 			c.log.Warn("closing session resources", "error", err.Error())
