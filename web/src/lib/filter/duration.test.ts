@@ -15,8 +15,11 @@ describe('parseDuration', () => {
     expect(isDuration(text)).toBe(true);
   });
 
-  it.each(['', '5', 'm', '5x', '-5m', '1.5h', '5 m', '5M', 'seven days', '1d2h'])('%j is not a duration', (text) => {
-    expect(() => parseDuration(text)).toThrow(/duration/i);
-    expect(isDuration(text)).toBe(false);
-  });
+  it.each(['', '5', 'm', '5x', '-5m', '1.5h', '5 m', '5M', 'seven days', '1d2h'])(
+    '%j is not a duration',
+    (text) => {
+      expect(() => parseDuration(text)).toThrow(/duration/i);
+      expect(isDuration(text)).toBe(false);
+    },
+  );
 });

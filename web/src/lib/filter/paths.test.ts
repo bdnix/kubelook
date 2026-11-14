@@ -36,7 +36,13 @@ describe('collectPaths', () => {
   });
 
   it('merges the paths of the objects, sorted and without duplicates', () => {
-    const paths = collectPaths([{ b: 1, a: { x: 1 } }, { b: 2, c: 1 }], { group: '', kind: 'Pod' });
+    const paths = collectPaths(
+      [
+        { b: 1, a: { x: 1 } },
+        { b: 2, c: 1 },
+      ],
+      { group: '', kind: 'Pod' },
+    );
     expect(paths).toEqual(['a', 'a.x', 'b', 'c']);
   });
 
@@ -60,8 +66,17 @@ describe('collectPaths', () => {
   });
 
   it('never suggests Secret data', () => {
-    const secret = { metadata: { name: 's' }, type: 'Opaque', data: { password: 'x' }, stringData: { user: 'y' } };
-    expect(collectPaths([secret], { group: '', kind: 'Secret' })).toEqual(['metadata', 'metadata.name', 'type']);
+    const secret = {
+      metadata: { name: 's' },
+      type: 'Opaque',
+      data: { password: 'x' },
+      stringData: { user: 'y' },
+    };
+    expect(collectPaths([secret], { group: '', kind: 'Secret' })).toEqual([
+      'metadata',
+      'metadata.name',
+      'type',
+    ]);
     expect(collectPaths([secret], { group: '', kind: 'ConfigMap' })).toContain('data.password');
   });
 });
@@ -70,12 +85,16 @@ describe('secretViolation', () => {
   it('rejects a filter on the values of a Secret', () => {
     expect(secretViolation(f('data.password = x'), { group: '', kind: 'Secret' })).toBe(SECRET_MESSAGE);
     expect(secretViolation(f('stringData.user exists'), { group: '', kind: 'Secret' })).toBe(SECRET_MESSAGE);
-    expect(secretViolation(f('metadata.name = a OR data.x contains y'), { group: '', kind: 'Secret' })).toBe(SECRET_MESSAGE);
+    expect(secretViolation(f('metadata.name = a OR data.x contains y'), { group: '', kind: 'Secret' })).toBe(
+      SECRET_MESSAGE,
+    );
     expect(SECRET_MESSAGE).toBe("Secret values can't be filtered.");
   });
 
   it('allows everything else', () => {
-    expect(secretViolation(f('type = Opaque AND metadata.name = a'), { group: '', kind: 'Secret' })).toBeUndefined();
+    expect(
+      secretViolation(f('type = Opaque AND metadata.name = a'), { group: '', kind: 'Secret' }),
+    ).toBeUndefined();
     expect(secretViolation(f('data.x = y'), { group: '', kind: 'ConfigMap' })).toBeUndefined();
     expect(secretViolation(f('database.x = y'), { group: '', kind: 'Secret' })).toBeUndefined();
   });

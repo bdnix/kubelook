@@ -11,7 +11,12 @@ const f = (text: string): Filter => {
 const test = (text: string, obj: unknown) => evaluate(f(text), obj, NOW);
 
 const pod = {
-  metadata: { name: 'web-1', creationTimestamp: '2026-11-01T12:00:00Z', labels: { app: 'web' }, deletionTimestamp: null },
+  metadata: {
+    name: 'web-1',
+    creationTimestamp: '2026-11-01T12:00:00Z',
+    labels: { app: 'web' },
+    deletionTimestamp: null,
+  },
   spec: {
     replicas: 3,
     paused: false,
@@ -125,8 +130,16 @@ describe('older than and newer than', () => {
     expect(test('metadata.creationTimestamp older than 2w', pod)).toBe(false);
     expect(test('metadata.creationTimestamp newer than 2w', pod)).toBe(true);
     expect(test('metadata.creationTimestamp newer than 7d', pod)).toBe(false);
-    expect(test('metadata.creationTimestamp older than 1w', { metadata: { creationTimestamp: '2026-11-14T11:59:00Z' } })).toBe(false);
-    expect(test('metadata.creationTimestamp newer than 1m', { metadata: { creationTimestamp: '2026-11-14T11:59:30Z' } })).toBe(true);
+    expect(
+      test('metadata.creationTimestamp older than 1w', {
+        metadata: { creationTimestamp: '2026-11-14T11:59:00Z' },
+      }),
+    ).toBe(false);
+    expect(
+      test('metadata.creationTimestamp newer than 1m', {
+        metadata: { creationTimestamp: '2026-11-14T11:59:30Z' },
+      }),
+    ).toBe(true);
   });
 
   it('work against a timestamp', () => {

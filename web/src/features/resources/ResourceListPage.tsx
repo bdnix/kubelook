@@ -7,6 +7,9 @@ import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Table } from '../../components/Table';
 import { BulkBar } from '../actions/BulkBar';
+import { DownloadMenu } from '../filter/DownloadMenu';
+import { FilterBar } from '../filter/FilterBar';
+import { useFilter } from '../filter/useFilter';
 import { CreateFromYaml } from '../editor/CreateFromYaml';
 import { getKind } from '../../kinds/registry';
 import { useNow } from '../../lib/clock';
@@ -31,6 +34,8 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [query, setQuery] = useState('');
+  const filtered = useFilter(live.items, query, { group: descriptor.group, kind: descriptor.kind }, now);
 
   const open = (o: K8sObject) =>
     void navigate(
@@ -58,7 +63,7 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   const keyOf = (o: K8sObject) =>
     getString(o, 'metadata.uid') || `${getString(o, 'metadata.namespace')}/${getString(o, 'metadata.name')}`;
   const chosen = new Set(selected);
-  const selectedObjects = live.items.filter((o) => chosen.has(keyOf(o)));
+  const selectedObjects = filtered.rows.filter((o) => chosen.has(keyOf(o)));
 
   return (
     <>
@@ -69,13 +74,27 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
       {live.status === 'paused' && (
         <Banner kind="info">Live updates paused. They resume when this tab is visible.</Banner>
       )}
+      <FilterBar
+        kind={{ group: descriptor.group, kind: descriptor.kind }}
+        objects={live.items}
+        value={query}
+        onChange={setQuery}
+      />
+      <DownloadMenu
+        cluster={cluster}
+        kind={descriptor.kind}
+        resource={descriptor.group === '' ? resource.resource : `${resource.resource}.${descriptor.group}`}
+        namespace={descriptor.namespaced ? '' : null}
+        objects={filtered.rows}
+        filter={filtered.filter}
+      />
       {live.status === 'loading' ? (
         <p role="status">Loading…</p>
       ) : (
         <Table
           label={descriptor.title}
           columns={descriptor.columns}
-          rows={live.items}
+          rows={filtered.rows}
           getKey={keyOf}
           now={now}
           statusOf={descriptor.status}

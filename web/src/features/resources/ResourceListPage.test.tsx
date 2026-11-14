@@ -110,6 +110,29 @@ describe('ResourceListPage', () => {
     await waitFor(() => expect(screen.queryByRole('toolbar', { name: 'Bulk actions' })).toBeNull());
   });
 
+  it('the field filter keeps the rows that match and tells about a query that does not parse', async () => {
+    mount();
+    await connected();
+    act(() =>
+      FakeWebSocket.last.serverSend({
+        ch: 1,
+        t: 'snapshot',
+        d: { items: [pod('1', 'web-1'), pod('2', 'web-2', 'Pending')], more: false },
+      }),
+    );
+    const grid = await screen.findByRole('grid', { name: 'Pods' });
+    const input = screen.getByRole('combobox', { name: 'Field filter' });
+    await userEvent.type(input, 'status.phase = Pending');
+    expect(within(grid).queryByText('web-1')).toBeNull();
+    expect(within(grid).getByText('web-2')).toBeInTheDocument();
+    await userEvent.clear(input);
+    await userEvent.type(input, 'status.phase =');
+    expect(screen.getByRole('alert')).toHaveTextContent('Expected a value.');
+    expect(within(grid).getByText('web-1')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('opens a cluster that is not open before listing', async () => {
     mount('closed', { 'GET /clusters/v%3Aprod/discovery': () => jsonResponse(discovery) });
     expect(screen.getByRole('status')).toHaveTextContent('Opening the cluster');

@@ -19,8 +19,14 @@ describe('parseFilter: operators', () => {
     ['metadata.name contains web', { path: 'metadata.name', op: 'contains', value: 'web' }],
     ['metadata.name regex ^web-\\d+$', { path: 'metadata.name', op: 'regex', value: '^web-\\d+$' }],
     ['metadata.deletionTimestamp exists', { path: 'metadata.deletionTimestamp', op: 'exists' }],
-    ['metadata.creationTimestamp older than 7d', { path: 'metadata.creationTimestamp', op: 'older than', value: '7d' }],
-    ['metadata.creationTimestamp newer than 15m', { path: 'metadata.creationTimestamp', op: 'newer than', value: '15m' }],
+    [
+      'metadata.creationTimestamp older than 7d',
+      { path: 'metadata.creationTimestamp', op: 'older than', value: '7d' },
+    ],
+    [
+      'metadata.creationTimestamp newer than 15m',
+      { path: 'metadata.creationTimestamp', op: 'newer than', value: '15m' },
+    ],
     [
       'metadata.creationTimestamp older than 2026-11-01T00:00:00Z',
       { path: 'metadata.creationTimestamp', op: 'older than', value: '2026-11-01T00:00:00Z' },
@@ -30,7 +36,9 @@ describe('parseFilter: operators', () => {
   });
 
   it('in takes a parenthesised list', () => {
-    expect(ok('status.phase in (Running, Pending)')).toEqual([[{ path: 'status.phase', op: 'in', values: ['Running', 'Pending'] }]]);
+    expect(ok('status.phase in (Running, Pending)')).toEqual([
+      [{ path: 'status.phase', op: 'in', values: ['Running', 'Pending'] }],
+    ]);
     expect(ok('a in (x)')).toEqual([[{ path: 'a', op: 'in', values: ['x'] }]]);
     expect(ok('a in ("x, y", z)')).toEqual([[{ path: 'a', op: 'in', values: ['x, y', 'z'] }]]);
   });
@@ -166,6 +174,11 @@ describe('formatFilter and rows', () => {
         { join: 'OR', path: 'b', op: '=', value: '' },
         { join: 'AND', path: 'c', op: 'exists' },
       ]),
-    ).toEqual([[{ path: 'a', op: '=', value: '1' }, { path: 'c', op: 'exists' }]]);
+    ).toEqual([
+      [
+        { path: 'a', op: '=', value: '1' },
+        { path: 'c', op: 'exists' },
+      ],
+    ]);
   });
 });

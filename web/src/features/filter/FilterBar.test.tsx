@@ -5,21 +5,25 @@ import { describe, expect, it, vi } from 'vitest';
 import { FilterBar, type FilterBarProps } from './FilterBar';
 
 const pods = [
-  { metadata: { name: 'web-1', labels: { app: 'web' } }, spec: { containers: [{ image: 'nginx' }] }, status: { phase: 'Running' } },
+  {
+    metadata: { name: 'web-1', labels: { app: 'web' } },
+    spec: { containers: [{ image: 'nginx' }] },
+    status: { phase: 'Running' },
+  },
 ];
 
-function Harness(props: Partial<FilterBarProps> & { initial?: string }) {
-  const [value, setValue] = useState(props.initial ?? '');
+function Harness({ initial = '', onChange, ...props }: Partial<FilterBarProps> & { initial?: string }) {
+  const [value, setValue] = useState(initial);
   return (
     <FilterBar
       kind={{ group: '', kind: 'Pod' }}
       objects={pods}
+      {...props}
       value={value}
       onChange={(q) => {
         setValue(q);
-        props.onChange?.(q);
+        onChange?.(q);
       }}
-      {...props}
     />
   );
 }
@@ -28,7 +32,7 @@ describe('FilterBar', () => {
   it('is a labelled text box that reports every change', async () => {
     const onChange = vi.fn();
     render(<Harness onChange={onChange} />);
-    const input = screen.getByRole('textbox', { name: 'Field filter' });
+    const input = screen.getByRole('combobox', { name: 'Field filter' });
     await userEvent.type(input, 'status.phase = Running');
     expect(input).toHaveValue('status.phase = Running');
     expect(onChange).toHaveBeenLastCalledWith('status.phase = Running');
@@ -44,7 +48,7 @@ describe('FilterBar', () => {
 
   it('shows a parse error with its position, and nothing for an empty or valid filter', async () => {
     render(<Harness />);
-    const input = screen.getByRole('textbox', { name: 'Field filter' });
+    const input = screen.getByRole('combobox', { name: 'Field filter' });
     expect(screen.queryByRole('alert')).toBeNull();
     await userEvent.type(input, 'status.phase =');
     expect(screen.getByRole('alert')).toHaveTextContent(/value/i);
@@ -68,7 +72,7 @@ describe('FilterBar', () => {
     const onChange = vi.fn();
     render(<Harness initial="a = 1" onChange={onChange} />);
     await userEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
-    expect(screen.getByRole('textbox', { name: 'Field filter' })).toHaveValue('');
+    expect(screen.getByRole('combobox', { name: 'Field filter' })).toHaveValue('');
     expect(onChange).toHaveBeenLastCalledWith('');
     expect(screen.queryByRole('button', { name: 'Clear filter' })).toBeNull();
   });
@@ -77,7 +81,7 @@ describe('FilterBar', () => {
     const onChange = vi.fn();
     render(<Harness initial="status.phase = Running" onChange={onChange} />);
     await userEvent.click(screen.getByRole('button', { name: 'Edit as rows' }));
-    expect(screen.queryByRole('textbox', { name: 'Field filter' })).toBeNull();
+    expect(screen.queryByRole('combobox', { name: 'Field filter' })).toBeNull();
     const row = screen.getByRole('group', { name: 'Condition 1' });
     expect(within(row).getByLabelText('Field')).toHaveValue('status.phase');
     expect(within(row).getByLabelText('Operator')).toHaveValue('=');
@@ -85,7 +89,7 @@ describe('FilterBar', () => {
     await userEvent.selectOptions(within(row).getByLabelText('Operator'), '!=');
     expect(onChange).toHaveBeenLastCalledWith('status.phase != Running');
     await userEvent.click(screen.getByRole('button', { name: 'Edit as query' }));
-    expect(screen.getByRole('textbox', { name: 'Field filter' })).toHaveValue('status.phase != Running');
+    expect(screen.getByRole('combobox', { name: 'Field filter' })).toHaveValue('status.phase != Running');
   });
 
   it('rows can add and remove conditions and join them with AND or OR', async () => {

@@ -16,12 +16,27 @@ describe('toKubectl (jq)', () => {
   it.each([
     ['status.phase = Running', 'any(.status.phase; . != null and tostring == "Running")'],
     ['status.phase != Running', 'any(.status.phase; tostring != "Running")'],
-    ['metadata.name contains web', 'any(.metadata.name; (type | IN("string","number","boolean")) and (tostring | contains("web")))'],
-    ['metadata.name regex ^web-\\d+$', 'any(.metadata.name; (type | IN("string","number","boolean")) and (tostring | test("^web-\\\\d+$")))'],
-    ['status.phase in (Running, Pending)', 'any(.status.phase; (type | IN("string","number","boolean")) and (tostring | IN("Running","Pending")))'],
+    [
+      'metadata.name contains web',
+      'any(.metadata.name; (type | IN("string","number","boolean")) and (tostring | contains("web")))',
+    ],
+    [
+      'metadata.name regex ^web-\\d+$',
+      'any(.metadata.name; (type | IN("string","number","boolean")) and (tostring | test("^web-\\\\d+$")))',
+    ],
+    [
+      'status.phase in (Running, Pending)',
+      'any(.status.phase; (type | IN("string","number","boolean")) and (tostring | IN("Running","Pending")))',
+    ],
     ['metadata.deletionTimestamp exists', 'any(.metadata.deletionTimestamp; . != null)'],
-    ['metadata.creationTimestamp older than 7d', 'any(.metadata.creationTimestamp; type == "string" and (try (fromdateiso8601 < (now - 604800)) catch false))'],
-    ['metadata.creationTimestamp newer than 15m', 'any(.metadata.creationTimestamp; type == "string" and (try (fromdateiso8601 > (now - 900)) catch false))'],
+    [
+      'metadata.creationTimestamp older than 7d',
+      'any(.metadata.creationTimestamp; type == "string" and (try (fromdateiso8601 < (now - 604800)) catch false))',
+    ],
+    [
+      'metadata.creationTimestamp newer than 15m',
+      'any(.metadata.creationTimestamp; type == "string" and (try (fromdateiso8601 > (now - 900)) catch false))',
+    ],
     [
       'metadata.creationTimestamp older than 2026-11-01T00:00:00Z',
       'any(.metadata.creationTimestamp; type == "string" and (try (fromdateiso8601 < ("2026-11-01T00:00:00Z" | fromdateiso8601)) catch false))',
@@ -31,8 +46,12 @@ describe('toKubectl (jq)', () => {
   });
 
   it('paths with [*] and indexes become jq generators', () => {
-    expect(jq('spec.containers[*].image = nginx')).toBe(`${head}any(.spec.containers[]?.image; . != null and tostring == "nginx"))'`);
-    expect(jq('spec.containers[0].name = app')).toBe(`${head}any(.spec.containers[0]?.name; . != null and tostring == "app"))'`);
+    expect(jq('spec.containers[*].image = nginx')).toBe(
+      `${head}any(.spec.containers[]?.image; . != null and tostring == "nginx"))'`,
+    );
+    expect(jq('spec.containers[0].name = app')).toBe(
+      `${head}any(.spec.containers[0]?.name; . != null and tostring == "app"))'`,
+    );
   });
 
   it('joins with and, or and parentheses', () => {
@@ -56,7 +75,9 @@ describe('toKubectl (jq)', () => {
   });
 
   it('quotes resource and namespace names', () => {
-    expect(toKubectl(f('a = 1'), { resource: 'deployments.apps', namespace: 'my ns' }, 'jq')).toContain("kubectl get deployments.apps -n 'my ns' -o json");
+    expect(toKubectl(f('a = 1'), { resource: 'deployments.apps', namespace: 'my ns' }, 'jq')).toContain(
+      "kubectl get deployments.apps -n 'my ns' -o json",
+    );
   });
 
   it('the yq variant reads YAML', () => {

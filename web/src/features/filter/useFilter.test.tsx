@@ -40,7 +40,9 @@ describe('useFilter', () => {
   });
 
   it('does not evaluate again while the list and the query are the same', () => {
-    const { result, rerender } = renderHook(({ q }) => useFilter(items, q, kind, NOW), { initialProps: { q: 'status.phase = Running' } });
+    const { result, rerender } = renderHook(({ q }) => useFilter(items, q, kind, NOW), {
+      initialProps: { q: 'status.phase = Running' },
+    });
     const first = result.current.rows;
     rerender({ q: 'status.phase = Running' });
     expect(result.current.rows).toBe(first);
@@ -49,9 +51,12 @@ describe('useFilter', () => {
   });
 
   it('evaluates again when the list changes', () => {
-    const { result, rerender } = renderHook(({ list }) => useFilter(list, 'status.phase = Running', kind, NOW), {
-      initialProps: { list: items },
-    });
+    const { result, rerender } = renderHook(
+      ({ list }) => useFilter(list, 'status.phase = Running', kind, NOW),
+      {
+        initialProps: { list: items },
+      },
+    );
     expect(result.current.rows).toHaveLength(1);
     rerender({ list: [...items, { metadata: { name: 'c' }, status: { phase: 'Running' } }] });
     expect(result.current.rows).toHaveLength(2);

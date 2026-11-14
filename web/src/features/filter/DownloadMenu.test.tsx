@@ -67,7 +67,7 @@ describe('DownloadMenu', () => {
     const { clipboard } = mount({ filter: [] });
     await userEvent.click(screen.getByRole('button', { name: 'Download matches' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Copy as kubectl | jq' }));
-    expect(clipboard.writeText).toHaveBeenLastCalledWith('kubectl get pods -n ns -o json | jq \'.items[]\'');
+    expect(clipboard.writeText).toHaveBeenLastCalledWith("kubectl get pods -n ns -o json | jq '.items[]'");
   });
 
   it('is disabled without matches, and clusters-scoped kinds have no namespace flag', async () => {
@@ -79,6 +79,8 @@ describe('DownloadMenu', () => {
     const { clipboard } = mount({ namespace: null, resource: 'nodes', kind: 'Node' });
     await userEvent.click(screen.getByRole('button', { name: 'Download matches' }));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Copy as kubectl | jq' }));
-    expect(String((clipboard.writeText.mock.calls.at(-1) as unknown[])[0])).toMatch(/^kubectl get nodes -o json/);
+    expect(String((clipboard.writeText.mock.calls.at(-1) as unknown[])[0])).toMatch(
+      /^kubectl get nodes -o json/,
+    );
   });
 });

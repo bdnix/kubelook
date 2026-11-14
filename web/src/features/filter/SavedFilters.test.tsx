@@ -19,9 +19,11 @@ describe('SavedFilters', () => {
   it('lists only the filter sets of the kind', () => {
     mount();
     const list = screen.getByRole('list', { name: 'Saved filters' });
-    expect(within(list).getAllByRole('listitem').map((i) => i.textContent)).toEqual(
-      expect.arrayContaining([expect.stringContaining('Failing'), expect.stringContaining('Old')]),
-    );
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map((i) => i.textContent),
+    ).toEqual(expect.arrayContaining([expect.stringContaining('Failing'), expect.stringContaining('Old')]));
     expect(within(list).queryByText(/NotReady/)).toBeNull();
   });
 
@@ -35,7 +37,11 @@ describe('SavedFilters', () => {
     const h = mount('metadata.name contains web');
     await userEvent.type(screen.getByLabelText('Name'), 'Web pods');
     await userEvent.click(screen.getByRole('button', { name: 'Save filter' }));
-    expect(h.onSave).toHaveBeenCalledWith({ name: 'Web pods', kind: 'Pod', query: 'metadata.name contains web' });
+    expect(h.onSave).toHaveBeenCalledWith({
+      name: 'Web pods',
+      kind: 'Pod',
+      query: 'metadata.name contains web',
+    });
   });
 
   it('cannot save an empty query, a name that is empty, or a name that is taken', async () => {
