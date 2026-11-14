@@ -31,6 +31,8 @@ type Clients struct {
 	Disc *fakediscovery.FakeDiscovery
 	// Known, when not nil, lists the cluster IDs that exist; any other ID answers ErrClusterUnavailable.
 	Known map[string]bool
+	// RESTConfig, when not nil, is what REST answers (tests point it at an httptest server).
+	RESTConfig *rest.Config
 
 	mu          sync.Mutex
 	discCalls   int
@@ -106,6 +108,9 @@ func (c *Clients) Typed(_ context.Context, _ session.Session, id string) (kubern
 func (c *Clients) REST(_ context.Context, _ session.Session, id string) (*rest.Config, error) {
 	if err := c.check(id); err != nil {
 		return nil, err
+	}
+	if c.RESTConfig != nil {
+		return rest.CopyConfig(c.RESTConfig), nil
 	}
 	return &rest.Config{Host: "https://fake.example"}, nil
 }
