@@ -232,3 +232,25 @@ func TestParseCallback_MissingCode_ErrState(t *testing.T) {
 	_, _, _, err := parse(e, "google", "state="+state, c)
 	assert.ErrorIs(t, err, auth.ErrState)
 }
+
+type notReadyProvider struct{ fakeProvider }
+
+func (notReadyProvider) Ready(context.Context) error { return errors.New("discovery failed") }
+
+func TestLogin_ProviderNotReady_FailsWithoutRedirectOrCookie(t *testing.T) {
+	e := newEnv(t)
+	h := auth.NewHandlers(auth.Deps{
+		Providers: []auth.Provider{notReadyProvider{fakeProvider{"google"}}}, PublicURL: publicURL,
+		Sealer: e.sealer, Clock: e.clock, Rand: testutil.Rand("state"), CookieSecure: true,
+		Fail: func(w http.ResponseWriter, _ *http.Request, err error) {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		},
+	})
+	mux := http.NewServeMux()
+	h.Register(mux)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/auth/google/login", nil))
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Empty(t, w.Header().Get("Location"))
+	assert.Empty(t, w.Result().Cookies())
+}

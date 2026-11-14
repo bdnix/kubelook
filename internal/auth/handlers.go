@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -81,6 +82,12 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 	p, ok := h.lookup(w, r)
 	if !ok {
 		return
+	}
+	if rp, ok := p.(interface{ Ready(context.Context) error }); ok {
+		if err := rp.Ready(r.Context()); err != nil {
+			h.d.Fail(w, r, fmt.Errorf("sign-in provider %s is not reachable: %w", p.Name(), err))
+			return
+		}
 	}
 	state, err := randomToken(h.d.Rand)
 	if err != nil {
