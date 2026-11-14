@@ -1,18 +1,20 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Route, Routes, useParams } from 'react-router';
 import { useMe, type Me } from '../../api/me';
+import { useSettings } from '../../api/settings';
 import { useStatus, type ServerStatus } from '../../api/status';
+import { themeStore } from '../../state/theme';
 import { Banner } from '../../components/Banner';
 import { SignInPage } from '../auth/SignInPage';
 import { ClusterPage } from '../clusters/ClusterPage';
 import { ClusterRail } from '../clusters/ClusterRail';
 import { useClusters } from '../clusters/useClusters';
 import { Dock } from '../dock/Dock';
+import { SettingsPage } from '../settings/SettingsPage';
 import { JobsPanel } from '../jobs/JobsPanel';
 import { DrawerRoute } from '../details/DrawerRoute';
 import { AddCredentials } from '../credentials/AddCredentials';
 import { VaultStoreContext } from '../credentials/context';
-import { SavedCredentials } from '../credentials/SavedCredentials';
 import { useRestore, type RestoreState } from '../credentials/useRestore';
 import { openVaultStore } from '../credentials/vaultStore';
 import { Banners } from './Banners';
@@ -41,16 +43,6 @@ function Home({
   return <h1>Choose a cluster</h1>;
 }
 
-function SettingsPage({ me }: { me: Me }) {
-  return (
-    <>
-      <h1>Settings</h1>
-      <AddCredentials features={me.features} />
-      <SavedCredentials />
-    </>
-  );
-}
-
 function SidebarRoute() {
   const { cluster = '' } = useParams();
   return <ResourceSidebar cluster={cluster} />;
@@ -64,6 +56,20 @@ function NotFound() {
 function SignedIn({ me }: { me: Me }) {
   const restore = useRestore();
   const clusters = useClusters();
+  const { update } = useSettings();
+  // The theme the user saved on the server follows them to this browser.
+  const savedTheme = me.settings.theme;
+  useEffect(() => {
+    if (savedTheme === 'light' || savedTheme === 'dark' || savedTheme === 'system')
+      themeStore.getState().setTheme(savedTheme);
+  }, [savedTheme]);
+  const toggleFavourite = (id: string, on: boolean) =>
+    void update((s) => ({
+      ...s,
+      favouriteClusters: on
+        ? [...s.favouriteClusters.filter((f) => f !== id), id]
+        : s.favouriteClusters.filter((f) => f !== id),
+    }));
   const sources = clusters.data;
   // A failed list reads as "no clusters": the user can still add credentials.
   const hasClusters = clusters.isPending ? undefined : (sources?.length ?? 0) > 0;
@@ -76,6 +82,7 @@ function SignedIn({ me }: { me: Me }) {
         <ClusterRail
           sources={sources ?? []}
           favourites={me.settings.favouriteClusters ?? []}
+          onToggleFavourite={toggleFavourite}
           vaultUnreachable={vaultDown}
         />
       }

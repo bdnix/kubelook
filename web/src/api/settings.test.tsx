@@ -27,7 +27,10 @@ function setup(put: (body: Settings) => Response | Promise<Response>) {
     return res;
   });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  queryClient.setQueryData(['me'], { settings: { favouriteClusters: [], watchIdleSeconds: 30, theme: 'system' }, user: { id: 'u1' } });
+  queryClient.setQueryData(['me'], {
+    settings: { favouriteClusters: [], watchIdleSeconds: 30, theme: 'system' },
+    user: { id: 'u1' },
+  });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
       <ApiContext.Provider value={createClient({ fetch })}>{children}</ApiContext.Provider>
@@ -55,7 +58,10 @@ describe('useSettings', () => {
     });
     await waitFor(() => expect(result.current.settings?.favouriteClusters).toEqual(['v:a']));
     expect(result.current.saving).toBe(true);
-    expect((queryClient.getQueryData(['me']) as { settings: { favouriteClusters: string[] } }).settings.favouriteClusters).toEqual(['v:a']);
+    expect(
+      (queryClient.getQueryData(['me']) as { settings: { favouriteClusters: string[] } }).settings
+        .favouriteClusters,
+    ).toEqual(['v:a']);
 
     release(jsonResponse({ ...base, favouriteClusters: ['v:a'], watchIdleSeconds: 90 }));
     await act(async () => {
@@ -68,7 +74,10 @@ describe('useSettings', () => {
 
   it('puts back what it showed when the server refuses, and says so', async () => {
     const { wrapper, queryClient } = setup(() =>
-      jsonResponse({ error: { code: 'bad_request', message: 'watchIdleSeconds must be between 30 and 300.' } }, 400),
+      jsonResponse(
+        { error: { code: 'bad_request', message: 'watchIdleSeconds must be between 30 and 300.' } },
+        400,
+      ),
     );
     const { result } = renderHook(() => useSettings(), { wrapper });
     await waitFor(() => expect(result.current.settings).toBeDefined());
@@ -79,7 +88,10 @@ describe('useSettings', () => {
     expect(ok).toBe(false);
     expect(result.current.settings?.watchIdleSeconds).toBe(30);
     expect(result.current.error).toBe('watchIdleSeconds must be between 30 and 300.');
-    expect((queryClient.getQueryData(['me']) as { settings: { watchIdleSeconds: number } }).settings.watchIdleSeconds).toBe(30);
+    expect(
+      (queryClient.getQueryData(['me']) as { settings: { watchIdleSeconds: number } }).settings
+        .watchIdleSeconds,
+    ).toBe(30);
   });
 
   it('changes made one after the other are all kept', async () => {

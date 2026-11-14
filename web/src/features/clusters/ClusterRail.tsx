@@ -24,10 +24,13 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
 export function ClusterRail({
   sources,
   favourites,
+  onToggleFavourite,
   vaultUnreachable = false,
 }: {
   sources: Source[];
   favourites: string[];
+  /** Adds or removes a favourite; without it no star buttons are shown. */
+  onToggleFavourite?: (id: string, favourite: boolean) => void;
   /** Closed Vault clusters cannot be opened while Vault is down. */
   vaultUnreachable?: boolean;
 }) {
@@ -43,6 +46,18 @@ export function ClusterRail({
         </button>
       ) : (
         <Link to={clusterPath(c.id)}>{c.name}</Link>
+      )}
+      {onToggleFavourite && (
+        <button
+          type="button"
+          aria-pressed={favouriteSet.has(c.id)}
+          aria-label={
+            favouriteSet.has(c.id) ? `Remove ${c.name} from favourites` : `Add ${c.name} to favourites`
+          }
+          onClick={() => onToggleFavourite(c.id, !favouriteSet.has(c.id))}
+        >
+          {favouriteSet.has(c.id) ? '★' : '☆'}
+        </button>
       )}
       {vault && c.roles && c.roles.length > 1 && (
         <select

@@ -78,6 +78,7 @@ func New(d Deps) http.Handler {
 	})
 	mux.HandleFunc("GET /api/v1/me", d.me)
 	mux.HandleFunc("GET /api/v1/status", d.status)
+	d.registerSettings(mux)
 	if d.Auth != nil {
 		d.Auth.Register(mux)
 	}

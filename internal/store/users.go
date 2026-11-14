@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bdnix/kubelook/internal/clock"
@@ -48,6 +49,8 @@ type Settings struct {
 const (
 	defaultWatchIdle = 30
 	maxWatchIdle     = 300
+	maxFavourites    = 200
+	maxSettingsBytes = 256 << 10
 )
 
 // Users stores users and their settings.
@@ -120,12 +123,15 @@ func (u *Users) GetSettings(ctx context.Context, userID string) (Settings, error
 
 // PutSettings validates and saves the user's settings.
 func (u *Users) PutSettings(ctx context.Context, userID string, s Settings) error {
-	if s.WatchIdleSeconds < defaultWatchIdle || s.WatchIdleSeconds > maxWatchIdle {
-		return fmt.Errorf("watchIdleSeconds must be between %d and %d: %w", defaultWatchIdle, maxWatchIdle, ErrInvalid)
+	if err := s.validate(); err != nil {
+		return err
 	}
 	data, err := json.Marshal(s)
 	if err != nil {
 		return fmt.Errorf("encoding settings: %w", err)
+	}
+	if len(data) > maxSettingsBytes {
+		return fmt.Errorf("the settings are larger than %d KiB: %w", maxSettingsBytes>>10, ErrInvalid)
 	}
 	_, err = u.db.Exec(ctx, `
 INSERT INTO user_settings (user_id, data, updated_at) VALUES (?, ?, ?)
@@ -133,6 +139,34 @@ ON CONFLICT (user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.
 		userID, string(data), ms(u.clock.Now()))
 	if err != nil {
 		return fmt.Errorf("saving settings: %w", err)
+	}
+	return nil
+}
+
+func (s Settings) validate() error {
+	if s.WatchIdleSeconds < defaultWatchIdle || s.WatchIdleSeconds > maxWatchIdle {
+		return fmt.Errorf("watchIdleSeconds must be between %d and %d: %w", defaultWatchIdle, maxWatchIdle, ErrInvalid)
+	}
+	if len(s.FavouriteClusters) > maxFavourites {
+		return fmt.Errorf("at most %d favourite clusters can be saved: %w", maxFavourites, ErrInvalid)
+	}
+	switch s.Theme {
+	case "", "system", "light", "dark":
+	default:
+		return fmt.Errorf("theme must be light, dark or system: %w", ErrInvalid)
+	}
+	seen := map[[2]string]bool{}
+	for _, f := range s.FilterSets {
+		key := [2]string{f.Kind, strings.TrimSpace(f.Name)}
+		switch {
+		case key[1] == "":
+			return fmt.Errorf("a saved filter needs a name: %w", ErrInvalid)
+		case f.Kind == "":
+			return fmt.Errorf("a saved filter needs a kind: %w", ErrInvalid)
+		case seen[key]:
+			return fmt.Errorf("there are two saved filters named %q for %s: %w", key[1], f.Kind, ErrInvalid)
+		}
+		seen[key] = true
 	}
 	return nil
 }

@@ -12,7 +12,15 @@ import { errorText } from './errors';
  * Adds a Vault token. The token goes to the server once and is never kept here: not in a query
  * (no mutation cache), not in storage, not in the URL. Only the server's sealed copy is saved.
  */
-export function VaultTokenForm() {
+export function VaultTokenForm({
+  label = 'Vault token',
+  submitLabel = 'Add Vault token',
+  formLabel = 'Add a Vault token',
+}: {
+  label?: string;
+  submitLabel?: string;
+  formLabel?: string;
+} = {}) {
   const api = useApi();
   const store = useVaultStore();
   const queryClient = useQueryClient();
@@ -46,9 +54,9 @@ export function VaultTokenForm() {
   }
 
   return (
-    <form onSubmit={(e) => void submit(e)} aria-label="Add a Vault token">
+    <form onSubmit={(e) => void submit(e)} aria-label={formLabel}>
       <Field
-        label="Vault token"
+        label={label}
         type="password"
         autoComplete="off"
         value={token}
@@ -57,7 +65,7 @@ export function VaultTokenForm() {
       />
       <ErrorText message={error} />
       <Button type="submit" disabled={busy || token === ''}>
-        Add Vault token
+        {submitLabel}
       </Button>
     </form>
   );

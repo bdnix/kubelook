@@ -3,13 +3,16 @@ import { useNavigate } from 'react-router';
 import { findResource, useDiscovery } from '../../api/discovery';
 import type { K8sObject } from '../../state/live';
 import { useOpenCluster } from '../../api/open';
+import { useSettings } from '../../api/settings';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Table } from '../../components/Table';
 import { BulkBar } from '../actions/BulkBar';
 import { ExportMenu } from '../export/ExportMenu';
+import { applyPreset, presetKey } from '../settings/columnPreset';
 import { DownloadMenu } from '../filter/DownloadMenu';
 import { FilterBar } from '../filter/FilterBar';
+import { SavedFilters } from '../filter/SavedFilters';
 import { useFilter } from '../filter/useFilter';
 import { CreateFromYaml } from '../editor/CreateFromYaml';
 import { getKind } from '../../kinds/registry';
@@ -35,6 +38,11 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const { settings, update } = useSettings();
+  const columns = applyPreset(
+    descriptor.columns,
+    settings?.columnPresets[presetKey(descriptor.group, descriptor.kind)],
+  );
   const [query, setQuery] = useState('');
   const [shown, setShown] = useState<K8sObject[]>([]);
   const filtered = useFilter(live.items, query, { group: descriptor.group, kind: descriptor.kind }, now);
@@ -82,13 +90,28 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
         value={query}
         onChange={setQuery}
       />
-      <ExportMenu
-        cluster={cluster}
-        kind={resource.resource}
-        columns={descriptor.columns}
-        rows={shown}
-        now={now}
+      <SavedFilters
+        kind={descriptor.kind}
+        sets={settings?.filterSets ?? []}
+        query={query}
+        onLoad={setQuery}
+        onSave={(set) => void update((s) => ({ ...s, filterSets: [...s.filterSets, set] }))}
+        onRename={(from, to) =>
+          void update((s) => ({
+            ...s,
+            filterSets: s.filterSets.map((f) =>
+              f.kind === descriptor.kind && f.name === from ? { ...f, name: to } : f,
+            ),
+          }))
+        }
+        onDelete={(name) =>
+          void update((s) => ({
+            ...s,
+            filterSets: s.filterSets.filter((f) => !(f.kind === descriptor.kind && f.name === name)),
+          }))
+        }
       />
+      <ExportMenu cluster={cluster} kind={resource.resource} columns={columns} rows={shown} now={now} />
       <DownloadMenu
         cluster={cluster}
         kind={descriptor.kind}
@@ -102,7 +125,7 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
       ) : (
         <Table
           label={descriptor.title}
-          columns={descriptor.columns}
+          columns={columns}
           rows={filtered.rows}
           getKey={keyOf}
           now={now}

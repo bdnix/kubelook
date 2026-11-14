@@ -146,11 +146,38 @@ describe('ResourceListPage', () => {
         }),
     });
     await connected();
-    act(() => FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [pod('1', 'web-1')], more: false } }));
+    act(() =>
+      FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [pod('1', 'web-1')], more: false } }),
+    );
     await screen.findByText('web-1');
     await waitFor(() =>
-      expect(screen.getAllByRole('columnheader').map((h) => h.textContent?.trim()).filter(Boolean)).toEqual(['Status', 'Name']),
+      expect(
+        screen
+          .getAllByRole('columnheader')
+          .map((h) => h.textContent?.trim())
+          .filter(Boolean),
+      ).toEqual(['Status', 'Name']),
     );
+  });
+
+  it('saved filters are listed, load into the query bar and are saved in the user settings', async () => {
+    const doc = {
+      favouriteClusters: [],
+      namespaceFilters: {},
+      columnPresets: {},
+      filterSets: [{ name: 'Pending', kind: 'Pod', query: 'status.phase = Pending' }],
+      watchIdleSeconds: 30,
+      theme: 'system',
+    };
+    mount('open', { 'GET /settings': () => jsonResponse(doc), 'PUT /settings': () => jsonResponse(doc) });
+    await connected();
+    act(() =>
+      FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [pod('1', 'web-1')], more: false } }),
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Load Pending' }));
+    expect(screen.getByRole('combobox', { name: 'Field filter' })).toHaveValue('status.phase = Pending');
+    await userEvent.type(screen.getByLabelText('Name'), 'Mine');
+    expect(screen.getByRole('button', { name: 'Save filter' })).toBeEnabled();
   });
 
   it('opens a cluster that is not open before listing', async () => {

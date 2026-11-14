@@ -89,8 +89,8 @@ func TestRunner_Limits_ExtraJobsStayQueuedAndStartInSubmissionOrder(t *testing.T
 	r := w.runner(t, "r1", h)
 	ids := []string{w.submit(t, r, "bulk", nil), w.submit(t, r, "bulk", nil), w.submit(t, r, "bulk", nil), w.submit(t, r, "bulk", nil)}
 
-	assert.Equal(t, ids[0], testutil.Recv(t, started))
-	assert.Equal(t, ids[1], testutil.Recv(t, started))
+	// the first two run side by side, so they may report in either order
+	assert.ElementsMatch(t, ids[:2], []string{testutil.Recv(t, started), testutil.Recv(t, started)})
 	testutil.NoRecv(t, started)
 	assert.Equal(t, store.JobQueued, w.row(t, ids[2]).Status)
 	assert.Equal(t, store.JobQueued, w.row(t, ids[3]).Status)
