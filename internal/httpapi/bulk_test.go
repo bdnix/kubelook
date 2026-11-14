@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -119,5 +118,6 @@ func TestDrain_StartsADrainJobForTheNode(t *testing.T) {
 func TestDrain_UnknownCluster_404(t *testing.T) {
 	e := newBulkEnv(t)
 	assert.Equal(t, http.StatusNotFound, e.post("/api/v1/clusters/v:nope/nodes/node-1/drain", ``).Code)
-	assert.True(t, strings.HasPrefix(e.post("/api/v1/clusters/v:prod/nodes/%20/drain", ``).Body.String(), `{"error"`))
+	assert.Equal(t, http.StatusBadRequest, e.post("/api/v1/clusters/v:prod/nodes/%20/drain", ``).Code)
+	assert.Equal(t, http.StatusBadRequest, e.post("/api/v1/clusters/v:prod/nodes/Not_A_Node/drain", ``).Code)
 }

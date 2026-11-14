@@ -26,10 +26,7 @@ describe('kubectlCommand', () => {
     [{ type: 'delete', resource: 'node', name: 'n1' }, 'kubectl delete node n1'],
     [{ type: 'cordon', name: 'n1' }, 'kubectl cordon n1'],
     [{ type: 'uncordon', name: 'n1' }, 'kubectl uncordon n1'],
-    [
-      { type: 'drain', name: 'n1' },
-      'kubectl drain n1 --ignore-daemonsets --delete-emptydir-data',
-    ],
+    [{ type: 'drain', name: 'n1' }, 'kubectl drain n1 --ignore-daemonsets --delete-emptydir-data'],
     [
       { type: 'taintAdd', name: 'n1', key: 'dedicated', value: 'gpu', effect: 'NoSchedule' },
       'kubectl taint nodes n1 dedicated=gpu:NoSchedule',
@@ -43,7 +40,14 @@ describe('kubectlCommand', () => {
       'kubectl taint nodes n1 dedicated:NoSchedule-',
     ],
     [
-      { type: 'label', resource: 'pod', name: 'web-1', add: { env: 'prod' }, remove: ['old'], namespace: 'a' },
+      {
+        type: 'label',
+        resource: 'pod',
+        name: 'web-1',
+        add: { env: 'prod' },
+        remove: ['old'],
+        namespace: 'a',
+      },
       'kubectl label pod web-1 env=prod old- -n a',
     ],
     [

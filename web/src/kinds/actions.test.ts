@@ -27,19 +27,29 @@ describe('action permissions', () => {
     expect(ACTIONS[id]?.access(dep)).toEqual(want);
   });
 
+  const node: ActionTarget = { group: '', resource: 'nodes', namespace: '', name: 'n1' };
+  it.each([
+    ['cordon', { verb: 'patch', group: '', resource: 'nodes', name: 'n1' }],
+    ['uncordon', { verb: 'patch', group: '', resource: 'nodes', name: 'n1' }],
+    ['taint', { verb: 'update', group: '', resource: 'nodes', name: 'n1' }],
+    ['drain', { verb: 'create', group: '', resource: 'pods', subresource: 'eviction', name: 'n1' }],
+  ])('node action %s needs %j', (id, want) => {
+    expect(ACTIONS[id]?.access(node)).toMatchObject(want);
+  });
+
   it('cluster-scoped targets have no namespace', () => {
     expect(
       ACTIONS.delete?.access({ group: '', resource: 'nodes', namespace: '', name: 'n1' })?.namespace,
     ).toBeUndefined();
   });
 
-  it('destructive actions are delete, evict, rollback and restart', () => {
+  it('destructive actions are delete, drain, evict, rollback and restart', () => {
     expect(
       Object.values(ACTIONS)
         .filter((a) => a.destructive)
         .map((a) => a.id)
         .sort(),
-    ).toEqual(['delete', 'evict', 'restart', 'rollback']);
+    ).toEqual(['delete', 'drain', 'evict', 'restart', 'rollback']);
   });
 
   it('names the missing permission', () => {

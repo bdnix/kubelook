@@ -135,7 +135,7 @@ func TestTaintRemove_MissingTaint_IsNotFound(t *testing.T) {
 // conflicts makes the first n updates of nodes fail with a conflict, as if someone else changed the node.
 func (e *env) conflicts(n int32) *atomic.Int32 {
 	var seen atomic.Int32
-	e.fakes.Dyn.PrependReactor("update", "nodes", func(a clienttesting.Action) (bool, runtime.Object, error) {
+	e.fakes.Dyn.PrependReactor("update", "nodes", func(clienttesting.Action) (bool, runtime.Object, error) {
 		if seen.Add(1) <= n {
 			return true, nil, apierrors.NewConflict(schema.GroupResource{Resource: "nodes"}, "node-1", nil)
 		}

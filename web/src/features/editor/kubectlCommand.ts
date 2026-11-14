@@ -8,6 +8,17 @@ export type KubectlAction =
   | { type: 'cronjobTrigger'; name: string; namespace?: string }
   | { type: 'cronjobSuspend' | 'cronjobResume'; name: string; namespace?: string }
   | { type: 'evict'; name: string; namespace: string }
+  | { type: 'cordon' | 'uncordon' | 'drain'; name: string }
+  | { type: 'taintAdd'; name: string; key: string; value?: string; effect: string }
+  | { type: 'taintRemove'; name: string; key: string; effect: string }
+  | {
+      type: 'label';
+      resource: string;
+      name: string;
+      add: Readonly<Record<string, string>>;
+      remove: readonly string[];
+      namespace?: string;
+    }
   | { type: 'expandPVC'; name: string; storage: string; namespace?: string };
 
 const SAFE = /^[A-Za-z0-9_@%+=:,./-]+$/;
@@ -51,6 +62,22 @@ export function kubectlCommand(a: KubectlAction): string {
         metadata: { name: a.name, namespace: a.namespace },
       });
       return `echo ${quote(body)} | kubectl create --raw ${quote(`/api/v1/namespaces/${a.namespace}/pods/${a.name}/eviction`)} -f -`;
+    }
+    case 'cordon':
+    case 'uncordon':
+      return `kubectl ${a.type} ${quote(a.name)}`;
+    case 'drain':
+      return `kubectl drain ${quote(a.name)} --ignore-daemonsets --delete-emptydir-data`;
+    case 'taintAdd':
+      return `kubectl taint nodes ${quote(a.name)} ${quote(`${a.key}${a.value ? `=${a.value}` : ''}:${a.effect}`)}`;
+    case 'taintRemove':
+      return `kubectl taint nodes ${quote(a.name)} ${quote(`${a.key}:${a.effect}-`)}`;
+    case 'label': {
+      const changes = [
+        ...Object.entries(a.add).map(([k, v]) => `${k}=${v}`),
+        ...a.remove.map((k) => `${k}-`),
+      ];
+      return `kubectl label ${quote(a.resource)} ${quote(a.name)} ${changes.map(quote).join(' ')}${ns(a.namespace)}`;
     }
     case 'expandPVC':
       return `kubectl patch pvc ${quote(a.name)} -p ${quote(JSON.stringify({ spec: { resources: { requests: { storage: a.storage } } } }))}${ns(a.namespace)}`;

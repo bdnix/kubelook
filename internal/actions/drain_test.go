@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	clienttesting "k8s.io/client-go/testing"
 
@@ -29,7 +30,7 @@ var podsGVR = schema.GroupVersionResource{Version: "v1", Resource: "pods"}
 
 func typedPod(ns, name, nodeName string, mut ...func(*corev1.Pod)) *corev1.Pod {
 	p := &corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name, UID: "uid-" + ns + "-" + name},
+		ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name, UID: types.UID("uid-" + ns + "-" + name)},
 		Spec:       corev1.PodSpec{NodeName: nodeName},
 		Status:     corev1.PodStatus{Phase: corev1.PodRunning},
 	}
@@ -56,7 +57,7 @@ func emptyDir(p *corev1.Pod) {
 type drainEnv struct {
 	*env
 	mu        sync.Mutex
-	order     []string // "cordon", "evict ns/name" in the order the API saw them
+	order     []string    // "cordon", "evict ns/name" in the order the API saw them
 	evictions chan string // every successful eviction request
 	tries     chan string // every eviction request, refused or not
 	watches   chan struct{}
@@ -233,7 +234,7 @@ func TestDrain_WaitsForEachPodToDisappearThroughAWatch(t *testing.T) {
 	go func() { done <- d.drainer().Drain(t.Context(), sess, "c", "node-1", func(jobs.Progress) {}) }()
 
 	testutil.Recv(t, d.evictions)
-	testutil.NoRecv(t, done) // evicted, but still there
+	testutil.NoRecv(t, done)    // evicted, but still there
 	testutil.Recv(t, d.watches) // the drain watches the pod instead of polling it
 	require.NoError(t, d.fakes.Kube.Tracker().Delete(podsGVR, "ns", "web"))
 	require.NoError(t, testutil.Recv(t, done))
@@ -247,13 +248,15 @@ func TestDrain_APodThatIsReplacedUnderTheSameName_CountsAsGone(t *testing.T) {
 	testutil.Recv(t, d.evictions)
 	tr := d.fakes.Kube.Tracker()
 	require.NoError(t, tr.Delete(podsGVR, "ns", "web-0"))
-	require.NoError(t, tr.Add(typedPod("ns", "web-0", "node-2", func(p *corev1.Pod) { p.UID = "new-uid" })))
+	require.NoError(t, tr.Add(typedPod("ns", "web-0", "node-2", func(p *corev1.Pod) { p.UID = types.UID("new-uid") })))
 	require.NoError(t, testutil.Recv(t, done))
 }
 
 func TestDrain_AFailedEviction_FailsTheDrainAndIsAudited(t *testing.T) {
 	d := newDrainEnv(t, typedPod("ns", "web", "node-1"))
-	d.evictErr = func(string, int) error { return apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "web", nil) }
+	d.evictErr = func(string, int) error {
+		return apierrors.NewForbidden(schema.GroupResource{Resource: "pods"}, "web", nil)
+	}
 	err := d.drainer().Drain(t.Context(), sess, "c", "node-1", func(jobs.Progress) {})
 	assert.Error(t, err)
 	assert.Equal(t, []string{"drain:requested", "drain:failure"}, d.verbs(t))

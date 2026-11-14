@@ -6,6 +6,7 @@ import { useOpenCluster } from '../../api/open';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Table } from '../../components/Table';
+import { BulkBar } from '../actions/BulkBar';
 import { CreateFromYaml } from '../editor/CreateFromYaml';
 import { getKind } from '../../kinds/registry';
 import { useNow } from '../../lib/clock';
@@ -29,6 +30,7 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   const descriptor = getKind(group, kind);
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
 
   const open = (o: K8sObject) =>
     void navigate(
@@ -53,6 +55,11 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
     return <Banner kind="error">{live.error?.message ?? 'Something went wrong.'}</Banner>;
   }
 
+  const keyOf = (o: K8sObject) =>
+    getString(o, 'metadata.uid') || `${getString(o, 'metadata.namespace')}/${getString(o, 'metadata.name')}`;
+  const chosen = new Set(selected);
+  const selectedObjects = live.items.filter((o) => chosen.has(keyOf(o)));
+
   return (
     <>
       <h1>{descriptor.title}</h1>
@@ -69,15 +76,21 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
           label={descriptor.title}
           columns={descriptor.columns}
           rows={live.items}
-          getKey={(o) =>
-            getString(o, 'metadata.uid') ||
-            `${getString(o, 'metadata.namespace')}/${getString(o, 'metadata.name')}`
-          }
+          getKey={keyOf}
           now={now}
           statusOf={descriptor.status}
           onOpen={open}
+          onSelectionChange={setSelected}
         />
       )}
+      <BulkBar
+        cluster={cluster}
+        group={group === 'core' ? '' : group}
+        version={resource.version}
+        resource={resource.resource}
+        kind={descriptor.kind}
+        objects={selectedObjects}
+      />
     </>
   );
 }

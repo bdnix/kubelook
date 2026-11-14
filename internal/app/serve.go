@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bdnix/kubelook/internal/actions"
 	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/auth"
 	"github.com/bdnix/kubelook/internal/clock"
@@ -170,6 +171,9 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 			return audit.WithIdentity(ctx, id)
 		},
 	})
+	actionDeps := actions.Deps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit}
+	c.jobs.Register(actions.NewBulkHandler(actionDeps))
+	c.jobs.Register(actions.NewDrainHandler(actionDeps))
 	c.ws = ws.NewMux(ws.Deps{Clock: o.Clock, Log: log, Sessions: mgr, PublicHost: publicURL.Host, Fail: httpapi.ErrorWriter(log)})
 	c.ws.Register("watch.open", c.hub.Factory())
 	c.ws.Register("logs.open", logs.NewFactory(logs.Deps{

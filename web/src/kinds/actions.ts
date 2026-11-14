@@ -68,6 +68,15 @@ export const ACTIONS: Record<string, ActionDef> = {
     }),
   },
   expandPVC: { id: 'expandPVC', label: 'Expand…', destructive: false, access: patch },
+  cordon: { id: 'cordon', label: 'Cordon', destructive: false, access: patch },
+  uncordon: { id: 'uncordon', label: 'Uncordon', destructive: false, access: patch },
+  taint: { id: 'taint', label: 'Taints…', destructive: false, access: onObject('update') },
+  drain: {
+    id: 'drain',
+    label: 'Drain…',
+    destructive: true,
+    access: (t) => ({ verb: 'create', group: '', resource: 'pods', subresource: 'eviction', name: t.name }),
+  },
   delete: { id: 'delete', label: 'Delete', destructive: true, access: onObject('delete') },
 };
 

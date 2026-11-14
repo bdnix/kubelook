@@ -13,7 +13,10 @@ interface Sent {
   body?: unknown;
 }
 
-function mount(props: Partial<Parameters<typeof BulkBar>[0]> = {}, opts: { fail?: string; progress?: string } = {}) {
+function mount(
+  props: Partial<Parameters<typeof BulkBar>[0]> = {},
+  opts: { fail?: string; progress?: string } = {},
+) {
   const sent: Sent[] = [];
   const fetch = vi.fn((url: string, init?: RequestInit) => {
     const method = init?.method ?? 'GET';
@@ -24,9 +27,16 @@ function mount(props: Partial<Parameters<typeof BulkBar>[0]> = {}, opts: { fail?
           jobs: opts.progress
             ? [
                 {
-                  id: 'job-9', cluster: 'v:prod', type: 'bulk', target: { name: 'delete' }, status: 'running',
-                  progress: { done: 1, total: 2, text: opts.progress }, message: '', offers: [],
-                  createdAt: '2026-11-14T12:00:00Z', updatedAt: '2026-11-14T12:00:00Z',
+                  id: 'job-9',
+                  cluster: 'v:prod',
+                  type: 'bulk',
+                  target: { name: 'delete' },
+                  status: 'running',
+                  progress: { done: 1, total: 2, text: opts.progress },
+                  message: '',
+                  offers: [],
+                  createdAt: '2026-11-14T12:00:00Z',
+                  updatedAt: '2026-11-14T12:00:00Z',
                 },
               ]
             : [],
@@ -34,7 +44,8 @@ function mount(props: Partial<Parameters<typeof BulkBar>[0]> = {}, opts: { fail?
       );
     }
     sent.push({ method, url, body });
-    if (opts.fail) return Promise.resolve(jsonResponse({ error: { code: 'bad_request', message: opts.fail } }, 400));
+    if (opts.fail)
+      return Promise.resolve(jsonResponse({ error: { code: 'bad_request', message: opts.fail } }, 400));
     return Promise.resolve(jsonResponse({ jobId: 'job-9' }));
   });
   const onDone = vi.fn();
@@ -75,7 +86,11 @@ describe('BulkBar', () => {
     mount();
     const bar = screen.getByRole('toolbar', { name: 'Bulk actions' });
     expect(within(bar).getByText('2 selected')).toBeInTheDocument();
-    expect(within(bar).getAllByRole('button').map((b) => b.textContent)).toEqual(['Label…', 'Delete']);
+    expect(
+      within(bar)
+        .getAllByRole('button')
+        .map((b) => b.textContent),
+    ).toEqual(['Label…', 'Delete']);
   });
 
   it('nodes get cordon, uncordon and drain', () => {
@@ -93,7 +108,11 @@ describe('BulkBar', () => {
     const m = mount({}, { progress: 'Processed 1 of 2 items' });
     await userEvent.click(screen.getByRole('button', { name: 'Delete' }));
     const dialog = screen.getByRole('dialog', { name: 'Delete 2 Pods' });
-    expect(within(dialog).getAllByRole('listitem').map((i) => i.textContent)).toEqual(['ns/a', 'other/b']);
+    expect(
+      within(dialog)
+        .getAllByRole('listitem')
+        .map((i) => i.textContent),
+    ).toEqual(['ns/a', 'other/b']);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete 2 objects' }));
 
     await waitFor(() => expect(m.sent).toHaveLength(1));

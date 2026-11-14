@@ -51,7 +51,7 @@ function mount(
       version="v1"
       resource="deployments"
       kind="Deployment"
-      actions={['scale', 'restart', 'pause', 'resume', 'rollback', 'setImage', 'delete', 'cordon']}
+      actions={['scale', 'restart', 'pause', 'resume', 'rollback', 'setImage', 'delete', 'explode']}
       clipboard={clipboard}
       {...props}
     />,

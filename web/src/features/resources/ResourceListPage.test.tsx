@@ -89,6 +89,27 @@ describe('ResourceListPage', () => {
     expect(await within(grid).findByText('web-3')).toBeInTheDocument();
   });
 
+  it('selecting rows shows the bulk bar with the actions of the kind', async () => {
+    mount();
+    await connected();
+    act(() =>
+      FakeWebSocket.last.serverSend({
+        ch: 1,
+        t: 'snapshot',
+        d: { items: [pod('1', 'web-1'), pod('2', 'web-2')], more: false },
+      }),
+    );
+    expect(await screen.findByText('web-1')).toBeInTheDocument();
+    expect(screen.queryByRole('toolbar', { name: 'Bulk actions' })).toBeNull();
+    screen.getByRole('grid', { name: 'Pods' }).focus();
+    await userEvent.keyboard('{ }');
+    const bar = await screen.findByRole('toolbar', { name: 'Bulk actions' });
+    expect(within(bar).getByText('1 selected')).toBeInTheDocument();
+    expect(within(bar).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    await userEvent.keyboard('{ }');
+    await waitFor(() => expect(screen.queryByRole('toolbar', { name: 'Bulk actions' })).toBeNull());
+  });
+
   it('opens a cluster that is not open before listing', async () => {
     mount('closed', { 'GET /clusters/v%3Aprod/discovery': () => jsonResponse(discovery) });
     expect(screen.getByRole('status')).toHaveTextContent('Opening the cluster');

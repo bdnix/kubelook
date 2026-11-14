@@ -89,7 +89,14 @@ describe('BulkConfirm', () => {
       ['uncordon', 'Uncordon 3 Pods'],
     ] as const) {
       const { unmount } = render(
-        <BulkConfirm action={action} names={['a', 'b', 'c']} kind="Pod" busy={false} onConfirm={vi.fn()} onCancel={vi.fn()} />,
+        <BulkConfirm
+          action={action}
+          names={['a', 'b', 'c']}
+          kind="Pod"
+          busy={false}
+          onConfirm={vi.fn()}
+          onCancel={vi.fn()}
+        />,
       );
       expect(screen.getByRole('dialog', { name: title })).toBeInTheDocument();
       unmount();

@@ -46,7 +46,9 @@ function mount() {
 
 async function choose(name: string) {
   await userEvent.click(screen.getByRole('button', { name: 'Actions' }));
-  await userEvent.click(within(screen.getByRole('menu', { name: 'Actions' })).getByRole('menuitem', { name }));
+  await userEvent.click(
+    within(screen.getByRole('menu', { name: 'Actions' })).getByRole('menuitem', { name }),
+  );
 }
 
 const target = { group: 'core', version: 'v1', resource: 'nodes', namespace: '', name: 'node-1' };
@@ -109,7 +111,11 @@ describe('node actions', () => {
     expect(sent).toEqual([]);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Drain' }));
     await waitFor(() => expect(sent).toHaveLength(1));
-    expect(sent[0]).toEqual({ method: 'POST', url: '/api/v1/clusters/v%3Aprod/nodes/node-1/drain', body: undefined });
+    expect(sent[0]).toEqual({
+      method: 'POST',
+      url: '/api/v1/clusters/v%3Aprod/nodes/node-1/drain',
+      body: undefined,
+    });
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });

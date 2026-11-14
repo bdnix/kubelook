@@ -92,7 +92,6 @@ func TestValidateBulk(t *testing.T) {
 	assert.ErrorContains(t, actions.ValidateBulk(bad["too many targets"]), "500")
 }
 
-
 func TestBulkHandler_Type(t *testing.T) {
 	assert.Equal(t, "bulk", newEnv(t).bulkHandler().Type())
 }
@@ -141,7 +140,7 @@ func TestBulk_StopsWhenTheContextEnds(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	req := actions.BulkRequest{Action: "delete", Targets: []actions.Target{cmTarget("cm-a"), cmTarget("cm-b")}}
-	err := e.bulkHandler().Run(ctx, bulkJob(t, req), func(p jobs.Progress) { cancel() })
+	err := e.bulkHandler().Run(ctx, bulkJob(t, req), func(jobs.Progress) { cancel() })
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.Equal(t, []string{"delete:requested configmaps/cm-a", "delete:success configmaps/cm-a"}, e.audited(t))
 }
