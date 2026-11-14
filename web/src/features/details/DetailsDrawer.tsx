@@ -12,6 +12,7 @@ import type { K8sObject } from '../../state/live';
 import { ActionMenu } from '../actions/ActionMenu';
 import type { Revision } from '../actions/RollbackDialog';
 import { EditorTab } from '../editor/EditorTab';
+import { OpenShell } from '../shell/OpenShell';
 import { EventsTab } from './EventsTab';
 import { OverviewTab } from './OverviewTab';
 import { RelatedTab } from './RelatedTab';
@@ -162,6 +163,7 @@ export function DetailsDrawer({ cluster, group, kind, namespace, name, onClose }
         <h2>{name}</h2>
         <span>{descriptor.title === kind ? kind : kind}</span>
         {object && descriptor.status && <StatusBadge status={descriptor.status(object)} />}
+        {object && isCore && kind === 'Pod' && <OpenShell cluster={cluster} pod={object} />}
         {object && info && (
           <ActionMenu
             cluster={cluster}

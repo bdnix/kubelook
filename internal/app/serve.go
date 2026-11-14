@@ -19,6 +19,7 @@ import (
 	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
+	"github.com/bdnix/kubelook/internal/execs"
 	"github.com/bdnix/kubelook/internal/httpapi"
 	"github.com/bdnix/kubelook/internal/kube"
 	"github.com/bdnix/kubelook/internal/logs"
@@ -157,6 +158,10 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	c.ws.Register("logs.open", logs.NewFactory(logs.Deps{
 		Source: logs.NewKubeSource(kubeClients), Clock: o.Clock, Audit: c.audit, MaxLinesPerSecond: cfg.Logs.MaxLinesPerSecond,
 		KeepAlive: mgr.KeepAlive,
+	}))
+	c.ws.Register("exec.open", execs.NewFactory(execs.Deps{
+		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit,
+		IdleTimeout: time.Duration(cfg.Shell.IdleTimeout), KeepAlive: mgr.KeepAlive,
 	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
