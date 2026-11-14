@@ -179,7 +179,13 @@ export function Table({
 
   const rowId = (i: number) => `${label}-row-${i}`.replace(/\s+/g, '-');
   const cell = (c: Column, row: K8sObject) =>
-    c.id === 'status' && statusOf ? <StatusBadge status={statusOf(row)} /> : String(c.value(row, now));
+    c.id === 'status' && statusOf ? (
+      <StatusBadge status={statusOf(row)} />
+    ) : c.text ? (
+      c.text(row, now)
+    ) : (
+      String(c.value(row, now))
+    );
 
   return (
     <div className="table">

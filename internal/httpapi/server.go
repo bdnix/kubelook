@@ -15,6 +15,7 @@ import (
 	"github.com/bdnix/kubelook/internal/execs"
 	"github.com/bdnix/kubelook/internal/jobs"
 	"github.com/bdnix/kubelook/internal/kube"
+	"github.com/bdnix/kubelook/internal/metrics"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/vault"
@@ -49,6 +50,8 @@ type Deps struct {
 	Kube kube.Clients
 	// Jobs runs long actions as durable jobs; nil → the job endpoints are not mounted.
 	Jobs *jobs.Runner
+	// Metrics reads pod and node usage; nil → the metrics endpoints are not mounted.
+	Metrics *metrics.Service
 	// WS serves GET /api/v1/ws; nil → no WebSocket endpoint.
 	WS http.Handler
 	// VaultMonitor tracks Vault's reachability; nil → /api/v1/status reports Vault as not configured.

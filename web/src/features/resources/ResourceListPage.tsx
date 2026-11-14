@@ -21,6 +21,8 @@ import { getString } from '../../lib/path';
 import { resourcePath } from '../../lib/paths';
 import { keepNamespaces, subscriptionPlan } from '../../lib/namespaces';
 import { useLiveMany } from '../../state/useLiveMany';
+import { metricsColumns } from '../metrics/columns';
+import { useNodeMetrics, usePodMetrics } from '../metrics/useMetrics';
 import { NamespaceFilter } from '../namespaces/NamespaceFilter';
 import { NoAccessPage } from '../shell/NoAccessPage';
 import { ApiError } from '../../api/client';
@@ -57,8 +59,18 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const isPods = descriptor.group === '' && descriptor.kind === 'Pod';
+  const isNodes = descriptor.group === '' && descriptor.kind === 'Node';
+  const podUsage = usePodMetrics(cluster, '', isPods && opened.status === 'open');
+  const nodeUsage = useNodeMetrics(cluster, isNodes && opened.status === 'open');
+  const usage = isPods ? podUsage : nodeUsage;
+  // CPU and memory columns appear when the cluster serves metrics
+  const withUsage =
+    (isPods || isNodes) && usage.data?.available
+      ? [...descriptor.columns, ...metricsColumns(usage.byKey, isPods ? 'pod' : 'node')]
+      : descriptor.columns;
   const columns = applyPreset(
-    descriptor.columns,
+    withUsage,
     settings?.columnPresets[presetKey(descriptor.group, descriptor.kind)],
   );
   const [query, setQuery] = useState('');

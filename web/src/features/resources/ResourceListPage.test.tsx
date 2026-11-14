@@ -235,6 +235,24 @@ describe('ResourceListPage', () => {
     expect(screen.queryByText('outside')).toBeNull();
   });
 
+  it('the pods list gains CPU and Memory columns when the cluster serves metrics', async () => {
+    mount('open', {
+      'GET /clusters/v%3Aprod/metrics/pods': () =>
+        jsonResponse({
+          available: true,
+          items: [{ namespace: 'ns', name: 'web-1', cpuMillicores: 250, memoryBytes: 134217728 }],
+        }),
+    });
+    await connected();
+    act(() =>
+      FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [pod('1', 'web-1')], more: false } }),
+    );
+    const grid = await screen.findByRole('grid', { name: 'Pods' });
+    expect(await within(grid).findByText('250m')).toBeInTheDocument();
+    expect(within(grid).getByText('128Mi')).toBeInTheDocument();
+    expect(within(grid).getByRole('columnheader', { name: /^CPU/ })).toBeInTheDocument();
+  });
+
   it('opens a cluster that is not open before listing', async () => {
     mount('closed', { 'GET /clusters/v%3Aprod/discovery': () => jsonResponse(discovery) });
     expect(screen.getByRole('status')).toHaveTextContent('Opening the cluster');

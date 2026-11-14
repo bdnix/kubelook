@@ -51,6 +51,21 @@ func nodeMetrics(name, cpu, mem string) *unstructured.Unstructured {
 	return fakekube.Object("metrics.k8s.io/v1beta1", "NodeMetrics", "", name, map[string]any{"usage": map[string]any{"cpu": cpu, "memory": mem}})
 }
 
+var (
+	podsGVR  = schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "pods"}
+	nodesGVR = schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "nodes"}
+)
+
+// add stores the metrics object under its real resource: the tracker would guess "podmetrics" from the kind.
+func add(t *testing.T, fk *fakekube.Clients, o *unstructured.Unstructured) {
+	t.Helper()
+	gvr := nodesGVR
+	if o.GetKind() == "PodMetrics" {
+		gvr = podsGVR
+	}
+	require.NoError(t, fk.Dyn.Tracker().Create(gvr, o, o.GetNamespace()))
+}
+
 func newService(fk *fakekube.Clients, prom config.Prometheus) *metrics.Service {
 	return metrics.New(metrics.Deps{Clients: fk, Clock: clock.NewFake(t0), Prometheus: prom})
 }
@@ -70,7 +85,7 @@ func TestPods_SumsTheContainersAndConvertsQuantities(t *testing.T) {
 		podMetrics("ns1", "web", container("app", "250m", "128Mi"), container("side", "100000000n", "1024Ki")),
 		podMetrics("ns1", "a", container("app", "2", "1G")),
 	} {
-		require.NoError(t, fk.Dyn.Tracker().Add(o))
+		add(t, fk, o)
 	}
 	got, err := newService(fk, config.Prometheus{}).Pods(t.Context(), sess, "c", "")
 	require.NoError(t, err)
@@ -94,8 +109,8 @@ func TestPods_SumsTheContainersAndConvertsQuantities(t *testing.T) {
 func TestPods_NamespaceNarrowsTheList(t *testing.T) {
 	fk := fakekube.New()
 	servesMetrics(fk)
-	require.NoError(t, fk.Dyn.Tracker().Add(podMetrics("ns1", "a", container("c", "1m", "1Ki"))))
-	require.NoError(t, fk.Dyn.Tracker().Add(podMetrics("ns2", "b", container("c", "1m", "1Ki"))))
+	add(t, fk, podMetrics("ns1", "a", container("c", "1m", "1Ki")))
+	add(t, fk, podMetrics("ns2", "b", container("c", "1m", "1Ki")))
 	got, err := newService(fk, config.Prometheus{}).Pods(t.Context(), sess, "c", "ns2")
 	require.NoError(t, err)
 	require.Len(t, got.Items, 1)
@@ -105,8 +120,8 @@ func TestPods_NamespaceNarrowsTheList(t *testing.T) {
 func TestNodes_ReadsTheUsageOfEachNode(t *testing.T) {
 	fk := fakekube.New()
 	servesMetrics(fk)
-	require.NoError(t, fk.Dyn.Tracker().Add(nodeMetrics("n2", "3500m", "8Gi")))
-	require.NoError(t, fk.Dyn.Tracker().Add(nodeMetrics("n1", "1500000000n", "512Mi")))
+	add(t, fk, nodeMetrics("n2", "3500m", "8Gi"))
+	add(t, fk, nodeMetrics("n1", "1500000000n", "512Mi"))
 	got, err := newService(fk, config.Prometheus{}).Nodes(t.Context(), sess, "c")
 	require.NoError(t, err)
 	require.True(t, got.Available)
@@ -118,7 +133,7 @@ func TestNodes_ReadsTheUsageOfEachNode(t *testing.T) {
 func TestUnreadableQuantities_CountAsZero(t *testing.T) {
 	fk := fakekube.New()
 	servesMetrics(fk)
-	require.NoError(t, fk.Dyn.Tracker().Add(nodeMetrics("n1", "lots", "plenty")))
+	add(t, fk, nodeMetrics("n1", "lots", "plenty"))
 	got, err := newService(fk, config.Prometheus{}).Nodes(t.Context(), sess, "c")
 	require.NoError(t, err)
 	assert.Equal(t, metrics.Item{Name: "n1"}, got.Items[0])

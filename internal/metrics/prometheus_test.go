@@ -152,8 +152,10 @@ func TestHistory_PrometheusErrors_MakeItUnavailableWithAMessage(t *testing.T) {
 	p := newProm(t)
 	svc := p.service(t)
 	for name, answer := range map[string]func(string) (int, string){
-		"http error":   func(string) (int, string) { return 500, "boom" },
-		"api error":    func(string) (int, string) { return 200, `{"status":"error","errorType":"bad_data","error":"parse error"}` },
+		"http error": func(string) (int, string) { return 500, "boom" },
+		"api error": func(string) (int, string) {
+			return 200, `{"status":"error","errorType":"bad_data","error":"parse error"}`
+		},
 		"not json":     func(string) (int, string) { return 200, "<html>" },
 		"unauthorised": func(string) (int, string) { return 401, "" },
 	} {
@@ -179,7 +181,9 @@ func TestHistory_AnUnreachableServer_IsUnavailable(t *testing.T) {
 
 func TestHistory_NoDataIsAvailableWithEmptySeries(t *testing.T) {
 	p := newProm(t)
-	p.answer = func(string) (int, string) { return 200, `{"status":"success","data":{"resultType":"matrix","result":[]}}` }
+	p.answer = func(string) (int, string) {
+		return 200, `{"status":"success","data":{"resultType":"matrix","result":[]}}`
+	}
 	got, err := p.service(t).History(t.Context(), "c", "pod", "ns", "web", 60)
 	require.NoError(t, err)
 	assert.True(t, got.Available)

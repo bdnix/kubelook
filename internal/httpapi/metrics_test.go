@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/metrics"
@@ -20,12 +21,12 @@ func withMetrics(t *testing.T, e *kubeEnv, prom config.Prometheus) {
 		return &metav1.APIResourceList{GroupVersion: "metrics.k8s.io/v1beta1", APIResources: []metav1.APIResource{{Name: name, Namespaced: ns, Kind: kind, Verbs: metav1.Verbs{"get", "list"}}}}
 	}
 	e.fakes.AddResources(list("pods", "PodMetrics", true), list("nodes", "NodeMetrics", false))
-	require.NoError(t, e.fakes.Dyn.Tracker().Add(fakekube.Object("metrics.k8s.io/v1beta1", "PodMetrics", "ns1", "web", map[string]any{
+	require.NoError(t, e.fakes.Dyn.Tracker().Create(schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "pods"}, fakekube.Object("metrics.k8s.io/v1beta1", "PodMetrics", "ns1", "web", map[string]any{
 		"containers": []any{map[string]any{"name": "app", "usage": map[string]any{"cpu": "250m", "memory": "128Mi"}}},
-	})))
-	require.NoError(t, e.fakes.Dyn.Tracker().Add(fakekube.Object("metrics.k8s.io/v1beta1", "NodeMetrics", "", "n1", map[string]any{
+	}), "ns1"))
+	require.NoError(t, e.fakes.Dyn.Tracker().Create(schema.GroupVersionResource{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "nodes"}, fakekube.Object("metrics.k8s.io/v1beta1", "NodeMetrics", "", "n1", map[string]any{
 		"usage": map[string]any{"cpu": "1", "memory": "1Gi"},
-	})))
+	}), ""))
 	e.deps.Metrics = metrics.New(metrics.Deps{Clients: e.fakes, Clock: e.fake, Prometheus: prom})
 }
 

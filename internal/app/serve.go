@@ -26,6 +26,7 @@ import (
 	"github.com/bdnix/kubelook/internal/jobs"
 	"github.com/bdnix/kubelook/internal/kube"
 	"github.com/bdnix/kubelook/internal/logs"
+	"github.com/bdnix/kubelook/internal/metrics"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/vault"
@@ -192,6 +193,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
 		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, Jobs: c.jobs, WS: c.ws,
+		Metrics:  metrics.New(metrics.Deps{Clients: kubeClients, Clock: o.Clock, Prometheus: cfg.Prometheus}),
 		Debugger: execs.NewDebugger(execs.DebuggerDeps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit, Rand: o.Rand, Debug: cfg.Debug, NodeShell: cfg.NodeShell}), VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})

@@ -31,13 +31,19 @@ function setup(answer: () => unknown) {
 
 describe('usePodMetrics and useNodeMetrics', () => {
   it('read the usage of the cluster, narrowed to a namespace', async () => {
-    const { wrapper, urls } = setup(() => ({ available: true, items: [{ namespace: 'ns', name: 'web', cpuMillicores: 250, memoryBytes: 1024 }] }));
+    const { wrapper, urls } = setup(() => ({
+      available: true,
+      items: [{ namespace: 'ns', name: 'web', cpuMillicores: 250, memoryBytes: 1024 }],
+    }));
     const { result } = renderHook(() => usePodMetrics('v:prod', 'ns'), { wrapper });
     await waitFor(() => expect(result.current.data?.available).toBe(true));
     expect(urls[0]).toBe('/api/v1/clusters/v%3Aprod/metrics/pods?namespace=ns');
     expect(result.current.byKey.get('ns/web')).toMatchObject({ cpuMillicores: 250 });
 
-    const nodes = setup(() => ({ available: true, items: [{ name: 'n1', cpuMillicores: 1, memoryBytes: 2 }] }));
+    const nodes = setup(() => ({
+      available: true,
+      items: [{ name: 'n1', cpuMillicores: 1, memoryBytes: 2 }],
+    }));
     const n = renderHook(() => useNodeMetrics('v:prod'), { wrapper: nodes.wrapper });
     await waitFor(() => expect(n.result.current.data?.available).toBe(true));
     expect(nodes.urls[0]).toBe('/api/v1/clusters/v%3Aprod/metrics/nodes');
@@ -84,7 +90,9 @@ describe('metrics columns', () => {
     expect(cpuText(2000)).toBe('2');
     expect(cpuText(1500)).toBe('1.5');
     expect(memoryText(134217728)).toBe('128Mi');
-    const byKey = new Map([['ns/web', { namespace: 'ns', name: 'web', cpuMillicores: 250, memoryBytes: 134217728 }]]);
+    const byKey = new Map([
+      ['ns/web', { namespace: 'ns', name: 'web', cpuMillicores: 250, memoryBytes: 134217728 }],
+    ]);
     const cols = metricsColumns(byKey, 'pod');
     expect(cols.map((c) => [c.id, c.title, c.sort])).toEqual([
       ['cpuUsage', 'CPU', 'number'],
@@ -96,7 +104,10 @@ describe('metrics columns', () => {
   });
 
   it('node columns are named for what they are next to the allocatable columns', () => {
-    const cols = metricsColumns(new Map([['n1', { name: 'n1', cpuMillicores: 1500, memoryBytes: 1 << 30 }]]), 'node');
+    const cols = metricsColumns(
+      new Map([['n1', { name: 'n1', cpuMillicores: 1500, memoryBytes: 1 << 30 }]]),
+      'node',
+    );
     expect(cols.map((c) => c.title)).toEqual(['CPU used', 'Memory used']);
     expect(cols[0]?.value({ metadata: { name: 'n1' } }, 0)).toBe(1500);
   });
@@ -123,7 +134,16 @@ describe('UsageBar', () => {
 
 describe('Sparkline', () => {
   it('draws the points as a line with a text alternative', () => {
-    const { container } = render(<Sparkline label="CPU, last 60 minutes" points={[[1, 1], [2, 3], [3, 2]]} />);
+    const { container } = render(
+      <Sparkline
+        label="CPU, last 60 minutes"
+        points={[
+          [1, 1],
+          [2, 3],
+          [3, 2],
+        ]}
+      />,
+    );
     expect(screen.getByRole('img', { name: 'CPU, last 60 minutes' })).toBeInTheDocument();
     const line = container.querySelector('polyline');
     expect(line?.getAttribute('points')?.split(' ')).toHaveLength(3);
@@ -136,8 +156,22 @@ describe('Sparkline', () => {
   });
 
   it('a flat line is drawn in the middle', () => {
-    const { container } = render(<Sparkline label="x" points={[[1, 5], [2, 5]]} height={20} width={100} />);
-    const ys = container.querySelector('polyline')?.getAttribute('points')?.split(' ').map((p) => Number(p.split(',')[1]));
+    const { container } = render(
+      <Sparkline
+        label="x"
+        points={[
+          [1, 5],
+          [2, 5],
+        ]}
+        height={20}
+        width={100}
+      />,
+    );
+    const ys = container
+      .querySelector('polyline')
+      ?.getAttribute('points')
+      ?.split(' ')
+      .map((p) => Number(p.split(',')[1]));
     expect(ys).toEqual([10, 10]);
   });
 });

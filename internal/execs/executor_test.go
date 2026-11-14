@@ -73,6 +73,7 @@ func TestKubeExecutor_BuildsTheExecURLEchoesAndEnds(t *testing.T) {
 	require.NoError(t, testutil.Recv(t, done))
 
 	assert.Equal(t, []string{"/api/v1/namespaces/ns/pods/web-1/exec"}, srv.Paths())
+	testutil.Recv(t, srv.ResizeReceived()) // the resize travels on its own message: wait for it
 	q := srv.Queries()[0]
 	assert.Equal(t, "app", q.Get("container"))
 	assert.Equal(t, []string{"/bin/bash"}, q["command"])
