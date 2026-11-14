@@ -175,3 +175,7 @@ func (c *Conn) writer() {
 		}
 	}
 }
+
+// Backlog returns how many frames wait to be written. Producers that can hold data back (log
+// streams) use it to avoid piling more onto a slow browser.
+func (c *Conn) Backlog() int { return c.q.len() }

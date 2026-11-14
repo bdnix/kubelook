@@ -128,3 +128,9 @@ func (q *queue) next(ctx context.Context) (item, bool) {
 		}
 	}
 }
+
+func (q *queue) len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.items.Len()
+}

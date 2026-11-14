@@ -21,6 +21,7 @@ import (
 	"github.com/bdnix/kubelook/internal/crypto"
 	"github.com/bdnix/kubelook/internal/httpapi"
 	"github.com/bdnix/kubelook/internal/kube"
+	"github.com/bdnix/kubelook/internal/logs"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/vault"
@@ -150,6 +151,10 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	})
 	c.ws = ws.NewMux(ws.Deps{Clock: o.Clock, Log: log, Sessions: mgr, PublicHost: publicURL.Host, Fail: httpapi.ErrorWriter(log)})
 	c.ws.Register("watch.open", c.hub.Factory())
+	c.ws.Register("logs.open", logs.NewFactory(logs.Deps{
+		Source: logs.NewKubeSource(kubeClients), Clock: o.Clock, Audit: c.audit, MaxLinesPerSecond: cfg.Logs.MaxLinesPerSecond,
+		KeepAlive: mgr.KeepAlive,
+	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
 		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, WS: c.ws, KeyID: sealer.KeyID(),
