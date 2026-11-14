@@ -14,6 +14,8 @@ import type { Revision } from '../actions/RollbackDialog';
 import { EditorTab } from '../editor/EditorTab';
 import { DebugButton } from '../debug/DebugButton';
 import { NodeShellButton } from '../debug/NodeShellButton';
+import { FilesPanel } from '../files/FilesPanel';
+import { ContainerPicker, runningContainers } from '../shell/ContainerPicker';
 import { OpenShell } from '../shell/OpenShell';
 import { EventsTab } from './EventsTab';
 import { OverviewTab } from './OverviewTab';
@@ -62,6 +64,26 @@ function revisionsOf(deployment: K8sObject, replicaSets: K8sObject[]): Revision[
     }))
     .filter((r) => Number.isInteger(r.revision) && r.revision > 0 && String(r.revision) !== current)
     .sort((a, b) => b.revision - a.revision);
+}
+
+function PodFiles({ cluster, pod }: { cluster: string; pod: K8sObject }) {
+  const containers = runningContainers(pod);
+  const [chosen, setChosen] = useState<string>();
+  const container = containers.some((c) => c.name === chosen) ? (chosen ?? '') : (containers[0]?.name ?? '');
+  if (containers.length === 0) return <p>No container of this pod is running.</p>;
+  return (
+    <div>
+      <ContainerPicker containers={containers} value={container} onChange={setChosen} />
+      <FilesPanel
+        target={{
+          cluster,
+          namespace: getString(pod, 'metadata.namespace'),
+          pod: getString(pod, 'metadata.name'),
+          container,
+        }}
+      />
+    </div>
+  );
 }
 
 function LogsTab({
@@ -226,7 +248,7 @@ export function DetailsDrawer({ cluster, group, kind, namespace, name, onClose }
             )}
             {tab === 'events' && <EventsTab events={eventsFor(uid, events)} now={now} />}
             {tab === 'logs' && <LogsTab cluster={cluster} kind={kind} object={object} pods={pods} />}
-            {tab === 'files' && <p>The file browser opens here.</p>}
+            {tab === 'files' && <PodFiles cluster={cluster} pod={object} />}
             {tab === 'related' && (
               <RelatedTab
                 cluster={cluster}

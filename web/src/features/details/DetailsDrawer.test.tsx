@@ -301,12 +301,12 @@ describe('DetailsDrawer', () => {
     expect(screen.queryByRole('button', { name: 'Open logs for other' })).toBeNull();
   });
 
-  it('shows a placeholder on the Files tab and the relations on the Related tab', async () => {
+  it('shows the container picker of the Files tab and the relations on the Related tab', async () => {
     mount();
     await connected();
     snapshot(1, [pod]);
     await userEvent.click(await screen.findByRole('tab', { name: 'Files' }));
-    expect(screen.getByText(/file browser/)).toBeInTheDocument();
+    expect(within(screen.getByRole('tabpanel')).getByLabelText('Container')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('tab', { name: 'Related' }));
     expect(
       await within(await screen.findByRole('region', { name: 'Owners' })).findByRole('link', {

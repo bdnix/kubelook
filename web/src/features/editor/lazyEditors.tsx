@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import type { CodeEditorProps } from '../../adapters/monaco/CodeEditor';
 import type { DiffViewerProps } from '../../adapters/monaco/DiffViewer';
 import type { YamlEditorProps } from '../../adapters/monaco/YamlEditor';
 
@@ -8,6 +9,10 @@ const YamlEditorLazy = lazy(() =>
 );
 const DiffViewerLazy = lazy(() =>
   import('../../adapters/monaco/DiffViewer').then((m) => ({ default: m.DiffViewer })),
+);
+
+const CodeEditorLazy = lazy(() =>
+  import('../../adapters/monaco/CodeEditor').then((m) => ({ default: m.CodeEditor })),
 );
 
 const fallback = <p role="status">Loading the editor…</p>;
@@ -24,6 +29,14 @@ export function DiffViewer(props: DiffViewerProps) {
   return (
     <Suspense fallback={fallback}>
       <DiffViewerLazy {...props} />
+    </Suspense>
+  );
+}
+
+export function CodeEditor(props: CodeEditorProps) {
+  return (
+    <Suspense fallback={fallback}>
+      <CodeEditorLazy {...props} />
     </Suspense>
   );
 }
