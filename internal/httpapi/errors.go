@@ -47,6 +47,7 @@ func classify(err error) (status int, code, message string, known bool) {
 		status int
 		code   string
 	}{
+		{apperr.ErrClusterUnavailable, http.StatusNotFound, "cluster_unavailable"}, // before ErrNotFound, which it also matches
 		{ErrNotFound, http.StatusNotFound, "not_found"},
 		{ErrInvalid, http.StatusBadRequest, "bad_request"},
 		{ErrConflict, http.StatusConflict, "conflict"},
@@ -103,4 +104,10 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
 		return fmt.Errorf("request body holds more than one JSON value: %w", ErrInvalid)
 	}
 	return nil
+}
+
+// ErrorWriter returns a function that writes err as the standard JSON error response.
+// Packages that cannot import httpapi (auth) receive it as a dependency.
+func ErrorWriter(log *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
+	return func(w http.ResponseWriter, r *http.Request, err error) { writeError(w, r, log, err) }
 }

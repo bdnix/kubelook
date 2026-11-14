@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Config
+clusters:
+- name: c
+  cluster: {server: "https://api.example:6443", certificate-authority-data: Y2EtZGF0YQ==}
+users:
+- name: u
+  user:
+    auth-provider:
+      name: oidc
+      config:
+        idp-issuer-url: https://issuer.example
+        client-id: kubelook
+        client-secret: s3cret
+        refresh-token: refresh-1
+        id-token: id-token-1
+contexts:
+- name: ctx
+  context: {cluster: c, user: u}

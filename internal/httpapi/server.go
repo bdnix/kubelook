@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/bdnix/kubelook/internal/clock"
+	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
@@ -27,6 +28,14 @@ type Deps struct {
 
 	Sessions *session.Manager // nil → no session or CSRF checks (not wired yet)
 	Users    *store.Users
+	// Auth mounts the sign-in routes (/auth/…, /api/v1/auth/…); nil → none.
+	Auth interface{ Register(*http.ServeMux) }
+	// Credentials manages saved credentials; nil (no vault.address) → the credential endpoints answer 404.
+	Credentials *cluster.Credentials
+	// Clusters lists and resolves the session's clusters; nil → /api/v1/clusters answers 404.
+	Clusters *cluster.Registry
+	// KeyID identifies the encryption key; shown in /api/v1/me so the browser can tell when it changed.
+	KeyID string
 }
 
 // New builds the handler.
@@ -49,6 +58,13 @@ func New(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /api/v1/me", d.me)
+	if d.Auth != nil {
+		d.Auth.Register(mux)
+	}
+	d.registerCredentials(mux)
+	if d.Clusters != nil {
+		mux.HandleFunc("GET /api/v1/clusters", d.listClusters)
+	}
 	// API routes are registered above the SPA catch-all; unknown API paths get a JSON 404.
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, d.Log, fmt.Errorf("no such API route: %w", ErrNotFound))
@@ -64,6 +80,9 @@ func New(d Deps) http.Handler {
 	if d.Sessions != nil {
 		fail := func(w http.ResponseWriter, r *http.Request, err error) { writeError(w, r, d.Log, err) }
 		mws = append(mws, d.Sessions.Require(fail), session.CSRF(fail))
+		if d.Users != nil {
+			mws = append(mws, auditIdentity(d.Users, d.Credentials))
+		}
 	}
 	return chain(recordRoute(mux), mws...)
 }

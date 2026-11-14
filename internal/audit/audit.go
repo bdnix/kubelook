@@ -46,9 +46,15 @@ func WithIdentity(ctx context.Context, id Identity) context.Context {
 	return context.WithValue(ctx, identityKey{}, id)
 }
 
-func identityFrom(ctx context.Context) Identity {
+// IdentityFrom returns the identity attached by WithIdentity, or the zero Identity.
+func IdentityFrom(ctx context.Context) Identity {
 	id, _ := ctx.Value(identityKey{}).(Identity)
 	return id
+}
+
+// UserIdentity is the identity of a signed-in user before any Vault identity is known.
+func UserIdentity(u store.User) Identity {
+	return Identity{AccountProvider: u.Provider, AccountSubject: u.Subject, AccountEmail: u.Email}
 }
 
 // line is the JSON written to standard output for every record.
@@ -98,7 +104,7 @@ func (r *Recorder) Record(ctx context.Context, ev Event) error {
 	if err != nil {
 		return fmt.Errorf("encoding audit details: %w", err)
 	}
-	id, now := identityFrom(ctx), r.clock.Now()
+	id, now := IdentityFrom(ctx), r.clock.Now()
 
 	_, dbErr := r.db.Exec(ctx, `INSERT INTO audit_events (id, time, account_provider, account_subject, account_email,
 vault_entity_id, vault_display_name, kube_context, kube_user, cluster, namespace, verb, resource_kind, resource_name, outcome, details)

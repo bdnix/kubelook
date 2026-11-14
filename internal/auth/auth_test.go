@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"testing/iotest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
@@ -231,4 +232,43 @@ func TestParseCallback_MissingCode_ErrState(t *testing.T) {
 	c, state := startLogin(t, e, "google")
 	_, _, _, err := parse(e, "google", "state="+state, c)
 	assert.ErrorIs(t, err, auth.ErrState)
+}
+
+type notReadyProvider struct{ fakeProvider }
+
+func (notReadyProvider) Ready(context.Context) error { return errors.New("discovery failed") }
+
+func TestLogin_ProviderNotReady_FailsWithoutRedirectOrCookie(t *testing.T) {
+	e := newEnv(t)
+	h := auth.NewHandlers(auth.Deps{
+		Providers: []auth.Provider{notReadyProvider{fakeProvider{"google"}}}, PublicURL: publicURL,
+		Sealer: e.sealer, Clock: e.clock, Rand: testutil.Rand("state"), CookieSecure: true,
+		Fail: func(w http.ResponseWriter, _ *http.Request, err error) {
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		},
+	})
+	mux := http.NewServeMux()
+	h.Register(mux)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/auth/google/login", nil))
+	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+	assert.Empty(t, w.Header().Get("Location"))
+	assert.Empty(t, w.Result().Cookies())
+}
+
+func TestLogin_RandomSourceFails_ErrorAndNoCookie(t *testing.T) {
+	e := newEnv(t)
+	h := auth.NewHandlers(auth.Deps{
+		Providers: []auth.Provider{fakeProvider{"google"}}, PublicURL: publicURL, Sealer: e.sealer, Clock: e.clock,
+		Rand: iotest.ErrReader(errors.New("no entropy")), CookieSecure: true,
+		Fail: func(w http.ResponseWriter, _ *http.Request, _ error) {
+			http.Error(w, "failed", http.StatusInternalServerError)
+		},
+	})
+	mux := http.NewServeMux()
+	h.Register(mux)
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/auth/google/login", nil))
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, w.Result().Cookies())
 }

@@ -5,6 +5,8 @@ import { MemoryRouter } from 'react-router';
 import { vi } from 'vitest';
 import { ApiContext } from '../api/context';
 import { createClient, type ApiClient } from '../api/client';
+import { VaultStoreContext } from '../features/credentials/context';
+import type { VaultStore } from '../features/credentials/vaultStore';
 
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -23,13 +25,19 @@ export function fakeClient(routes: Record<string, () => Response>): ApiClient {
   return createClient({ fetch });
 }
 
-export function makeWrapper(client: ApiClient = fakeClient({}), route = '/') {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+export function makeWrapper(
+  client: ApiClient = fakeClient({}),
+  route = '/',
+  vaultStore?: VaultStore,
+  queryClient: QueryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } }),
+) {
   return function Wrapper({ children }: { children: ReactNode }) {
     return (
       <QueryClientProvider client={queryClient}>
         <ApiContext.Provider value={client}>
-          <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+          <VaultStoreContext.Provider value={vaultStore ?? null}>
+            <MemoryRouter initialEntries={[route]}>{children}</MemoryRouter>
+          </VaultStoreContext.Provider>
         </ApiContext.Provider>
       </QueryClientProvider>
     );
@@ -38,7 +46,12 @@ export function makeWrapper(client: ApiClient = fakeClient({}), route = '/') {
 
 export function renderApp(
   ui: ReactElement,
-  { route = '/', client = fakeClient({}) }: { route?: string; client?: ApiClient } = {},
+  {
+    route = '/',
+    client = fakeClient({}),
+    vaultStore,
+    queryClient,
+  }: { route?: string; client?: ApiClient; vaultStore?: VaultStore; queryClient?: QueryClient } = {},
 ): RenderResult {
-  return render(ui, { wrapper: makeWrapper(client, route) });
+  return render(ui, { wrapper: makeWrapper(client, route, vaultStore, queryClient) });
 }

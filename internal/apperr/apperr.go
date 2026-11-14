@@ -22,3 +22,16 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string { return e.Code + ": " + e.Message }
+
+// ErrClusterUnavailable is answered for any cluster ID that is not in the caller's session: a
+// cluster of another user's kubeconfig and one that does not exist look the same. It matches
+// ErrNotFound with errors.Is, and the HTTP layer answers it with its own code.
+var ErrClusterUnavailable error = clusterUnavailable{}
+
+type clusterUnavailable struct{}
+
+func (clusterUnavailable) Error() string {
+	return "This cluster isn't available in your session. If it comes from a kubeconfig, upload that kubeconfig first."
+}
+
+func (clusterUnavailable) Is(target error) bool { return target == ErrNotFound }

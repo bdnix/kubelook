@@ -16,67 +16,13 @@ defaults:
   run:
     shell: bash
 
+# Required checks (branch protection): backend-tests, frontend-tests, ui-tests, image-scan.
+# Publishing happens only on pushes to main, after all four have passed.
 jobs:
-  lint-go:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
-        with:
-          version: v2.15.0
-
-  lint-web:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: web/.nvmrc
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-        working-directory: web
-      - run: make lint-web
-
-  test-go:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-      - run: make test-go
-
-  test-web:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: web/.nvmrc
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-        working-directory: web
-      - run: make test-web
-
-  coverage:
-    name: coverage (unit tests, >= 90%)
+  # Lint, unit tests and the vulnerability check of one side share a job: one checkout, one
+  # toolchain setup, one cache. The coverage run IS the unit-test run, so no test runs twice.
+  backend-tests:
+    name: "Backend: Lint, Unit Tests & Coverage"
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -86,74 +32,111 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Lint
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
-          node-version-file: web/.nvmrc
-          cache: npm
-          cache-dependency-path: web/package-lock.json
-      - run: npm ci
-        working-directory: web
-      - name: Go unit-test coverage gate (>= 90%)
-        id: go
-        run: make cover-go 2>&1 | tee go-coverage.txt
-      - name: Web unit-test coverage gate (>= 90%)
-        id: web
-        if: ${{ !cancelled() }}
-        run: make cover-web 2>&1 | tee web-coverage.txt
+          version: v2.15.0
+      - name: Unit tests with coverage (>= 90%)
+        run: make coverage-backend 2>&1 | tee go-coverage.txt
+      - name: Vulnerability check (govulncheck)
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
       - name: Report coverage
         if: ${{ !cancelled() }}
-        run: hack/coverage-summary.sh >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        run: hack/coverage-summary.sh backend >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage report
         if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: coverage
-          path: |
-            coverage.out
-            web/coverage/lcov.info
-            web/coverage/coverage-summary.json
+          name: coverage-backend
+          path: coverage.out
           if-no-files-found: warn
           retention-days: 14
 
-  build:
+  frontend-tests:
+    name: "Frontend: Lint, Unit Tests & Coverage"
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: web/.nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
         working-directory: web
-      - run: make build
-      - run: bin/kubelook version
+      - name: Lint and type check
+        run: make lint-frontend
+      - name: Unit tests with coverage (>= 90%)
+        run: make coverage-frontend 2>&1 | tee web-coverage.txt
+      - name: Dependency audit (npm audit)
+        run: npm audit --omit=dev --audit-level=high
+        working-directory: web
+      - name: Report coverage
+        if: ${{ !cancelled() }}
+        run: hack/coverage-summary.sh frontend >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload coverage report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-frontend
+          path: |
+            web/coverage/lcov.info
+            web/coverage/coverage-summary.json
+          if-no-files-found: warn
+          retention-days: 14
 
-  vuln:
+  # The built web app in real Chromium, with the API answered by the tests (web/ui).
+  # The full-stack browser tests (real backend, Vault, clusters) are Step 7.10.
+  ui-tests:
+    name: UI Tests (Playwright)
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: web/.nvmrc
           cache: npm
           cache-dependency-path: web/package-lock.json
-      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
-      - run: npm ci && npm audit --omit=dev --audit-level=high
+      - name: Install dependencies
+        run: npm ci
         working-directory: web
+      - name: Cache browser
+        id: browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('web/package-lock.json') }}
+      - name: Install browser
+        if: steps.browsers.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+      - name: Install browser system libraries
+        if: steps.browsers.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+        working-directory: web
+      - name: Build application and run UI tests
+        run: make test-ui
+      - name: Upload test report
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report
+            web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
 
+  # Builds the whole product (web app, Go binary, image), so there is no separate build job.
   image-scan:
+    name: "Container Image: Build & Vulnerability Scan"
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -161,7 +144,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+      - name: Build image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           load: true
@@ -172,7 +156,7 @@ jobs:
             COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      - name: Scan image (fails on fixable HIGH or CRITICAL)
+      - name: Scan image (Trivy; fails on fixable HIGH or CRITICAL)
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -181,11 +165,27 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: "1"
-      - run: docker run --rm kubelook:scan version
+      - name: Smoke test
+        run: docker run --rm kubelook:scan version
 
-  image-push:
+  dependency-review:
+    name: Dependency Review
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Review added and changed dependencies
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+
+  publish-image:
+    name: Publish Container Image
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [ci-ok, image-scan]
+    needs: [backend-tests, frontend-tests, ui-tests, image-scan]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -198,19 +198,22 @@ jobs:
         with:
           persist-credentials: false
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+      - name: Log in to GHCR
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - id: meta
+      - name: Compute image tags
+        id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ghcr.io/bdnix/kubelook
           tags: |
             type=raw,value=main
             type=sha,format=long
-      - id: push
+      - name: Build and push image
+        id: push
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -224,33 +227,9 @@ jobs:
           cache-from: type=gha
           sbom: true
           provenance: mode=max
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: ghcr.io/bdnix/kubelook
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
-
-  dependency-review:
-    if: ${{ github.event_name == 'pull_request' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
-        with:
-          fail-on-severity: high
-
-  ci-ok:
-    name: ci-ok
-    if: ${{ always() }}
-    needs: [lint-go, lint-web, test-go, test-web, coverage, build, vuln, image-scan]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 2
-    steps:
-      - name: All required jobs succeeded
-        run: |
-          results='${{ join(needs.*.result, ' ') }}'
-          echo "results: $results"
-          for r in $results; do [ "$r" = "success" ] || exit 1; done

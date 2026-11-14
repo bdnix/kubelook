@@ -9,7 +9,11 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/clock"
+	"github.com/bdnix/kubelook/internal/cluster"
+	"github.com/bdnix/kubelook/internal/session"
+	"github.com/bdnix/kubelook/internal/store"
 )
 
 const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
@@ -143,6 +147,28 @@ func securityHeaders(hsts bool) middleware {
 			}
 			if strings.HasPrefix(r.URL.Path, "/api/") {
 				h.Set("Cache-Control", "no-store")
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// auditIdentity attaches the signed-in user's identity to the request context, so every
+// audit record written while handling the request names who acted. A request whose user row
+// cannot be read carries no identity; the handler decides what that means.
+//
+// When the session holds a Vault token (creds != nil), the Vault entity ID and display name are added.
+func auditIdentity(users *store.Users, creds *cluster.Credentials) middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if s, ok := session.FromContext(r.Context()); ok {
+				if u, err := users.Get(r.Context(), s.UserID); err == nil {
+					id := audit.UserIdentity(u)
+					if creds != nil {
+						id.VaultEntityID, id.VaultDisplayName = creds.VaultIdentity(r.Context(), s)
+					}
+					r = r.WithContext(audit.WithIdentity(r.Context(), id))
+				}
 			}
 			next.ServeHTTP(w, r)
 		})

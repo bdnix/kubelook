@@ -265,3 +265,40 @@ func TestSignalContext_StopCancelsTheContext(t *testing.T) {
 	stop()
 	testutil.Recv(t, ctx.Done())
 }
+
+func TestServe_ProvidersFollowTheConfiguredClientIDs(t *testing.T) {
+	body := func(extra string) *config.Config {
+		t.Helper()
+		path := writeConfig(t, "server:\n  publicURL: http://localhost\n  listenAddress: 127.0.0.1:0\ndatabase:\n  sqlitePath: "+
+			filepath.Join(t.TempDir(), "k.db")+"\n"+extra)
+		cfg, err := config.Load(path, envFn(map[string]string{
+			"KUBELOOK_ENCRYPTION_KEY": encKey, "KUBELOOK_GOOGLE_CLIENT_SECRET": "g", "KUBELOOK_GITHUB_CLIENT_SECRET": "h",
+		}))
+		require.NoError(t, err)
+		return cfg
+	}
+	cases := []struct{ name, extra, want string }{
+		{"none", "", `{"providers":[]}`},
+		{"google only", "auth:\n  google:\n    clientId: gid\n    issuerURL: http://127.0.0.1:1\n", `{"providers":["google"]}`},
+		{"both, sorted", "auth:\n  google:\n    clientId: gid\n    issuerURL: http://127.0.0.1:1\n  github:\n    clientId: hid\n", `{"providers":["github","google"]}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := start(t, body(tc.extra), true)
+			code, got := get(t, "http://"+r.addr+"/api/v1/auth/providers")
+			assert.Equal(t, http.StatusOK, code)
+			assert.JSONEq(t, tc.want, got)
+			code, _ = get(t, "http://"+r.addr+"/api/v1/me")
+			assert.Equal(t, http.StatusUnauthorized, code)
+		})
+	}
+}
+
+func TestServe_VaultConfigured_StartsAndKeepsAPIProtected(t *testing.T) {
+	cfg := loadConfig(t, "vault:\n  address: http://127.0.0.1:1\n  candidateRoles: [devops-role]\n")
+	r := start(t, cfg, true)
+	code, _ := get(t, "http://"+r.addr+"/healthz")
+	assert.Equal(t, http.StatusOK, code)
+	code, _ = get(t, "http://"+r.addr+"/api/v1/me")
+	assert.Equal(t, http.StatusUnauthorized, code)
+}

@@ -2,6 +2,7 @@ package session_test
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,4 +75,33 @@ func TestRegistry_EndedMemoryIsBounded(t *testing.T) {
 	r.Register("a"+string(rune(0)), "x", func() error { called = true; return nil })
 	assert.False(t, called)
 	assert.Equal(t, 1, r.Count("a"+string(rune(0))))
+}
+
+func TestRegistry_CloseMatching_ClosesOnlyMatchingEntriesAndKeepsTheSessionOpen(t *testing.T) {
+	r := session.NewRegistry()
+	var closed []string
+	add := func(hash, name string) {
+		r.Register(hash, name, func() error { closed = append(closed, hash+"/"+name); return nil })
+	}
+	add("h1", "v:prod/logs")
+	add("h1", "k:local/shell")
+	add("h1", "v:dev/exec")
+	add("h2", "v:prod/logs")
+
+	require.NoError(t, r.CloseMatching("h1", func(name string) bool { return strings.HasPrefix(name, "v:") }))
+	assert.Equal(t, []string{"h1/v:prod/logs", "h1/v:dev/exec"}, closed)
+	assert.Equal(t, 1, r.Count("h1"), "the non-matching entry stays")
+	assert.Equal(t, 1, r.Count("h2"))
+
+	// the session is not marked ended: a new registration is kept, not closed at once
+	add("h1", "v:later")
+	assert.Equal(t, 2, r.Count("h1"))
+}
+
+func TestRegistry_CloseMatching_ReturnsClosersErrors(t *testing.T) {
+	r := session.NewRegistry()
+	r.Register("h", "v:x", func() error { return errors.New("boom") })
+	err := r.CloseMatching("h", func(string) bool { return true })
+	require.ErrorContains(t, err, "boom")
+	assert.Equal(t, 0, r.Count("h"))
 }
