@@ -8,6 +8,13 @@ import { FakeWebSocket } from '../../test/FakeWebSocket';
 import { makeLiveStore } from '../../test/live';
 import { fakeClient, jsonResponse, renderApp } from '../../test/render';
 import { DetailsDrawer } from './DetailsDrawer';
+
+vi.mock('../../adapters/monaco/YamlEditor', () => ({
+  YamlEditor: (p: { value: string; label: string; readOnly?: boolean }) => (
+    <textarea aria-label={p.label} value={p.value} readOnly={p.readOnly} onChange={() => undefined} />
+  ),
+}));
+vi.mock('../../adapters/monaco/DiffViewer', () => ({ DiffViewer: () => null }));
 import { DrawerRoute } from './DrawerRoute';
 
 const res = (group: string, version: string, resource: string, kind: string, namespaced = true) => ({
@@ -180,14 +187,42 @@ describe('DetailsDrawer', () => {
     ]);
   });
 
-  it('shows the YAML of the object, status included', async () => {
+  it('shows the YAML of the object in the editor, without status, read only without permission', async () => {
     mount();
     await connected();
     snapshot(1, [pod]);
     await userEvent.click(await screen.findByRole('tab', { name: 'YAML' }));
-    const yaml = screen.getByLabelText('YAML');
-    expect(yaml).toHaveTextContent('kind: Pod');
-    expect(yaml).toHaveTextContent('phase: Running');
+    const yaml = (await screen.findByRole('textbox', { name: 'Pod YAML' })) as HTMLTextAreaElement;
+    expect(yaml.value).toContain('kind: Pod');
+    expect(yaml.value).not.toContain('phase: Running');
+    expect(yaml).toHaveAttribute('readonly');
+  });
+
+  it('the editor is writable when the user may update the object', async () => {
+    const store = makeLiveStore();
+    renderApp(
+      <LiveContext.Provider value={store}>
+        <DetailsDrawer
+          cluster="v:prod"
+          group=""
+          kind="Pod"
+          namespace="ns"
+          name="web-1"
+          onClose={() => undefined}
+        />
+      </LiveContext.Provider>,
+      {
+        client: client({
+          'POST /clusters/v%3Aprod/access': () => jsonResponse({ results: [{ allowed: true }] }),
+        }),
+      },
+    );
+    await connected();
+    snapshot(1, [pod]);
+    await userEvent.click(await screen.findByRole('tab', { name: 'YAML' }));
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: 'Pod YAML' })).not.toHaveAttribute('readonly'),
+    );
   });
 
   it('shows only the live events of the object, newest first', async () => {

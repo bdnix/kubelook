@@ -1,5 +1,6 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { describe, expect, it, vi } from 'vitest';
 import { ClusterPage } from '../clusters/ClusterPage';
 import { LiveContext } from '../../state/useLive';
 import { FakeWebSocket } from '../../test/FakeWebSocket';
@@ -226,6 +227,24 @@ describe('ClusterPage', () => {
       { route: '/c/v%3Aprod/a/b/c/d' },
     );
     expect(screen.getByText('Page not found')).toBeInTheDocument();
+  });
+});
+
+vi.mock('../../adapters/monaco/YamlEditor', () => ({
+  YamlEditor: (p: { value: string; label: string }) => (
+    <textarea aria-label={p.label} value={p.value} readOnly />
+  ),
+}));
+
+describe('ResourceListPage: create from YAML', () => {
+  it('toggles the create panel above the list', async () => {
+    mount();
+    await connected();
+    act(() => FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [], more: false } }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Create from YAML' }));
+    expect(screen.getByRole('region', { name: 'Create from YAML' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('region', { name: 'Create from YAML' })).toBeNull();
   });
 });
 

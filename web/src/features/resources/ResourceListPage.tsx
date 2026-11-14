@@ -1,9 +1,12 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { findResource, useDiscovery } from '../../api/discovery';
 import type { K8sObject } from '../../state/live';
 import { useOpenCluster } from '../../api/open';
 import { Banner } from '../../components/Banner';
+import { Button } from '../../components/Button';
 import { Table } from '../../components/Table';
+import { CreateFromYaml } from '../editor/CreateFromYaml';
 import { getKind } from '../../kinds/registry';
 import { useNow } from '../../lib/clock';
 import { getString } from '../../lib/path';
@@ -25,6 +28,7 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   const now = useNow(MINUTE);
   const descriptor = getKind(group, kind);
   const navigate = useNavigate();
+  const [creating, setCreating] = useState(false);
 
   const open = (o: K8sObject) =>
     void navigate(
@@ -53,6 +57,8 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
     <>
       <h1>{descriptor.title}</h1>
       {descriptor.note && <p>{descriptor.note}</p>}
+      <Button onClick={() => setCreating(!creating)}>{creating ? 'Close' : 'Create from YAML'}</Button>
+      {creating && <CreateFromYaml cluster={cluster} />}
       {live.status === 'paused' && (
         <Banner kind="info">Live updates paused. They resume when this tab is visible.</Banner>
       )}

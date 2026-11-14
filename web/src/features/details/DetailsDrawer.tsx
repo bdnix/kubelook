@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useAccess } from '../../api/access';
 import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { StatusBadge } from '../../components/StatusBadge';
@@ -6,13 +7,13 @@ import { getKind } from '../../kinds/registry';
 import { useNow } from '../../lib/clock';
 import { getArray, getString } from '../../lib/path';
 import { childrenOf, eventsFor, podsOfWorkload } from '../../lib/related';
-import { toYaml } from '../../lib/yaml';
 import { logTab, useDock } from '../../state/dock';
 import type { K8sObject } from '../../state/live';
+import { EditorTab } from '../editor/EditorTab';
 import { EventsTab } from './EventsTab';
 import { OverviewTab } from './OverviewTab';
 import { RelatedTab } from './RelatedTab';
-import { useFocusReturn, useKindItems, useObject, useOwnerChain } from './useDetails';
+import { useFocusReturn, useKindItems, useObject, useOwnerChain, useResourceInfo } from './useDetails';
 
 export type TabId = 'overview' | 'yaml' | 'events' | 'logs' | 'files' | 'related';
 
@@ -93,6 +94,12 @@ export function DetailsDrawer({ cluster, group, kind, namespace, name, onClose }
   const now = useNow(MINUTE);
   const container = useFocusReturn();
   const chain = useOwnerChain(cluster, object);
+  const info = useResourceInfo(cluster, group, kind);
+  const update = useAccess(
+    cluster,
+    info ? [{ verb: 'update', group: info.group, resource: info.resource, namespace, name }] : [],
+    info !== undefined,
+  );
 
   const isCore = group === '' || group === 'core';
   const needPods = (isCore || WORKLOADS.includes(kind)) && NEEDS_PODS.includes(kind);
@@ -173,7 +180,14 @@ export function DetailsDrawer({ cluster, group, kind, namespace, name, onClose }
                 pods={pods}
               />
             )}
-            {tab === 'yaml' && <pre aria-label="YAML">{toYaml(object, { withStatus: true })}</pre>}
+            {tab === 'yaml' && info && (
+              <EditorTab
+                target={{ cluster, group, version: info.version, resource: info.resource, namespace, name }}
+                kind={kind}
+                object={object}
+                canEdit={state.state === 'found' && update.data?.[0]?.allowed === true}
+              />
+            )}
             {tab === 'events' && <EventsTab events={eventsFor(uid, events)} now={now} />}
             {tab === 'logs' && <LogsTab cluster={cluster} kind={kind} object={object} pods={pods} />}
             {tab === 'files' && <p>The file browser opens here.</p>}

@@ -34,6 +34,12 @@ export function useKindItems(
   return enabled && resource ? live.items : [];
 }
 
+/** The discovery entry (version, resource name) of a kind, once discovery has loaded. */
+export function useResourceInfo(cluster: string, group: string, kind: string) {
+  const discovery = useDiscovery(cluster);
+  return discovery.data ? findResource(discovery.data, group, kind) : undefined;
+}
+
 export type ObjectState =
   | { state: 'loading' }
   | { state: 'found'; object: K8sObject }
