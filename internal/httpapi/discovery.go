@@ -18,6 +18,7 @@ func (d Deps) registerKube(mux *http.ServeMux) {
 	d.registerOpenAPI(mux, kube.NewOpenAPI(d.Kube, d.Clock))
 	d.registerActions(mux)
 	d.registerBulk(mux)
+	d.registerLogs(mux)
 	d.registerDebug(mux)
 	d.registerSecrets(mux, kube.NewResources(d.Kube))
 }

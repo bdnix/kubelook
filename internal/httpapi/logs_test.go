@@ -53,9 +53,10 @@ func TestLogDownload_TheRecordCarriesNoLogText(t *testing.T) {
 
 func TestLogDownload_NoRecord_NoDownload(t *testing.T) {
 	e := newWriteEnv(t)
-	require.NoError(t, e.db.Close())
+	breakAudit(t, e)
 	rec := e.sendAs(http.MethodPost, downloadPath, "application/json", `{"namespace":"ns1","pod":"web-1","format":"text"}`)
-	assert.Equal(t, http.StatusServiceUnavailable, rec.Code, "the browser saves nothing without a record")
+	assert.Equal(t, http.StatusInternalServerError, rec.Code, "the browser saves nothing without a record")
+	assert.Contains(t, rec.Body.String(), "could not be recorded")
 }
 
 func TestLogDownload_UnknownCluster_404_NotMountedWithoutAudit_RequiresCSRF(t *testing.T) {

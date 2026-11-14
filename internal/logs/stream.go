@@ -8,10 +8,12 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/kube"
+	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/ws"
 )
 
@@ -28,8 +30,11 @@ const (
 
 // Line is one log line: its RFC 3339 timestamp (requested from the API server) and its text.
 type Line struct {
-	TS   string `json:"ts"`
-	Text string `json:"text"`
+	Pod       string `json:"pod,omitempty"`       // set when several containers are followed
+	Container string `json:"container,omitempty"` // likewise
+	TS        string `json:"ts"`
+	Text      string `json:"text"`
+	src       int    // the upstream the line came from
 }
 
 // Sink is where a stream sends frames; *ws.Conn implements it.
@@ -44,15 +49,44 @@ type streamDeps struct {
 	keepAlive func(ctx context.Context)
 	maxPerSec int
 	onEnd     func(ctx context.Context) // called once when the stream ends, whatever the reason
+	// What the history op needs to read older lines.
+	source             Source
+	sess               session.Session
+	cluster, namespace string
+	filter             *lineFilter
+	historyMax         int
+	// tagged is set when the request named its sources: lines and end frames then say which container they are from.
+	tagged bool
 }
 
-// stream reads one container's log and forwards it.
+// upstream is one container's log.
+type upstream struct {
+	target Target
+	rc     io.ReadCloser
+	// loaded counts the lines read from this container: the live ones and those loaded by history.
+	loaded atomic.Int64
+}
+
+// sourceFailure is a container that could not be opened.
+type sourceFailure struct {
+	target Target
+	err    error
+}
+
+// end is the end of one upstream.
+type end struct {
+	src int
+	err error
+}
+
+// stream reads the logs of one or more containers and forwards them as one.
 type stream struct {
 	d      streamDeps
 	sink   Sink
 	ch     int
 	follow bool
-	rc     io.ReadCloser
+	ups    []*upstream
+	failed []sourceFailure
 	cancel context.CancelFunc
 	done   chan struct{}
 
@@ -60,21 +94,28 @@ type stream struct {
 }
 
 // start begins forwarding. The returned stream is a ws.Channel.
-func start(ctx context.Context, d streamDeps, sink Sink, ch int, follow bool, rc io.ReadCloser) *stream {
+func start(ctx context.Context, d streamDeps, sink Sink, ch int, follow bool, ups []*upstream, failed []sourceFailure) *stream {
 	ctx, cancel := context.WithCancel(ctx)
-	s := &stream{d: d, sink: sink, ch: ch, follow: follow, rc: rc, cancel: cancel, done: make(chan struct{})}
+	s := &stream{d: d, sink: sink, ch: ch, follow: follow, ups: ups, failed: failed, cancel: cancel, done: make(chan struct{})}
 	go s.run(ctx)
 	return s
 }
 
-// Handle refuses every op: a log channel is driven by the server.
-func (s *stream) Handle(context.Context, string, json.RawMessage) error { return errNoOps }
+// Handle takes one op, logs.history; everything else is refused: a log channel is driven by the server.
+func (s *stream) Handle(ctx context.Context, op string, d json.RawMessage) error {
+	if op == opHistory {
+		return s.history(ctx, d)
+	}
+	return errNoOps
+}
 
 // Close stops the stream and waits for it to finish.
 func (s *stream) Close() {
 	s.closeOnce.Do(func() {
 		s.cancel()
-		_ = s.rc.Close()
+		for _, u := range s.ups {
+			_ = u.rc.Close()
+		}
 		<-s.done
 	})
 }
@@ -95,9 +136,19 @@ func (s *stream) run(ctx context.Context) {
 
 // loop forwards lines until the stream ends and returns the reason to close the channel, if any.
 func (s *stream) loop(ctx context.Context) string {
+	for _, f := range s.failed {
+		s.sourceFailed(f.target, f.err)
+	}
 	lines := make(chan Line)
-	readErr := make(chan error, 1)
-	go readLines(ctx, s.rc, lines, readErr)
+	ends := make(chan end, len(s.ups))
+	for i, u := range s.ups {
+		var tag *Target
+		if s.d.tagged {
+			tag = &u.target
+		}
+		go readLines(ctx, u.rc, lines, ends, i, tag)
+	}
+	alive := len(s.ups)
 
 	tick := s.d.clock.NewTicker(flushEvery)
 	defer tick.Stop()
@@ -128,6 +179,10 @@ func (s *stream) loop(ctx context.Context) string {
 		case <-ctx.Done():
 			return ""
 		case l := <-lines:
+			s.ups[l.src].loaded.Add(1)
+			if !s.d.filter.match(l.Text) {
+				continue // filtered out: not a drop
+			}
 			if !bucket.allow() {
 				dropped++
 				continue
@@ -145,9 +200,18 @@ func (s *stream) loop(ctx context.Context) string {
 				s.d.keepAlive(ctx)
 			}
 			flush(false)
-		case err := <-readErr:
+		case e := <-ends:
 			flush(true)
-			return s.finish(ctx, err)
+			if !s.d.tagged {
+				return s.finish(ctx, e.err)
+			}
+			if ctx.Err() != nil {
+				return ""
+			}
+			s.sourceEnded(s.ups[e.src].target, e.err)
+			if alive--; alive == 0 && s.follow {
+				return "container_terminated"
+			}
 		}
 	}
 }
@@ -168,8 +232,23 @@ func (s *stream) finish(ctx context.Context, err error) string {
 	return ""
 }
 
-// readLines splits the stream into lines and hands them over. It reports the end on end.
-func readLines(ctx context.Context, r io.Reader, out chan<- Line, end chan<- error) {
+// sourceEnded tells the browser that one container's log ended, or failed.
+func (s *stream) sourceEnded(t Target, err error) {
+	if err != nil && !errors.Is(err, io.EOF) {
+		s.sourceFailed(t, err)
+		return
+	}
+	_ = s.sink.Send(s.ch, "eof", map[string]any{"pod": t.Pod, "container": t.Container})
+}
+
+func (s *stream) sourceFailed(t Target, err error) {
+	body := ws.ErrorBody(kube.MapError(err))
+	_ = s.sink.Send(s.ch, "source_error", map[string]any{"pod": t.Pod, "container": t.Container, "code": body["code"], "message": body["message"]})
+}
+
+// readLines splits the stream into lines and hands them over, tagged with the container when tag is set.
+// It reports the end on ends.
+func readLines(ctx context.Context, r io.Reader, out chan<- Line, ends chan<- end, src int, tag *Target) {
 	br := bufio.NewReaderSize(r, maxLineBytes)
 	for {
 		raw, err := br.ReadSlice('\n')
@@ -183,15 +262,20 @@ func readLines(ctx context.Context, r io.Reader, out chan<- Line, end chan<- err
 			raw = text
 		}
 		if len(raw) > 0 {
+			l := parse(raw, truncated)
+			l.src = src
+			if tag != nil {
+				l.Pod, l.Container = tag.Pod, tag.Container
+			}
 			select {
-			case out <- parse(raw, truncated):
+			case out <- l:
 			case <-ctx.Done():
-				end <- ctx.Err()
+				ends <- end{src, ctx.Err()}
 				return
 			}
 		}
 		if err != nil {
-			end <- err
+			ends <- end{src, err}
 			return
 		}
 	}

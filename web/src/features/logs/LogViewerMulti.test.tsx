@@ -41,9 +41,10 @@ const ln = (n: number, text = `line ${n}`, pod = 'web-1', container = 'app') => 
   pod,
   container,
 });
-const send = (type: string, d: unknown, ch = 1) =>
-  act(() => FakeWebSocket.last.serverSend({ ch, t: type, d }));
 const frames = (op: string) => FakeWebSocket.instances.flatMap((w) => w.frames).filter((f) => f.op === op);
+/** Frames go to the channel opened last: choosing another source re-opens the channel under a new number. */
+const send = (type: string, d: unknown, ch = frames('logs.open').at(-1)?.ch ?? 1) =>
+  act(() => FakeWebSocket.last.serverSend({ ch, t: type, d }));
 
 const props = {
   cluster: 'v:prod',
@@ -70,11 +71,11 @@ describe('LogViewer: several containers', () => {
     });
     expect(frames('logs.open').at(-1)?.d).not.toHaveProperty('container');
     send('lines', {
-      lines: [ln(1, 'from app'), ln(2, 'from sidecar', 'web-1', 'sidecar'), ln(3, 'app again')],
+      lines: [ln(1, 'from app'), ln(2, 'from proxy', 'web-1', 'proxy'), ln(3, 'app again')],
     });
     const log = screen.getByRole('log');
     const labels = [...log.querySelectorAll('.log-source')].map((e) => e.textContent);
-    expect(labels).toEqual(['web-1/app', 'web-1/sidecar', 'web-1/app']);
+    expect(labels).toEqual(['web-1/app', 'web-1/proxy', 'web-1/app']);
     const classes = [...log.querySelectorAll('.log-source')].map((e) => e.className);
     expect(classes[0]).toBe(classes[2]);
     expect(classes[0]).not.toBe(classes[1]);

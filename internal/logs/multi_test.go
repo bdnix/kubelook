@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	"github.com/bdnix/kubelook/internal/apperr"
 	"github.com/bdnix/kubelook/internal/audit"
@@ -116,6 +117,16 @@ func (e *multiEnv) open(t *testing.T, req map[string]any) (ws.Channel, error) {
 	c, err := logs.Open(audit.WithIdentity(t.Context(), audit.Identity{AccountEmail: "ada@corp.example"}), e.deps, e.sink, e.sess, 7, raw)
 	if err == nil {
 		t.Cleanup(c.Close)
+		// every opened reader is blocked in its first Read: consume that signal so feed waits for the next one
+		e.src.mu.Lock()
+		readers := make([]*reader, 0, len(e.src.readers))
+		for _, r := range e.src.readers {
+			readers = append(readers, r)
+		}
+		e.src.mu.Unlock()
+		for _, r := range readers {
+			testutil.Recv(t, r.reading)
+		}
 	}
 	return c, err
 }
@@ -247,7 +258,7 @@ func TestMulti_OneSourceEnding_OthersContinue_ChannelClosesWhenAllEnded(t *testi
 
 func TestMulti_ASourceThatCannotBeOpened_IsReported_TheOthersRun(t *testing.T) {
 	e := newMultiEnv(t, 1000, webApp, webSide)
-	e.src.failFor["web-1/sidecar"] = errors.New("container sidecar is waiting to start")
+	e.src.failFor["web-1/sidecar"] = apierrors.NewBadRequest("container sidecar is waiting to start")
 	_, err := e.open(t, multiReq(map[string]any{"pod": "web-1", "allContainers": true}, nil))
 	require.NoError(t, err)
 	f := e.sink.next(t)
@@ -354,7 +365,7 @@ func TestFilter_Invalid(t *testing.T) {
 	require.NoError(t, err, "256 characters are allowed")
 }
 
-func openHistory(t *testing.T, e *multiEnv, targets ...logs.Target) ws.Channel {
+func openHistory(t *testing.T, e *multiEnv) ws.Channel {
 	t.Helper()
 	ch, err := e.open(t, multiReq(map[string]any{"pod": "web-1", "container": "app"}, map[string]any{"tailLines": 3}))
 	require.NoError(t, err)

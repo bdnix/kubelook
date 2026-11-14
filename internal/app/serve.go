@@ -177,7 +177,8 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	c.ws = ws.NewMux(ws.Deps{Clock: o.Clock, Log: log, Sessions: mgr, PublicHost: publicURL.Host, Fail: httpapi.ErrorWriter(log)})
 	c.ws.Register("watch.open", c.hub.Factory())
 	c.ws.Register("logs.open", logs.NewFactory(logs.Deps{
-		Source: logs.NewKubeSource(kubeClients), Clock: o.Clock, Audit: c.audit, MaxLinesPerSecond: cfg.Logs.MaxLinesPerSecond,
+		Source: logs.NewKubeSource(kubeClients), Resolver: logs.NewKubeResolver(kubeClients), Clock: o.Clock, Audit: c.audit,
+		MaxLinesPerSecond: cfg.Logs.MaxLinesPerSecond, HistoryMaxLines: cfg.Logs.HistoryMaxLines,
 		KeepAlive: mgr.KeepAlive,
 	}))
 	c.ws.Register("exec.open", execs.NewFactory(execs.Deps{

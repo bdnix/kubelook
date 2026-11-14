@@ -92,7 +92,8 @@ describe('sourceColor', () => {
     }
   });
 
-  it('differs between containers of one pod, generally', () => {
-    expect(sourceColor('web-1', 'app')).not.toBe(sourceColor('web-1', 'sidecar'));
+  it('varies between the containers of one pod', () => {
+    const colors = ['app', 'sidecar', 'proxy', 'init', 'metrics'].map((c) => sourceColor('web-1', c));
+    expect(new Set(colors).size).toBeGreaterThan(2);
   });
 });
