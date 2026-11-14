@@ -136,3 +136,16 @@ func TestAAD_JoinsPurposeAndBinding(t *testing.T) {
 func TestAAD_PurposeContainingPipe_Panics(t *testing.T) {
 	assert.Panics(t, func() { crypto.AAD("a|b", "c") })
 }
+
+func TestKeyIDOf_ReadsTheKeyIDWithoutDecrypting(t *testing.T) {
+	s, err := crypto.NewSealer(make([]byte, 32), testutil.Rand("k"))
+	require.NoError(t, err)
+	env, err := s.Seal([]byte("x"), crypto.AAD("p", "b"))
+	require.NoError(t, err)
+	id, err := crypto.KeyIDOf(env)
+	require.NoError(t, err)
+	assert.Equal(t, "66687aadf862bd77", id)
+
+	_, err = crypto.KeyIDOf("garbage")
+	require.ErrorIs(t, err, crypto.ErrMalformed)
+}

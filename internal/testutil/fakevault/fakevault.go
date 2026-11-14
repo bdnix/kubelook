@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Token describes one valid token.
@@ -18,7 +19,9 @@ type Token struct {
 	Policies    []string
 	EntityID    string
 	DisplayName string
-	ExpireTime  string // RFC 3339; empty → null
+	ExpireTime  string // RFC 3339; empty → computed from SetNow and TTLSeconds, or null without SetNow
+	// RenewTTLSeconds, when > 0, becomes the token's TTL after a renew-self call.
+	RenewTTLSeconds int
 	// Caps maps a path (no leading slash) to its capabilities for this token.
 	Caps map[string][]string
 }
@@ -45,6 +48,7 @@ type Server struct {
 	counts   map[string]int
 	capCalls [][]string
 	credsReq []map[string]any
+	now      func() time.Time
 	forced   int
 	hangUp   bool
 	padBytes int
@@ -105,6 +109,29 @@ func (s *Server) SetCredsError(mount, role, msg string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.credsErr[mount+"/creds/"+role] = msg
+}
+
+// Forget removes a token, as if it had expired or been revoked.
+func (s *Server) Forget(value string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.tokens, value)
+}
+
+// SetNow gives the fake a clock, so lookup-self can report an expire_time of now + ttl.
+func (s *Server) SetNow(now func() time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.now = now
+}
+
+// SetTTL changes the TTL of a registered token.
+func (s *Server) SetTTL(value string, seconds int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t := s.tokens[value]
+	t.TTLSeconds = seconds
+	s.tokens[value] = t
 }
 
 // ForceStatus makes every request answer with this status and an empty errors list (0 = off).
@@ -193,8 +220,11 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && path == "auth/token/lookup-self":
 		s.counts["lookup-self"]++
 		var expire any
-		if tok.ExpireTime != "" {
+		switch {
+		case tok.ExpireTime != "":
 			expire = tok.ExpireTime
+		case s.now != nil && tok.TTLSeconds > 0:
+			expire = s.now().Add(time.Duration(tok.TTLSeconds) * time.Second).UTC().Format(time.RFC3339)
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
 			"ttl": tok.TTLSeconds, "renewable": tok.Renewable, "type": tok.Type, "policies": tok.Policies,
@@ -202,6 +232,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		}}, s.padBytes)
 	case r.Method == http.MethodPost && path == "auth/token/renew-self":
 		s.counts["renew-self"]++
+		if tok.RenewTTLSeconds > 0 {
+			tok.TTLSeconds = tok.RenewTTLSeconds
+			s.tokens[tokenValue] = tok
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"auth": map[string]any{"lease_duration": tok.TTLSeconds, "renewable": tok.Renewable}}, s.padBytes)
 	case r.Method == http.MethodGet && path == "sys/internal/ui/mounts":
 		s.counts["mounts"]++
