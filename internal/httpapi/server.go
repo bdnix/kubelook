@@ -11,6 +11,7 @@ import (
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/config"
+	"github.com/bdnix/kubelook/internal/kube"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/webui"
@@ -36,6 +37,8 @@ type Deps struct {
 	Clusters *cluster.Registry
 	// Opener opens clusters; nil → the open endpoints are not mounted.
 	Opener *cluster.Opener
+	// Kube reads from clusters; nil → the cluster read endpoints are not mounted.
+	Kube kube.Clients
 	// KeyID identifies the encryption key; shown in /api/v1/me so the browser can tell when it changed.
 	KeyID string
 }
@@ -68,6 +71,7 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("GET /api/v1/clusters", d.listClusters)
 	}
 	d.registerOpen(mux)
+	d.registerKube(mux)
 	// API routes are registered above the SPA catch-all; unknown API paths get a JSON 404.
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, d.Log, fmt.Errorf("no such API route: %w", ErrNotFound))
