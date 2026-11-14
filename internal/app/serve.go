@@ -56,6 +56,7 @@ type components struct {
 	users    *store.Users
 	sessions *session.Manager
 	audit    *audit.Recorder
+	opener   *cluster.Opener
 	handler  http.Handler
 }
 
@@ -120,9 +121,15 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	clusters := cluster.NewRegistry(cluster.RegistryDeps{
 		Credentials: creds, Vault: vaultClient, Sessions: store.NewSessions(db), Cache: cache, Config: cfg, Log: log,
 	})
+	opener := cluster.NewOpener(cluster.OpenerDeps{
+		Registry: clusters, Credentials: creds, Sessions: store.NewSessions(db), Sealer: sealer, Vault: vaultClient,
+		Clock: o.Clock, Config: cfg, Audit: c.audit, Closers: mgr.Registry(), Log: log,
+	})
+	clusters.SetStates(opener.StateOf)
+	c.opener = opener
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, KeyID: sealer.KeyID(),
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil
@@ -180,7 +187,7 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 	c.log.Info("listening", "addr", ln.Addr().String(), "config", cfg)
 
 	var wg sync.WaitGroup
-	for _, loop := range []func(context.Context){c.sessions.RunWatchdog, c.sessions.RunSweep} {
+	for _, loop := range []func(context.Context){c.sessions.RunWatchdog, c.sessions.RunSweep, c.opener.RunRefresher} {
 		wg.Add(1)
 		go func() { defer wg.Done(); loop(ctx) }()
 	}
