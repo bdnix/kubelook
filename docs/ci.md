@@ -6,8 +6,8 @@ The `ci` workflow (`.github/workflows/ci.yml`) runs on every pull request and on
 
 | Job ID | Name in the checks list | Proves |
 | --- | --- | --- |
-| `backend-tests` | Backend: Lint, Unit Tests & Coverage | `golangci-lint` is clean (formatting, import rules, ban on direct `time.Now`/`fmt.Print*`); Go unit tests pass with `-race` and shuffled order; total statement coverage is at least 90% (shown in the job summary); `govulncheck` finds no reachable vulnerability |
-| `frontend-tests` | Frontend: Lint, Unit Tests & Coverage | ESLint, Prettier and the TypeScript checks (app and UI tests) pass; web unit tests pass; lines, statements and functions are at least 90% and branches at least 80%; `npm audit` finds no high or critical production advisory |
+| `backend-tests` | Backend: Lint, Unit Tests & Coverage | `golangci-lint` is clean (formatting, import rules, ban on direct `time.Now`/`fmt.Print*`); Go unit tests pass with `-race` and shuffled order; total statement coverage meets the Go threshold (shown in the job summary); `govulncheck` finds no reachable vulnerability |
+| `frontend-tests` | Frontend: Lint, Unit Tests & Coverage | ESLint, Prettier and the TypeScript checks (app and UI tests) pass; web unit tests pass; coverage meets the web thresholds; `npm audit` finds no high or critical production advisory |
 | `ui-tests` | UI Tests (Playwright) | The built web app works in a real browser: user journeys with the API answered by the tests (`web/ui`). Failures upload the report and traces |
 | `image-scan` | Container Image: Build & Vulnerability Scan | The whole product builds (web app, embedded Go binary, image), runs `version`, and has no fixable HIGH or CRITICAL vulnerability (Trivy) |
 | `dependency-review` | Dependency Review | Pull requests add no dependency with a high-severity advisory, including GitHub Actions and npm dev dependencies (pull requests only) |
@@ -23,16 +23,7 @@ Publishing happens only from builds of `main`; pull requests and other branches 
 
 ## Coverage rules
 
-Go total statement coverage must be at least 90%, and the web thresholds above apply. Only these paths are excluded, and every new exclusion needs a row here and in `PLAN.md` §6 with a reason:
-
-| Path | Reason |
-| --- | --- |
-| `cmd/kubelook/main.go` | Three lines that call `app.Main` and `os.Exit`; cannot be run in-process |
-| `internal/testutil/**` | Test helpers, not product code |
-| `test/**`, `hack/**` | Integration, load and tooling code; not part of the product binary (also behind build tags) |
-| `web/src/main.tsx` | Browser bootstrap (`createRoot`) |
-| `web/src/adapters/monaco/**`, `web/src/adapters/xterm/**` | Thin wrappers around libraries that need a real browser (canvas, workers, layout); exercised by Playwright in Step 7.10 |
-| `web/src/**/*.test.*`, `web/src/test/**`, `web/src/**/*.d.ts` | Tests and type declarations |
+Coverage is enforced by the configuration, which is the only source of truth: `.testcoverage.yml` for Go (total statement coverage, and the excluded paths) and `web/vite.config.ts` for the web app (thresholds and excluded paths). Each exclusion has its reason in a comment there; a new exclusion needs one too.
 
 ## Updating a pinned action
 

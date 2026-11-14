@@ -10,7 +10,6 @@ Goals, features, architecture, security model and delivery plan are in [`docs/sp
 
 ## Plan
 
-The step-by-step implementation plan is in [`PLAN.md`](PLAN.md).
 
 ## License
 

@@ -26,12 +26,13 @@ export default defineConfig({
       reporter: ['text', 'text-summary', 'json-summary', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
       exclude: [
-        'src/main.tsx',
+        'src/main.tsx', // browser bootstrap (createRoot)
+        // thin wrappers around libraries that need a real browser (canvas, workers, layout)
         'src/adapters/monaco/**',
         'src/adapters/xterm/**',
-        'src/test/**',
+        'src/test/**', // test helpers
         'src/**/*.test.{ts,tsx}',
-        'src/**/*.d.ts',
+        'src/**/*.d.ts', // type declarations
       ],
       thresholds: { lines: 90, statements: 90, functions: 90, branches: 80 },
     },

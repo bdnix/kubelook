@@ -16,7 +16,7 @@ The plan is finished when its last pull request (the one that ends with the §8 
 
 1. Create `docs/plans/` if it does not exist.
 2. Move `PLAN.md` there with `git mv`, so history is kept, and name it with the UTC time of the move so the completed plans sort in time order: `docs/plans/YYYYMMDD-HHMMSS-plan.md`, for example `docs/plans/20261120-143005-plan.md` (`date -u +%Y%m%d-%H%M%S`).
-3. Fix every link that pointed at `PLAN.md` (for example in `README.md` and `docs/ci.md`) so it points at the new path.
+3. Check that nothing else points at `PLAN.md` (`grep -rn PLAN.md .`) and fix any link to the new path.
 4. Run `make verify`, push, and keep going until CI is green, as above. Then wait for the owner to review and merge.
 
 Do this only when the whole plan is done, not after each pull request.
