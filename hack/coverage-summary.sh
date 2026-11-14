@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# Usage: coverage-summary.sh be|fe — prints the coverage numbers as Markdown for the job summary.
+# Usage: coverage-summary.sh backend|frontend — prints the coverage numbers as Markdown for the job summary.
 set -euo pipefail
 echo "## Unit-test coverage (gate: 90%)"
 echo
 case "${1:-}" in
-be)
+backend)
   echo "### Backend"
   echo '```'
   grep -E 'Total (coverage threshold|test coverage)' go-coverage.txt || echo "no Go coverage output"
   echo '```'
   ;;
-fe)
+frontend)
   echo "### Frontend"
   echo '```'
   if [ -f web/coverage/coverage-summary.json ]; then
@@ -21,7 +21,7 @@ fe)
   echo '```'
   ;;
 *)
-  echo "usage: $0 be|fe" >&2
+  echo "usage: $0 backend|frontend" >&2
   exit 2
   ;;
 esac
