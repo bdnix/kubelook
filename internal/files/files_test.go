@@ -95,6 +95,9 @@ func (f *fakeExec) Stream(ctx context.Context, _ session.Session, _ string, r ex
 		}
 		if rep.write != nil {
 			if err := rep.write(sio.Stdout); err != nil {
+				if errors.Is(err, context.Canceled) {
+					<-ctx.Done() // a command is cancelled by its context: it cannot report that before the context ends
+				}
 				return err
 			}
 		}
