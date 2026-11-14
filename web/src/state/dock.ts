@@ -15,6 +15,8 @@ export interface ShellTabProps {
   container: string;
   /** A node shell: the pod is removed when the tab closes. */
   nodeShell?: boolean;
+  /** The tab came from another window: a shell cannot move, so it asks for a new one. */
+  moved?: boolean;
 }
 
 export type DockTab =

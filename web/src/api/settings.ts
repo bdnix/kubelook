@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ApiError } from './client';
 import { useApi } from './context';
 import type { Me } from './me';
@@ -29,6 +29,8 @@ export interface SettingsApi {
   update(change: (current: Settings) => Settings): Promise<boolean>;
   saving: boolean;
   error: string | undefined;
+  /** False until the first answer (or failure) has arrived. */
+  loaded: boolean;
 }
 
 export function useSettings(): SettingsApi {
@@ -36,6 +38,11 @@ export function useSettings(): SettingsApi {
   const qc = useQueryClient();
   const query = useQuery({ queryKey: KEY, queryFn: () => api.get<Settings>('/settings'), retry: false });
   const [saving, setSaving] = useState(false);
+  // A query that failed starts "pending" again when another component reads it: once settled, always loaded.
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    if (!query.isPending) setSettled(true);
+  }, [query.isPending]);
   const [error, setError] = useState<string>();
 
   // The "me" answer carries a few of the settings (favourites, theme): keep it in step.
@@ -85,5 +92,5 @@ export function useSettings(): SettingsApi {
     [api, qc, patchMe],
   );
 
-  return { settings: query.data, update, saving, error };
+  return { settings: query.data, update, saving, error, loaded: settled || !query.isPending };
 }

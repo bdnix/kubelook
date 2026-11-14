@@ -38,22 +38,28 @@ function mount(saved: Record<string, string[]> = {}) {
     </LiveContext.Provider>,
     { client: createClient({ fetch }) },
   );
-  act(() => FakeWebSocket.last.serverOpen());
-  act(() =>
-    FakeWebSocket.last.serverSend({
-      ch: 1,
-      t: 'snapshot',
-      d: { items: ['a', 'b', 'c'].map(ns), more: false },
-    }),
-  );
-  return { puts };
+  /** The namespaces are watched once the list is opened: the server answers then. */
+  const serve = async () => {
+    await waitFor(() => expect(FakeWebSocket.instances.length).toBeGreaterThan(0));
+    act(() => FakeWebSocket.last.serverOpen());
+    act(() =>
+      FakeWebSocket.last.serverSend({
+        ch: 1,
+        t: 'snapshot',
+        d: { items: ['a', 'b', 'c'].map(ns), more: false },
+      }),
+    );
+  };
+  return { puts, serve };
 }
 
 describe('NamespaceFilter', () => {
   it('shows "All namespaces" without a selection and lists the namespaces of the cluster', async () => {
-    mount();
+    const { serve } = mount();
     const button = await screen.findByRole('button', { name: 'Namespaces: all' });
+    expect(FakeWebSocket.instances).toHaveLength(0); // closed: no watch
     await userEvent.click(button);
+    await serve();
     const list = screen.getByRole('group', { name: 'Namespaces' });
     expect(
       within(list)
@@ -63,8 +69,9 @@ describe('NamespaceFilter', () => {
   });
 
   it('selecting namespaces saves them per cluster', async () => {
-    const { puts } = mount();
+    const { puts, serve } = mount();
     await userEvent.click(await screen.findByRole('button', { name: 'Namespaces: all' }));
+    await serve();
     await userEvent.click(screen.getByRole('checkbox', { name: 'a' }));
     await userEvent.click(screen.getByRole('checkbox', { name: 'c' }));
     await waitFor(() => expect(puts).toHaveLength(2));
@@ -73,9 +80,10 @@ describe('NamespaceFilter', () => {
   });
 
   it('shows the saved selection, and clearing it goes back to all namespaces', async () => {
-    const { puts } = mount({ 'v:prod': ['b'] });
+    const { puts, serve } = mount({ 'v:prod': ['b'] });
     const button = await screen.findByRole('button', { name: 'Namespaces: b' });
     await userEvent.click(button);
+    await serve();
     await userEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
     await waitFor(() => expect(puts.at(-1)?.namespaceFilters).toEqual({}));
     expect(await screen.findByRole('button', { name: 'Namespaces: all' })).toBeInTheDocument();

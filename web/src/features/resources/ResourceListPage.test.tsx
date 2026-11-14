@@ -180,6 +180,61 @@ describe('ResourceListPage', () => {
     expect(screen.getByRole('button', { name: 'Save filter' })).toBeEnabled();
   });
 
+  it('watches each selected namespace once, or all namespaces when none is selected', async () => {
+    const doc = (ns: string[]) => ({
+      favouriteClusters: [],
+      namespaceFilters: ns.length ? { 'v:prod': ns } : {},
+      columnPresets: {},
+      filterSets: [],
+      watchIdleSeconds: 30,
+      theme: 'system',
+    });
+    mount('open', { 'GET /settings': () => jsonResponse(doc(['ns-a', 'ns-b'])) });
+    await connected();
+    await waitFor(() =>
+      expect(
+        FakeWebSocket.last.frames
+          .filter((f) => f.op === 'watch.open')
+          .map((f) => (f.d as { namespace: string }).namespace),
+      ).toEqual(['ns-a', 'ns-b']),
+    );
+  });
+
+  it('more than ten selected namespaces become one all-namespaces watch, filtered here', async () => {
+    const names = Array.from({ length: 11 }, (_, i) => `n${i}`);
+    mount('open', {
+      'GET /settings': () =>
+        jsonResponse({
+          favouriteClusters: [],
+          namespaceFilters: { 'v:prod': names },
+          columnPresets: {},
+          filterSets: [],
+          watchIdleSeconds: 30,
+          theme: 'system',
+        }),
+    });
+    await connected();
+    await waitFor(() =>
+      expect(FakeWebSocket.last.frames.filter((f) => f.op === 'watch.open')).toHaveLength(1),
+    );
+    expect(
+      (FakeWebSocket.last.frames.find((f) => f.op === 'watch.open')?.d as { namespace: string }).namespace,
+    ).toBe('');
+    const inNs = (uid: string, name: string, namespace: string) => ({
+      ...pod(uid, name),
+      metadata: { ...pod(uid, name).metadata, namespace },
+    });
+    act(() =>
+      FakeWebSocket.last.serverSend({
+        ch: 1,
+        t: 'snapshot',
+        d: { items: [inNs('1', 'inside', 'n3'), inNs('2', 'outside', 'other')], more: false },
+      }),
+    );
+    expect(await screen.findByText('inside')).toBeInTheDocument();
+    expect(screen.queryByText('outside')).toBeNull();
+  });
+
   it('opens a cluster that is not open before listing', async () => {
     mount('closed', { 'GET /clusters/v%3Aprod/discovery': () => jsonResponse(discovery) });
     expect(screen.getByRole('status')).toHaveTextContent('Opening the cluster');

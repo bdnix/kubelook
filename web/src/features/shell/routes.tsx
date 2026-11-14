@@ -9,6 +9,10 @@ import { SignInPage } from '../auth/SignInPage';
 import { ClusterPage } from '../clusters/ClusterPage';
 import { ClusterRail } from '../clusters/ClusterRail';
 import { useClusters } from '../clusters/useClusters';
+import { SmallScreenBanner } from '../../components/SmallScreenBanner';
+import { CommandPalette } from '../palette/CommandPalette';
+import { DockPage } from '../dock/DockPage';
+import { HotkeyHost } from './HotkeyHost';
 import { Dock } from '../dock/Dock';
 import { SettingsPage } from '../settings/SettingsPage';
 import { JobsPanel } from '../jobs/JobsPanel';
@@ -104,6 +108,9 @@ function SignedIn({ me }: { me: Me }) {
         </>
       }
     >
+      <SmallScreenBanner />
+      <CommandPalette />
+      <HotkeyHost />
       <Banners
         maintenanceBanner={me.maintenanceBanner}
         sources={sources}
@@ -136,7 +143,10 @@ export function AppRoutes() {
     case 'signedIn':
       return (
         <VaultStoreContext.Provider value={store}>
-          <SignedIn me={me.me} />
+          <Routes>
+            <Route path="/dock" element={<DockPage />} />
+            <Route path="*" element={<SignedIn me={me.me} />} />
+          </Routes>
         </VaultStoreContext.Provider>
       );
   }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { findResource, useDiscovery } from '../../api/discovery';
 import type { K8sObject } from '../../state/live';
@@ -19,7 +19,11 @@ import { getKind } from '../../kinds/registry';
 import { useNow } from '../../lib/clock';
 import { getString } from '../../lib/path';
 import { resourcePath } from '../../lib/paths';
-import { useLive } from '../../state/useLive';
+import { keepNamespaces, subscriptionPlan } from '../../lib/namespaces';
+import { useLiveMany } from '../../state/useLiveMany';
+import { NamespaceFilter } from '../namespaces/NamespaceFilter';
+import { NoAccessPage } from '../shell/NoAccessPage';
+import { ApiError } from '../../api/client';
 
 const MINUTE = 60_000;
 
@@ -28,24 +32,38 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   const opened = useOpenCluster(cluster);
   const discovery = useDiscovery(cluster, opened.status === 'open');
   const resource = discovery.data ? findResource(discovery.data, group, kind) : undefined;
-  const live = useLive(
-    resource
-      ? { cluster, group, version: resource.version, resource: resource.resource, namespace: '' }
+  const { settings, update, loaded } = useSettings();
+  const savedNamespaces = settings?.namespaceFilters[cluster];
+  const plan = useMemo(() => subscriptionPlan(savedNamespaces ?? []), [savedNamespaces]);
+  const live = useLiveMany(
+    resource && loaded
+      ? plan.namespaces.map((namespace) => ({
+          cluster,
+          group,
+          version: resource.version,
+          resource: resource.resource,
+          namespace: resource.namespaced ? namespace : '',
+        }))
       : undefined,
+  );
+  const namespaced = resource?.namespaced ?? false;
+  // kept as it is while nothing changed: a new array on every render would make the table report its rows again and again
+  const items = useMemo(
+    () => keepNamespaces(live.items, namespaced ? plan.clientFilter : undefined),
+    [live.items, namespaced, plan],
   );
   const now = useNow(MINUTE);
   const descriptor = getKind(group, kind);
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
-  const { settings, update } = useSettings();
   const columns = applyPreset(
     descriptor.columns,
     settings?.columnPresets[presetKey(descriptor.group, descriptor.kind)],
   );
   const [query, setQuery] = useState('');
   const [shown, setShown] = useState<K8sObject[]>([]);
-  const filtered = useFilter(live.items, query, { group: descriptor.group, kind: descriptor.kind }, now);
+  const filtered = useFilter(items, query, { group: descriptor.group, kind: descriptor.kind }, now);
 
   const open = (o: K8sObject) =>
     void navigate(
@@ -58,7 +76,11 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
       }),
     );
 
-  if (opened.status === 'error') return <Banner kind="error">{opened.error.message}</Banner>;
+  if (opened.status === 'error') {
+    if (opened.error instanceof ApiError && opened.error.code === 'forbidden')
+      return <NoAccessPage reason="forbidden" />;
+    return <Banner kind="error">{opened.error.message}</Banner>;
+  }
   if (opened.status === 'opening') return <p role="status">Opening the cluster…</p>;
   if (discovery.isError) return <Banner kind="error">{discovery.error.message}</Banner>;
   if (!discovery.data) return <p role="status">Loading…</p>;
@@ -84,9 +106,10 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
       {live.status === 'paused' && (
         <Banner kind="info">Live updates paused. They resume when this tab is visible.</Banner>
       )}
+      {resource.namespaced && <NamespaceFilter cluster={cluster} />}
       <FilterBar
         kind={{ group: descriptor.group, kind: descriptor.kind }}
-        objects={live.items}
+        objects={items}
         value={query}
         onChange={setQuery}
       />

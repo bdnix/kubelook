@@ -1,4 +1,6 @@
 import { Navigate, Route, Routes, useParams } from 'react-router';
+import { useClusters } from './useClusters';
+import { NoAccessPage } from '../shell/NoAccessPage';
 import { clusterPath } from '../../lib/paths';
 import { PodFilesPage } from '../files/PodFilesPage';
 import { ResourceListPage } from '../resources/ResourceListPage';
@@ -11,6 +13,11 @@ function ListRoute({ cluster }: { cluster: string }) {
 /** The pages of one cluster: the Pods list by default, any other kind by `/c/<cluster>/<group>/<kind>`. */
 export function ClusterPage() {
   const { cluster = '' } = useParams();
+  const clusters = useClusters();
+  // A link to a cluster that is not in the session (a kubeconfig that was never uploaded, or one that is gone).
+  if (clusters.data && !clusters.data.some((s) => s.clusters.some((c) => c.id === cluster))) {
+    return <NoAccessPage reason="unknown" />;
+  }
   return (
     <Routes>
       {/* Absolute: a relative link would encode the already encoded ID a second time. */}

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -79,7 +79,7 @@ describe('SmallScreenBanner', () => {
     render(<SmallScreenBanner matchMedia={() => mql as unknown as MediaQueryList} />);
     expect(screen.queryByRole('status')).toBeNull();
     mql.matches = false;
-    listener?.();
-    // the banner re-reads the query when it changes
+    act(() => listener?.());
+    expect(screen.getByRole('status')).toHaveTextContent('Kubelook is designed for desktop browsers.');
   });
 });

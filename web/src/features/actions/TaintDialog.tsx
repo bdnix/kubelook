@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ErrorText } from '../../components/ErrorText';
 import { Field } from '../../components/Field';
+import { useFocusTrap } from '../../lib/useFocusTrap';
 
 export interface Taint {
   key: string;
@@ -29,6 +30,7 @@ export function TaintDialog({ nodeName, taints, busy, error, onAdd, onRemove, on
   const [value, setValue] = useState('');
   const [effect, setEffect] = useState(TAINT_EFFECTS[0] as string);
   const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref);
   useEffect(() => ref.current?.focus(), []);
   const duplicate = key !== '' && taints.some((t) => t.key === key && t.effect === effect);
   return (
