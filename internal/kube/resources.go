@@ -143,3 +143,6 @@ func MapError(err error) error {
 	}
 	return err
 }
+
+// Mapped returns an error whose text is msg and that matches target with errors.Is.
+func Mapped(msg string, target error) error { return &mapped{msg, target} }

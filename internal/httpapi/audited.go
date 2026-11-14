@@ -2,16 +2,12 @@ package httpapi
 
 import (
 	"context"
-	"net/http"
 
+	"github.com/bdnix/kubelook/internal/apperr"
 	"github.com/bdnix/kubelook/internal/audit"
 )
 
-// errNotRecorded is the answer when the audit record of an action could not be written.
-var errNotRecorded = &APIError{
-	Status: http.StatusInternalServerError, Code: "internal",
-	Message: "The action was refused because it could not be recorded.",
-}
+var errNotRecorded = apperr.ErrNotRecorded
 
 // audited records ev as requested, runs fn, then records the outcome. When the first record cannot
 // be written fn is not run: no record, no action. Every later mutating handler goes through it.

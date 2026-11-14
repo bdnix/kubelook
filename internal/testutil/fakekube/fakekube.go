@@ -47,13 +47,20 @@ var (
 // ListKinds are the list kinds the dynamic fake can list.
 func ListKinds() map[schema.GroupVersionResource]string {
 	return map[schema.GroupVersionResource]string{
-		{Version: "v1", Resource: "pods"}:                       "PodList",
-		{Version: "v1", Resource: "secrets"}:                    "SecretList",
-		{Version: "v1", Resource: "configmaps"}:                 "ConfigMapList",
-		{Version: "v1", Resource: "namespaces"}:                 "NamespaceList",
-		{Version: "v1", Resource: "nodes"}:                      "NodeList",
-		{Version: "v1", Resource: "services"}:                   "ServiceList",
-		{Group: "apps", Version: "v1", Resource: "deployments"}: "DeploymentList",
+		{Version: "v1", Resource: "pods"}:                                    "PodList",
+		{Version: "v1", Resource: "secrets"}:                                 "SecretList",
+		{Version: "v1", Resource: "configmaps"}:                              "ConfigMapList",
+		{Version: "v1", Resource: "namespaces"}:                              "NamespaceList",
+		{Version: "v1", Resource: "nodes"}:                                   "NodeList",
+		{Version: "v1", Resource: "services"}:                                "ServiceList",
+		{Group: "apps", Version: "v1", Resource: "deployments"}:              "DeploymentList",
+		{Group: "apps", Version: "v1", Resource: "replicasets"}:              "ReplicaSetList",
+		{Group: "apps", Version: "v1", Resource: "statefulsets"}:             "StatefulSetList",
+		{Group: "apps", Version: "v1", Resource: "daemonsets"}:               "DaemonSetList",
+		{Group: "batch", Version: "v1", Resource: "cronjobs"}:                "CronJobList",
+		{Group: "batch", Version: "v1", Resource: "jobs"}:                    "JobList",
+		{Version: "v1", Resource: "persistentvolumeclaims"}:                  "PersistentVolumeClaimList",
+		{Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"}: "StorageClassList",
 	}
 }
 
@@ -124,6 +131,11 @@ func (c *Clients) Discovery(_ context.Context, _ session.Session, id string) (*k
 	c.discCalls++
 	c.mu.Unlock()
 	return kube.BuildDiscovery(c.Disc)
+}
+
+// AddResources makes the fake cluster serve more resources (discovery only; the objects are the test's).
+func (c *Clients) AddResources(lists ...*metav1.APIResourceList) {
+	c.Disc.Resources = append(c.Disc.Resources, lists...)
 }
 
 // Invalidate implements kube.Invalidator.

@@ -16,6 +16,7 @@ func (d Deps) registerKube(mux *http.ServeMux) {
 	d.registerResources(mux, kube.NewResources(d.Kube))
 	d.registerAccess(mux, kube.NewAccess(d.Kube, d.Clock, d.sessionRegistry()))
 	d.registerOpenAPI(mux, kube.NewOpenAPI(d.Kube, d.Clock))
+	d.registerActions(mux)
 }
 
 // discovery answers what the cluster serves.

@@ -9,6 +9,8 @@ import { getArray, getString } from '../../lib/path';
 import { childrenOf, eventsFor, podsOfWorkload } from '../../lib/related';
 import { logTab, useDock } from '../../state/dock';
 import type { K8sObject } from '../../state/live';
+import { ActionMenu } from '../actions/ActionMenu';
+import type { Revision } from '../actions/RollbackDialog';
 import { EditorTab } from '../editor/EditorTab';
 import { EventsTab } from './EventsTab';
 import { OverviewTab } from './OverviewTab';
@@ -42,6 +44,21 @@ function tabsFor(group: string, kind: string): { id: TabId; title: string }[] {
   if (core && kind === 'Pod') tabs.push({ id: 'files', title: 'Files' });
   tabs.push({ id: 'related', title: 'Related' });
   return tabs;
+}
+
+/** The earlier revisions of a Deployment: its ReplicaSets with a revision annotation, except the current one. */
+function revisionsOf(deployment: K8sObject, replicaSets: K8sObject[]): Revision[] {
+  const key = 'deployment.kubernetes.io/revision';
+  const annotations = (o: K8sObject) =>
+    (o.metadata as { annotations?: Record<string, string> } | undefined)?.annotations ?? {};
+  const current = annotations(deployment)[key];
+  return replicaSets
+    .map((rs) => ({
+      revision: Number(annotations(rs)[key]),
+      images: getArray(rs, 'spec.template.spec.containers').map((c) => getString(c, 'image')),
+    }))
+    .filter((r) => Number.isInteger(r.revision) && r.revision > 0 && String(r.revision) !== current)
+    .sort((a, b) => b.revision - a.revision);
 }
 
 function LogsTab({
@@ -145,6 +162,19 @@ export function DetailsDrawer({ cluster, group, kind, namespace, name, onClose }
         <h2>{name}</h2>
         <span>{descriptor.title === kind ? kind : kind}</span>
         {object && descriptor.status && <StatusBadge status={descriptor.status(object)} />}
+        {object && info && (
+          <ActionMenu
+            cluster={cluster}
+            object={object}
+            group={info.group}
+            version={info.version}
+            resource={info.resource}
+            kind={kind}
+            actions={descriptor.actions ?? []}
+            disabled={state.state === 'deleted'}
+            revisions={kind === 'Deployment' ? revisionsOf(object, childrenOf(uid, replicaSets)) : []}
+          />
+        )}
         <Button aria-label="Close details" onClick={onClose}>
           ×
         </Button>

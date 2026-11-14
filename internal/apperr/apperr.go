@@ -39,3 +39,9 @@ func (clusterUnavailable) Error() string {
 }
 
 func (clusterUnavailable) Is(target error) bool { return target == ErrNotFound }
+
+// ErrNotRecorded is the answer when the audit record of an action could not be written: no record, no action.
+var ErrNotRecorded = &APIError{
+	Status: 500, Code: "internal",
+	Message: "The action was refused because it could not be recorded.",
+}
