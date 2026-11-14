@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Config
+clusters:
+- name: c
+  cluster: {server: "https://api.example:6443", certificate-authority-data: Y2EtZGF0YQ==}
+users:
+- name: u
+  user: {username: admin, password: hunter2}
+contexts:
+- name: ctx
+  context: {cluster: c, user: u}

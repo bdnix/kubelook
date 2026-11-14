@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Config
+clusters:
+- name: c
+  cluster: {server: "https://api.example:6443", certificate-authority: /etc/ca.crt}
+users:
+- name: u
+  user: {token: t}
+contexts:
+- name: ctx
+  context: {cluster: c, user: u}

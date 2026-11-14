@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Config
+clusters:
+- name: c1
+  cluster: {server: "https://one.example:6443", certificate-authority-data: Y2EtZGF0YQ==}
+- name: c2
+  cluster: {server: "https://two.example:6443", certificate-authority-data: Y2EtZGF0YQ==}
+users:
+- name: u
+  user: {token: t}
+contexts:
+- name: ctx2
+  context: {cluster: c2, user: u}
+- name: ctx1
+  context: {cluster: c1, user: u}
