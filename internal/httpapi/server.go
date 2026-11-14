@@ -14,6 +14,7 @@ import (
 	"github.com/bdnix/kubelook/internal/kube"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
+	"github.com/bdnix/kubelook/internal/vault"
 	"github.com/bdnix/kubelook/internal/webui"
 )
 
@@ -41,6 +42,8 @@ type Deps struct {
 	Kube kube.Clients
 	// WS serves GET /api/v1/ws; nil → no WebSocket endpoint.
 	WS http.Handler
+	// VaultMonitor tracks Vault's reachability; nil → /api/v1/status reports Vault as not configured.
+	VaultMonitor *vault.Monitor
 	// KeyID identifies the encryption key; shown in /api/v1/me so the browser can tell when it changed.
 	KeyID string
 }
@@ -65,6 +68,7 @@ func New(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /api/v1/me", d.me)
+	mux.HandleFunc("GET /api/v1/status", d.status)
 	if d.Auth != nil {
 		d.Auth.Register(mux)
 	}

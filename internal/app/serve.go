@@ -55,16 +55,17 @@ type Ready struct {
 
 // components are the constructed parts of the server; later steps wire more of them here.
 type components struct {
-	log      *slog.Logger
-	db       *store.DB
-	sealer   *crypto.Sealer
-	users    *store.Users
-	sessions *session.Manager
-	audit    *audit.Recorder
-	opener   *cluster.Opener
-	ws       *ws.Mux
-	hub      *watch.Hub
-	handler  http.Handler
+	log          *slog.Logger
+	db           *store.DB
+	sealer       *crypto.Sealer
+	users        *store.Users
+	sessions     *session.Manager
+	audit        *audit.Recorder
+	opener       *cluster.Opener
+	ws           *ws.Mux
+	vaultMonitor *vault.Monitor
+	hub          *watch.Hub
+	handler      http.Handler
 }
 
 func (o *ServeOptions) defaults() {
@@ -119,7 +120,9 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	if err != nil {
 		return fail(err)
 	}
-	vaultClient := vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout})
+	rawVault := vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout})
+	c.vaultMonitor = vault.NewMonitor(rawVault, o.Clock, cfg.Vault.Address != "")
+	vaultClient := c.vaultMonitor.Wrap(rawVault)
 	cache := cluster.NewDiscoveryCache(o.Clock, mgr.Registry())
 	creds := cluster.NewCredentials(cluster.Deps{
 		Sessions: store.NewSessions(db), Sealer: sealer, Vault: vaultClient,
@@ -157,7 +160,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, WS: c.ws, KeyID: sealer.KeyID(),
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, WS: c.ws, VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil
@@ -215,7 +218,7 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 	c.log.Info("listening", "addr", ln.Addr().String(), "config", cfg)
 
 	var wg sync.WaitGroup
-	for _, loop := range []func(context.Context){c.sessions.RunWatchdog, c.sessions.RunSweep, c.opener.RunRefresher} {
+	for _, loop := range []func(context.Context){c.sessions.RunWatchdog, c.sessions.RunSweep, c.opener.RunRefresher, c.vaultMonitor.Run} {
 		wg.Add(1)
 		go func() { defer wg.Done(); loop(ctx) }()
 	}
