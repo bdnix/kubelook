@@ -39,19 +39,20 @@ type Creds struct {
 type Server struct {
 	srv *httptest.Server
 
-	mu       sync.Mutex
-	tokens   map[string]Token
-	mounts   map[string]string        // "kubernetes/prod/" → type
-	configs  map[string]ClusterConfig // "kubernetes/prod" → config; missing → 404
-	creds    map[string]Creds         // "kubernetes/prod/creds/role" → creds
-	credsErr map[string]string        // same key → error message answered with HTTP 500
-	counts   map[string]int
-	capCalls [][]string
-	credsReq []map[string]any
-	now      func() time.Time
-	forced   int
-	hangUp   bool
-	padBytes int
+	mu           sync.Mutex
+	tokens       map[string]Token
+	mounts       map[string]string        // "kubernetes/prod/" → type
+	configs      map[string]ClusterConfig // "kubernetes/prod" → config; missing → 404
+	creds        map[string]Creds         // "kubernetes/prod/creds/role" → creds
+	credsErr     map[string]string        // same key → error message answered with HTTP 500
+	counts       map[string]int
+	capCalls     [][]string
+	credsReq     []map[string]any
+	now          func() time.Time
+	forced       int
+	healthStatus int
+	hangUp       bool
+	padBytes     int
 }
 
 // New starts the fake. Close it with Close.
@@ -141,6 +142,13 @@ func (s *Server) ForceStatus(code int) {
 	s.forced = code
 }
 
+// SetHealthStatus sets the HTTP status of GET sys/health (0 = 200).
+func (s *Server) SetHealthStatus(code int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.healthStatus = code
+}
+
 // HangUp makes the server close connections without answering (an unreachable Vault).
 func (s *Server) HangUp(on bool) {
 	s.mu.Lock()
@@ -155,7 +163,7 @@ func (s *Server) PadResponses(n int) {
 	s.padBytes = n
 }
 
-// Calls returns how often an endpoint was called: "lookup-self", "renew-self", "mounts", "capabilities", "config", "creds".
+// Calls returns how often an endpoint was called: "lookup-self", "renew-self", "mounts", "capabilities", "config", "creds", "health".
 func (s *Server) Calls(endpoint string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -203,6 +211,15 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if s.forced != 0 {
 		writeErrors(w, s.forced)
+		return
+	}
+	if r.Method == http.MethodGet && r.URL.Path == "/v1/sys/health" {
+		s.counts["health"]++
+		status := s.healthStatus
+		if status == 0 {
+			status = http.StatusOK
+		}
+		writeJSON(w, status, map[string]any{"initialized": true, "sealed": status == http.StatusServiceUnavailable}, 0)
 		return
 	}
 	if r.Header.Get("X-Vault-Request") != "true" {

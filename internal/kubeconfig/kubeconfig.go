@@ -4,6 +4,7 @@
 package kubeconfig
 
 import (
+	"encoding/base64"
 	"fmt"
 	"sort"
 	"strings"
@@ -195,4 +196,59 @@ func sortedKeys[V any](m map[string]V) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// OIDCSettings are the parameters of a context's oidc auth-provider.
+type OIDCSettings struct {
+	IssuerURL, ClientID, ClientSecret string
+	RefreshToken, IDToken             string
+	IDPCAData                         []byte // PEM; empty → system roots
+}
+
+// OIDC returns the oidc settings of the context's user; ok is false for any other kind of user.
+func (f *File) OIDC(context string) (s OIDCSettings, ok bool) {
+	ai := f.authInfo(context)
+	if ai == nil || ai.AuthProvider == nil || ai.AuthProvider.Name != oidcProvider {
+		return OIDCSettings{}, false
+	}
+	c := ai.AuthProvider.Config
+	s = OIDCSettings{
+		IssuerURL: c["idp-issuer-url"], ClientID: c["client-id"], ClientSecret: c["client-secret"],
+		RefreshToken: c["refresh-token"], IDToken: c["id-token"],
+	}
+	if data := c["idp-certificate-authority-data"]; data != "" {
+		if pem, err := base64.StdEncoding.DecodeString(data); err == nil {
+			s.IDPCAData = pem
+		}
+	}
+	return s, true
+}
+
+// SetOIDCTokens stores new tokens for the context's user (an empty refreshToken keeps the old one)
+// and returns the serialized kubeconfig.
+func (f *File) SetOIDCTokens(context, idToken, refreshToken string) ([]byte, error) {
+	ai := f.authInfo(context)
+	if ai == nil || ai.AuthProvider == nil {
+		return nil, fmt.Errorf("context %q has no oidc user: %w", context, apperr.ErrNotFound)
+	}
+	if ai.AuthProvider.Config == nil {
+		ai.AuthProvider.Config = map[string]string{}
+	}
+	ai.AuthProvider.Config["id-token"] = idToken
+	if refreshToken != "" {
+		ai.AuthProvider.Config["refresh-token"] = refreshToken
+	}
+	out, err := clientcmd.Write(*f.raw)
+	if err != nil {
+		return nil, fmt.Errorf("serializing kubeconfig: %w", err)
+	}
+	return out, nil
+}
+
+func (f *File) authInfo(context string) *clientcmdapi.AuthInfo {
+	cx, ok := f.raw.Contexts[context]
+	if !ok {
+		return nil
+	}
+	return f.raw.AuthInfos[cx.AuthInfo]
 }

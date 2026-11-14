@@ -106,6 +106,18 @@ describe('ClusterRail', () => {
     expect(screen.getByLabelText('Role for b')).toHaveValue('y');
   });
 
+  it('disables opening closed Vault clusters while Vault is unreachable, with the reason', () => {
+    renderApp(<ClusterRail sources={sources} favourites={[]} vaultUnreachable />);
+    const vault = screen.getByRole('group', { name: 'Vault' });
+    const closed = within(vault).getByRole('button', { name: /^Open b\./ });
+    expect(closed).toBeDisabled();
+    expect(closed).toHaveAttribute('title', expect.stringContaining("new Vault clusters can't be opened"));
+    expect(within(vault).queryByRole('link', { name: 'b' })).toBeNull();
+    // open clusters and kubeconfig clusters are unaffected
+    expect(within(vault).getByRole('link', { name: 'a' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'ctx1' })).toBeInTheDocument();
+  });
+
   it('says so when there are no clusters', () => {
     renderApp(<ClusterRail sources={[]} favourites={[]} />);
     expect(screen.getByText('No clusters yet.')).toBeInTheDocument();

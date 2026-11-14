@@ -30,6 +30,8 @@ type credEnv struct {
 	id, csrf string
 	vault    *fakevault.Server
 	auditOut *bytes.Buffer
+	sealer   *crypto.Sealer
+	opener   *cluster.Opener
 }
 
 func newCredEnv(t *testing.T) *credEnv {
@@ -46,7 +48,7 @@ func newCredEnv(t *testing.T) *credEnv {
 	fv.AddMount("kubernetes/prod/", "kubernetes")
 	sealer, err := crypto.NewSealer(make([]byte, 32), testutil.Rand("seal"))
 	require.NoError(t, err)
-	e := &credEnv{harness: h, id: id, csrf: csrf, vault: fv, auditOut: &bytes.Buffer{}}
+	e := &credEnv{harness: h, id: id, csrf: csrf, vault: fv, auditOut: &bytes.Buffer{}, sealer: sealer}
 	mgr := h.deps.Sessions
 	cfg := &config.Config{Vault: config.Vault{
 		Address: fv.URL(), KubernetesMountPrefix: "kubernetes/", CandidateRoles: []string{"devops-role"},
@@ -63,6 +65,16 @@ func newCredEnv(t *testing.T) *credEnv {
 	h.deps.Clusters = cluster.NewRegistry(cluster.RegistryDeps{
 		Credentials: h.deps.Credentials, Vault: vc, Sessions: store.NewSessions(h.db), Cache: cache, Config: cfg, Log: h.deps.Log,
 	})
+	cfg.Vault.CredsNamespace = "itops"
+	cfg.Vault.TokenTTL = config.Duration(30 * time.Minute)
+	cfg.Vault.RemintBefore = config.Duration(5 * time.Minute)
+	fv.SetConfig("kubernetes/prod", fakevault.ClusterConfig{Host: "https://api.prod.example:6443", CACert: "pem"})
+	fv.SetCreds("kubernetes/prod", "devops-role", fakevault.Creds{Token: "sa-token-A", LeaseID: "lease-A", LeaseDurationSeconds: 1800})
+	e.opener = cluster.NewOpener(cluster.OpenerDeps{
+		Registry: h.deps.Clusters, Credentials: h.deps.Credentials, Sessions: store.NewSessions(h.db), Sealer: sealer, Vault: vc, Clock: h.fake,
+		Config: cfg, Audit: audit.NewRecorder(h.db, h.fake, e.auditOut, func() string { return "audit-id" }), Closers: mgr.Registry(), Log: h.deps.Log,
+	})
+	h.deps.Opener = e.opener
 	return e
 }
 

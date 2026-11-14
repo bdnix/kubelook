@@ -143,7 +143,26 @@ describe('Banners', () => {
   it('shows a banner when the Vault source is unreachable', () => {
     const sources: Source[] = [{ type: 'vault', label: 'Vault', status: 'unreachable', clusters: [] }];
     renderBanners({ sources });
-    expect(screen.getByRole('alert')).toHaveTextContent('Vault is unreachable.');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      "Vault is unreachable. Open clusters keep working until their credentials expire; new Vault clusters can't be opened.",
+    );
+  });
+
+  it('shows the Vault banner while the server reports Vault unreachable, and not otherwise', () => {
+    const { rerender } = renderBanners({ vaultUnreachable: true });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Open clusters keep working until their credentials expire',
+    );
+    rerender(
+      <Banners
+        maintenanceBanner=""
+        sources={none}
+        vaultWarningSeconds={1800}
+        notices={[]}
+        vaultUnreachable={false}
+      />,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('shows no unreachable banner for kubeconfig sources', () => {

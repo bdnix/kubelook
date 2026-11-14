@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -19,10 +20,14 @@ import (
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
 	"github.com/bdnix/kubelook/internal/httpapi"
+	"github.com/bdnix/kubelook/internal/kube"
+	"github.com/bdnix/kubelook/internal/logs"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/vault"
+	"github.com/bdnix/kubelook/internal/watch"
 	"github.com/bdnix/kubelook/internal/webui"
+	"github.com/bdnix/kubelook/internal/ws"
 )
 
 const (
@@ -50,13 +55,17 @@ type Ready struct {
 
 // components are the constructed parts of the server; later steps wire more of them here.
 type components struct {
-	log      *slog.Logger
-	db       *store.DB
-	sealer   *crypto.Sealer
-	users    *store.Users
-	sessions *session.Manager
-	audit    *audit.Recorder
-	handler  http.Handler
+	log          *slog.Logger
+	db           *store.DB
+	sealer       *crypto.Sealer
+	users        *store.Users
+	sessions     *session.Manager
+	audit        *audit.Recorder
+	opener       *cluster.Opener
+	ws           *ws.Mux
+	vaultMonitor *vault.Monitor
+	hub          *watch.Hub
+	handler      http.Handler
 }
 
 func (o *ServeOptions) defaults() {
@@ -111,7 +120,9 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	if err != nil {
 		return fail(err)
 	}
-	vaultClient := vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout})
+	rawVault := vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout})
+	c.vaultMonitor = vault.NewMonitor(rawVault, o.Clock, cfg.Vault.Address != "")
+	vaultClient := c.vaultMonitor.Wrap(rawVault)
 	cache := cluster.NewDiscoveryCache(o.Clock, mgr.Registry())
 	creds := cluster.NewCredentials(cluster.Deps{
 		Sessions: store.NewSessions(db), Sealer: sealer, Vault: vaultClient,
@@ -120,9 +131,36 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	clusters := cluster.NewRegistry(cluster.RegistryDeps{
 		Credentials: creds, Vault: vaultClient, Sessions: store.NewSessions(db), Cache: cache, Config: cfg, Log: log,
 	})
+	opener := cluster.NewOpener(cluster.OpenerDeps{
+		Registry: clusters, Credentials: creds, Sessions: store.NewSessions(db), Sealer: sealer, Vault: vaultClient,
+		Clock: o.Clock, Config: cfg, Audit: c.audit, Closers: mgr.Registry(), Log: log,
+	})
+	clusters.SetStates(opener.StateOf)
+	c.opener = opener
+	kubeClients := kube.NewClients(kube.Deps{Config: opener, Clock: o.Clock, Closers: mgr.Registry()})
+	publicURL, err := url.Parse(cfg.Server.PublicURL)
+	if err != nil {
+		return fail(fmt.Errorf("parsing server.publicURL: %w", err))
+	}
+	c.hub = watch.NewHub(watch.Deps{
+		Clients: kubeClients, Clock: o.Clock, Log: log, Closers: mgr.Registry(), MaxPerUser: cfg.Watch.MaxPerUser,
+		IdleSeconds: func(ctx context.Context, userID string) int {
+			st, err := c.users.GetSettings(ctx, userID)
+			if err != nil {
+				return 0
+			}
+			return st.WatchIdleSeconds
+		},
+	})
+	c.ws = ws.NewMux(ws.Deps{Clock: o.Clock, Log: log, Sessions: mgr, PublicHost: publicURL.Host, Fail: httpapi.ErrorWriter(log)})
+	c.ws.Register("watch.open", c.hub.Factory())
+	c.ws.Register("logs.open", logs.NewFactory(logs.Deps{
+		Source: logs.NewKubeSource(kubeClients), Clock: o.Clock, Audit: c.audit, MaxLinesPerSecond: cfg.Logs.MaxLinesPerSecond,
+		KeepAlive: mgr.KeepAlive,
+	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, KeyID: sealer.KeyID(),
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, WS: c.ws, VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil
@@ -180,7 +218,7 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 	c.log.Info("listening", "addr", ln.Addr().String(), "config", cfg)
 
 	var wg sync.WaitGroup
-	for _, loop := range []func(context.Context){c.sessions.RunWatchdog, c.sessions.RunSweep} {
+	for _, loop := range []func(context.Context){c.sessions.RunWatchdog, c.sessions.RunSweep, c.opener.RunRefresher, c.vaultMonitor.Run} {
 		wg.Add(1)
 		go func() { defer wg.Done(); loop(ctx) }()
 	}
@@ -199,6 +237,8 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 	case <-ctx.Done():
 	}
 
+	c.ws.Shutdown() // open sockets close with 1001
+	c.hub.Close()
 	for _, h := range c.sessions.Registry().Hashes() {
 		if err := c.sessions.Registry().Close(h); err != nil {
 			c.log.Warn("closing session resources", "error", err.Error())

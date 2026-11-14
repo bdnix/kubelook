@@ -63,6 +63,8 @@ type RegistryDeps struct {
 	Cache       *DiscoveryCache
 	Config      *config.Config
 	Log         *slog.Logger
+	// States reports the live state of a cluster ("open", "disconnected", "closed"); nil → everything is closed.
+	States func(ctx context.Context, sess session.Session, clusterID string) string
 }
 
 // Registry lists and resolves the clusters of a session.
@@ -70,6 +72,11 @@ type Registry struct{ d RegistryDeps }
 
 // NewRegistry returns the cluster registry.
 func NewRegistry(d RegistryDeps) *Registry { return &Registry{d: d} }
+
+// SetStates installs the provider of live cluster states (the opener), which is built after the registry.
+func (r *Registry) SetStates(f func(ctx context.Context, sess session.Session, clusterID string) string) {
+	r.d.States = f
+}
 
 // List returns the session's sources: the Vault source first, then kubeconfig sources by label.
 // It never fetches cluster configs or credentials; those are fetched when a cluster is opened.
@@ -89,11 +96,22 @@ func (r *Registry) List(ctx context.Context, sess session.Session) ([]Source, er
 	for _, f := range files {
 		src := Source{Type: SourceKubeconfig, Label: f.Label, Status: SourceOK, Clusters: make([]Entry, len(f.Contexts))}
 		for i, cx := range f.Contexts {
-			src.Clusters[i] = Entry{ID: cx.ID, Name: cx.Context, State: StateClosed, Server: cx.Server}
+			src.Clusters[i] = Entry{ID: cx.ID, Name: cx.Context, State: r.stateOf(ctx, sess, cx.ID, StateClosed), Server: cx.Server}
 		}
 		sources = append(sources, src)
 	}
 	return sources, nil
+}
+
+// stateOf asks the live state provider; a closed cluster keeps the source-level fallback.
+func (r *Registry) stateOf(ctx context.Context, sess session.Session, id, fallback string) string {
+	if r.d.States == nil {
+		return fallback
+	}
+	if st := r.d.States(ctx, sess, id); st != StateClosed {
+		return st
+	}
+	return fallback
 }
 
 // vaultSource returns the Vault source, or nil when the session has no Vault token.
@@ -108,7 +126,8 @@ func (r *Registry) vaultSource(ctx context.Context, sess session.Session) (*Sour
 	}
 	src := &Source{Type: SourceVault, Label: "Vault", Status: status, Clusters: make([]Entry, len(clusters))}
 	for i, cl := range clusters {
-		src.Clusters[i] = Entry{ID: vaultClusterPrefix + cl.Name, Name: cl.Name, Roles: cl.Roles, State: state}
+		id := vaultClusterPrefix + cl.Name
+		src.Clusters[i] = Entry{ID: id, Name: cl.Name, Roles: cl.Roles, State: r.stateOf(ctx, sess, id, state)}
 	}
 	return src, nil
 }

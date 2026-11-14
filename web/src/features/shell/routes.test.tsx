@@ -1,5 +1,6 @@
+import { QueryClient } from '@tanstack/react-query';
 import 'fake-indexeddb/auto';
-import { screen, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { vaultStatusStore } from '../../state/vaultStatus';
@@ -128,9 +129,50 @@ describe('AppRoutes (signed in)', () => {
     expect(await screen.findByRole('heading', { name: 'Saved credentials' })).toBeInTheDocument();
   });
 
-  it('/c/:cluster/* shows the decoded cluster ID', async () => {
-    renderApp(<AppRoutes />, { client: signedIn(), route: '/c/k%3Aprod%2Fctx/ns/default' });
-    expect(await screen.findByText('k:prod/ctx')).toBeInTheDocument();
+  it('/c/:cluster/* opens the cluster page for the decoded cluster ID', async () => {
+    renderApp(<AppRoutes />, { client: signedIn(), route: '/c/k%3Aprod%2Fctx/core/Pod' });
+    expect(await screen.findByText('Opening the cluster…')).toBeInTheDocument();
+  });
+
+  it('shows the Vault banner and disables closed Vault clusters while the server says Vault is down', async () => {
+    const vaultSources = [
+      {
+        type: 'vault',
+        label: 'Vault',
+        status: 'ok',
+        clusters: [{ id: 'v:prod', name: 'prod', state: 'closed' }],
+      },
+    ];
+    let reachable = false;
+    const client = signedIn({
+      sources: vaultSources,
+      extra: {
+        'GET /status': () =>
+          jsonResponse({ vault: { configured: true, reachable, since: '2026-11-14T12:00:00Z' } }),
+      },
+    });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    renderApp(<AppRoutes />, { client, queryClient });
+    expect(
+      await screen.findByText(/Open clusters keep working until their credentials expire/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Open prod\./ })).toBeDisabled();
+
+    reachable = true;
+    await queryClient.invalidateQueries({ queryKey: ['status'] });
+    await waitFor(() => expect(screen.queryByText(/Open clusters keep working/)).toBeNull());
+    expect(screen.getByRole('link', { name: 'prod' })).toBeInTheDocument();
+  });
+
+  it('shows no Vault banner when Vault is not configured', async () => {
+    const client = signedIn({
+      extra: {
+        'GET /status': () => jsonResponse({ vault: { configured: false, reachable: true, since: null } }),
+      },
+    });
+    renderApp(<AppRoutes />, { client });
+    await screen.findByRole('heading', { name: 'Choose a cluster' });
+    expect(screen.queryByText(/Open clusters keep working/)).toBeNull();
   });
 
   it('unknown paths show "Page not found"', async () => {

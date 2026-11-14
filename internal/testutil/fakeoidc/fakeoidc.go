@@ -43,6 +43,10 @@ type Issuer struct {
 	NoIDToken bool
 	// BadSignature signs the next ID token with a key that is not in the JWKS.
 	BadSignature bool
+	// RefreshToken, when set, is the only refresh token the refresh_token grant accepts.
+	RefreshToken string
+	// NewRefreshToken, when set, is returned as the rotated refresh token by the refresh_token grant.
+	NewRefreshToken string
 	// Challenge, when set, is the PKCE S256 challenge the token endpoint must see proved.
 	Challenge string
 
@@ -51,6 +55,14 @@ type Issuer struct {
 	otherKey *rsa.PrivateKey
 	mu       sync.Mutex
 	down     bool
+	refreshN int
+}
+
+// Refreshes returns how many refresh_token grants were served.
+func (i *Issuer) Refreshes() int {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.refreshN
 }
 
 // New starts an issuer. Close it with Close.
@@ -123,7 +135,27 @@ func (i *Issuer) token(w http.ResponseWriter, r *http.Request) {
 	}
 	i.mu.Lock()
 	challenge, noID, bad, claims := i.Challenge, i.NoIDToken, i.BadSignature, i.Claims
+	wantRefresh, newRefresh := i.RefreshToken, i.NewRefreshToken
+	refreshing := r.PostForm.Get("grant_type") == "refresh_token"
+	if refreshing {
+		i.refreshN++
+	}
 	i.mu.Unlock()
+	if refreshing {
+		if wantRefresh != "" && r.PostForm.Get("refresh_token") != wantRefresh {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+			return
+		}
+		resp := map[string]any{"access_token": "access-token", "token_type": "Bearer", "expires_in": 3600, "id_token": i.sign(claims, bad)}
+		if newRefresh != "" {
+			resp["refresh_token"] = newRefresh
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
 	if challenge != "" {
 		sum := sha256.Sum256([]byte(r.PostForm.Get("code_verifier")))
 		if b64(sum[:]) != challenge {
