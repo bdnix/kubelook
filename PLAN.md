@@ -410,7 +410,7 @@ The whole plan is delivered in 10 pull requests. Each ends in a state where `mai
 | 7 | 5.1–5.15 | Custom resources, module framework, Helm 3 and 4, Flux, resource map, ecosystem modules, cluster overview | All platform features of the spec |
 | 8 | 6.1–6.4 | Prometheus metrics, traces and logs, memory guard, load test | Hardening complete |
 | 9 | 7.1–7.11, 8.1 part A | Integration and browser suites on kind + Vault as required checks; nightly run; spike findings; the debug image published | The CI job `integration-tests` green on the pull request itself |
-| 10 | 8.1 part B, 8.2–8.6 | Debug image digest pin, Helm chart, chart test, publishing from `main` (versions, chart, binaries, releases), documentation, final verification | §8 Definition of done |
+| 10 | 8.1 part B, 8.2–8.6 | Debug image digest pin, Helm chart, chart test, publishing from `main` (versions, image, chart, releases), documentation, final verification | §8 Definition of done |
 
 Rules for this grouping:
 
@@ -4539,11 +4539,11 @@ CI job `chart-tests` (in `ci.yml`, display name `Helm Chart: Lint & Template Tes
 
 **Pitfalls.** `kubectl port-forward` here is test tooling on the developer's side; the product still has no port-forward feature.
 
-### Step 8.4 — Publishing from `main`: versions, chart, binaries, releases
+### Step 8.4 — Publishing from `main`: versions, image, chart, releases
 
-**Goal.** Every build of `main` publishes development artifacts, and a merge that changes the `VERSION` file also publishes a versioned release: signed multi-architecture images, the chart as an OCI artifact, standalone binaries, a tag and a GitHub release. Nothing is published from pull requests, other branches or tags: a release is a reviewed pull request, and the tag is an output of the build, never its trigger.
+**Goal.** Every build of `main` publishes development artifacts, and a merge that changes the `VERSION` file also publishes a versioned release: signed multi-architecture images, the chart as an OCI artifact, a tag and a GitHub release. Kubelook is deployed as a container (image or Helm chart); standalone binaries are deliberately not published. Nothing is published from pull requests, other branches or tags: a release is a reviewed pull request, and the tag is an output of the build, never its trigger.
 
-**Files.** Create `VERSION`, `hack/version.sh`, `hack/build-binaries.sh`, `docs/releasing.md`. Modify `.github/workflows/ci.yml` (jobs `publish-image`, new `publish-chart`, `publish-binaries`, `create-release`), `Makefile` (targets `version`, `binaries`).
+**Files.** Create `VERSION`, `hack/version.sh`, `docs/releasing.md`. Modify `.github/workflows/ci.yml` (job `publish-image`, new jobs `publish-chart` and `create-release`), `Makefile` (target `version`).
 
 **Version source.** `VERSION` holds one line, a semantic version without `v` (first content: `0.1.0`). `hack/version.sh` prints it after checking it matches `^[0-9]+\.[0-9]+\.[0-9]+$` (exit 1 otherwise). The backend-tests job runs it, so a malformed `VERSION` fails the pull request that introduces it.
 
@@ -4555,21 +4555,19 @@ CI job `chart-tests` (in `ci.yml`, display name `Helm Chart: Lint & Template Tes
 | --- | --- | --- | --- |
 | `publish-image` | every required job | `ghcr.io/bdnix/kubelook:main` and `:sha-<sha>`, SBOM, provenance, cosign signature | tags `<version>` and `<major>.<minor>`; Trivy scan of the pushed digest (`exit-code: "1"`) |
 | `publish-chart` | `publish-image` | `oci://ghcr.io/bdnix/charts/kubelook` version `<version>-main.<short-sha>` | version `<version>` |
-| `publish-binaries` | every required job | workflow artifact `kubelook-binaries` (7-day retention) | the same files, passed to `create-release` |
-| `create-release` | `publish-image`, `publish-chart`, `publish-binaries` | — (skipped) | tag `v<version>` on the built commit and a GitHub release with generated notes, the binaries, `SHA256SUMS` and the chart archive |
+| `create-release` | `publish-image`, `publish-chart` | — (skipped) | tag `v<version>` on the built commit and a GitHub release with generated notes and the chart archive |
 
 - `publish-image` (`packages: write`, `id-token: write`, `attestations: write`): as in Step 0.8, plus the version tags on release builds, `sigstore/cosign-installer` then `cosign sign --yes ghcr.io/bdnix/kubelook@<digest>`. Build argument `VERSION` is `<version>` on release builds and `<version>-main.<short-sha>` otherwise. Outputs: `version`, `release`, `digest`.
 - `publish-chart` (`packages: write`): `make tools`; copy the chart, set `image.digest` in the copy's `values.yaml` to `publish-image`'s digest; `helm package` with `--version` and `--app-version` from the table; `helm push … oci://ghcr.io/bdnix/charts`. On release builds, upload the archive as an artifact for `create-release`.
-- `publish-binaries` (`contents: read`): build the web app once (`make build-frontend`), then `hack/build-binaries.sh <version-string>` cross-compiles `CGO_ENABLED=0` for `linux/amd64`, `linux/arm64`, `darwin/amd64`, `darwin/arm64` into `dist/kubelook_<version>_<os>_<arch>.tar.gz` (binary, `LICENSE`, `README.md`) and writes `dist/SHA256SUMS`; `actions/attest-build-provenance` over the archives; upload `dist/` as an artifact. No GoReleaser: plain `go build` cross-compiles a CGO-free binary.
-- `create-release` (`contents: write`; runs only when `release == 'true'`): download the binary and chart artifacts; `gh release create "v$version" --target "$GITHUB_SHA" --generate-notes dist/* kubelook-*.tgz` with `GH_TOKEN: ${{ github.token }}`. `gh release create` creates the tag; no job pushes a tag by itself.
+- `create-release` (`contents: write`; runs only when `release == 'true'`): download the chart artifact; `gh release create "v$version" --target "$GITHUB_SHA" --generate-notes kubelook-*.tgz` with `GH_TOKEN: ${{ github.token }}`. `gh release create` creates the tag; no job pushes a tag by itself.
 
-**Cutting a release** (documented in `docs/releasing.md`): open a pull request that changes `VERSION` (and nothing else is required); merge it once every required check is green; the `main` build publishes the release. Preconditions: `main` green including `integration-tests`; `docs/spike-findings.md` up to date; `hack/pin-netshoot.sh` run. Verification: `cosign verify ghcr.io/bdnix/kubelook:<version> --certificate-identity-regexp 'https://github.com/bdnix/kubelook/.*' --certificate-oidc-issuer https://token.actions.githubusercontent.com`, `gh attestation verify`, `sha256sum -c SHA256SUMS`. Rollback: a released version is never re-published; fix forward with a pull request that bumps `VERSION` again.
+**Cutting a release** (documented in `docs/releasing.md`): open a pull request that changes `VERSION` (and nothing else is required); merge it once every required check is green; the `main` build publishes the release. Preconditions: `main` green including `integration-tests`; `docs/spike-findings.md` up to date; `hack/pin-netshoot.sh` run. Verification: `cosign verify ghcr.io/bdnix/kubelook:<version> --certificate-identity-regexp 'https://github.com/bdnix/kubelook/.*' --certificate-oidc-issuer https://token.actions.githubusercontent.com`, and `gh attestation verify`. Rollback: a released version is never re-published; fix forward with a pull request that bumps `VERSION` again.
 
-**Red.** Tests for the scripts, run by `make test-release-scripts` (part of `backend-tests`): `hack/version.sh` with `0.1.0` prints it; with `v0.1.0`, `0.1`, an empty file or two lines exits 1. `hack/build-binaries.sh 0.0.0-test` into a temporary directory produces the four archives, each containing an executable that prints `kubelook 0.0.0-test (commit …)` when run on the matching platform (the test runs the `linux/amd64` one), and a `SHA256SUMS` that `sha256sum -c` accepts.
+**Red.** Tests for the version script, run by `make test-release-scripts` (part of `backend-tests`): `hack/version.sh` with `0.1.0` prints it; with `v0.1.0`, `0.1`, an empty file or two lines exits 1.
 
 **Green.** Write the scripts and the jobs.
 
-**Acceptance.** `make test-release-scripts` passes. `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/ci.yml` prints nothing. After the pull request merges, the `main` build shows `publish-image`, `publish-chart` and `publish-binaries` green and `create-release` green for the first version (`0.1.0` has no tag yet, so that first merge is a release). The executor does not push tags or create releases by hand; say in the PR that the merge publishes `0.1.0`.
+**Acceptance.** `make test-release-scripts` passes. `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/ci.yml` prints nothing. After the pull request merges, the `main` build shows `publish-image` and `publish-chart` green and `create-release` green for the first version (`0.1.0` has no tag yet, so that first merge is a release). The executor does not push tags or create releases by hand; say in the PR that the merge publishes `0.1.0`.
 
 **Pitfalls.**
 - The publish jobs never run on `pull_request` events, so fork and Dependabot pull requests never get a token that can push, sign or release.
@@ -4626,10 +4624,10 @@ The project is done when all of the following are true on `main`:
 
 1. Every step of Phases 0–8 is merged, in order, through the 10 pull requests of §7, each of which was green in CI when merged.
 2. `make verify` prints `VERIFY OK` on a clean clone. In particular: Go unit-test statement coverage ≥ 90% (`Total coverage threshold (90%) satisfied: PASS`), and web unit-test coverage ≥ 90% lines, statements and functions and ≥ 80% branches, with only the exclusions listed in §6.
-3. The `ci` workflow is green on pull requests: `backend-tests`, `frontend-tests`, `ui-tests`, `image-scan`, `dependency-review`, `chart-tests`, `integration-tests`, `chart-install-tests`; and on `main` additionally `publish-image`, `publish-chart` and `publish-binaries`.
+3. The `ci` workflow is green on pull requests: `backend-tests`, `frontend-tests`, `ui-tests`, `image-scan`, `dependency-review`, `chart-tests`, `integration-tests`, `chart-install-tests`; and on `main` additionally `publish-image`, `publish-chart` and `create-release`.
 4. The integration jobs are green: the kind + Vault suite (`make it`), the browser suite (`make e2e`) and the chart install test.
 5. Every feature in `docs/spec.md` "Functional requirements", "Authentication and cluster discovery", "Security model" and "Architecture" maps to a merged step (the mapping is the step titles of Phases 2–6), or is listed in §1 as out of scope with a reason.
-6. Release artifacts can be produced: a `main` build whose `VERSION` has no tag publishes the image, chart, binaries and GitHub release (Step 8.4), the chart installs a working console in kind (Step 8.3), and the image runs as non-root on a distroless base with no fixable HIGH or CRITICAL vulnerabilities at release time.
+6. Release artifacts can be produced: a `main` build whose `VERSION` has no tag publishes the image, chart and GitHub release (Step 8.4), the chart installs a working console in kind (Step 8.3), and the image runs as non-root on a distroless base with no fixable HIGH or CRITICAL vulnerabilities at release time.
 7. Deployment documentation exists and passes `hack/docs-check.sh`.
 8. `docs/spike-findings.md` records a result for every checkable "to confirm" item and names the ones still open for the repository owner (A1, A24).
 
