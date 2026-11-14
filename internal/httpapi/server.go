@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/config"
@@ -38,6 +39,8 @@ type Deps struct {
 	Clusters *cluster.Registry
 	// Opener opens clusters; nil → the open endpoints are not mounted.
 	Opener *cluster.Opener
+	// Audit records every mutating action; nil → the mutating cluster endpoints are not mounted.
+	Audit *audit.Recorder
 	// Kube reads from clusters; nil → the cluster read endpoints are not mounted.
 	Kube kube.Clients
 	// WS serves GET /api/v1/ws; nil → no WebSocket endpoint.

@@ -42,6 +42,7 @@ func (d Deps) registerResources(mux *http.ServeMux, res *kube.Resources) {
 	const base = "/api/v1/clusters/{cluster}/resources/{group}/{version}/{resource}"
 	mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) { d.listResources(w, r, res) })
 	mux.HandleFunc("GET "+base+"/{name}", func(w http.ResponseWriter, r *http.Request) { d.getResource(w, r, res) })
+	d.registerWrites(mux, res, base)
 }
 
 func (d Deps) listResources(w http.ResponseWriter, r *http.Request, res *kube.Resources) {

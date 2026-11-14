@@ -160,7 +160,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, WS: c.ws, VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, WS: c.ws, VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil
