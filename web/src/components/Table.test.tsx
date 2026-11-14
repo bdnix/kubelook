@@ -46,6 +46,20 @@ function renderTable(rows: K8sObject[], props: Partial<React.ComponentProps<type
 const bodyRows = () => screen.getAllByRole('row').filter((r) => r.hasAttribute('aria-rowindex'));
 const names = () => bodyRows().map((r) => within(r).getAllByRole('gridcell')[1]?.textContent);
 
+describe('Table: the rows in view order', () => {
+  it('reports the rows as filtered and sorted, for export', async () => {
+    const onShownChange = vi.fn();
+    renderTable([obj(3, 9), obj(1, 5), obj(2, 7)], { onShownChange });
+    const shown = () =>
+      (onShownChange.mock.calls.at(-1)?.[0] as K8sObject[]).map((r) => getString(r, 'metadata.name'));
+    expect(shown()).toEqual(['pod-003', 'pod-001', 'pod-002']);
+    await userEvent.click(screen.getByRole('columnheader', { name: /Restarts/ }));
+    expect(shown()).toEqual(['pod-001', 'pod-002', 'pod-003']);
+    await userEvent.type(screen.getByRole('textbox', { name: /Filter Pods/ }), 'pod-002');
+    expect(shown()).toEqual(['pod-002']);
+  });
+});
+
 describe('Table', () => {
   it('renders only the windowed rows but reports the total in aria-rowcount', () => {
     const rows = Array.from({ length: 1000 }, (_, i) => obj(i));
