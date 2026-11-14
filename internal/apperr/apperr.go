@@ -12,6 +12,10 @@ var (
 	ErrUnauthenticated = errors.New("unauthenticated")
 	ErrBusy            = errors.New("server busy")
 	ErrTooLarge        = errors.New("too large")
+	// ErrUnprocessable is a request the API server understood but refused to apply (validation, admission).
+	ErrUnprocessable = errors.New("unprocessable")
+	// ErrDryRunUnsupported is returned when the object's kind cannot be previewed with a dry run.
+	ErrDryRunUnsupported = errors.New("dry run unsupported")
 )
 
 // APIError is an error that carries its own HTTP status, machine code and user-facing message.
