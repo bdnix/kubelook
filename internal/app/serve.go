@@ -111,13 +111,10 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	if err != nil {
 		return fail(err)
 	}
-	var creds *cluster.Credentials
-	if cfg.Vault.Address != "" {
-		creds = cluster.NewCredentials(cluster.Deps{
-			Sessions: store.NewSessions(db), Sealer: sealer, Vault: vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout}),
-			Clock: o.Clock, Config: cfg, Audit: c.audit, Registry: mgr.Registry(), Ender: mgr, Log: log,
-		})
-	}
+	creds := cluster.NewCredentials(cluster.Deps{
+		Sessions: store.NewSessions(db), Sealer: sealer, Vault: vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout}),
+		Clock: o.Clock, Config: cfg, Audit: c.audit, Registry: mgr.Registry(), Ender: mgr, Log: log,
+	})
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
 		Auth: authHandlers, Credentials: creds, KeyID: sealer.KeyID(),

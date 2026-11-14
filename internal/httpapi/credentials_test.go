@@ -164,6 +164,18 @@ func TestCredentials_NotConfigured_AllFourEndpoints404(t *testing.T) {
 	}
 }
 
+func TestCredentials_NoVaultAddress_VaultEndpoints404ButKubeconfigStillWorks(t *testing.T) {
+	e := newCredEnv(t)
+	e.deps.Config.Vault.Address = ""
+	for _, c := range []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/credentials/vault"}, {http.MethodPost, "/api/v1/credentials/vault/renew"}, {http.MethodDelete, "/api/v1/credentials/vault"},
+	} {
+		assert.Equal(t, http.StatusNotFound, e.post(c.method, c.path, `{"token":"x"}`).Code, c.path)
+	}
+	b, _ := json.Marshal(map[string]string{"label": "work", "content": apiKubeconfig})
+	assert.Equal(t, http.StatusOK, e.post(http.MethodPost, "/api/v1/credentials/kubeconfig", string(b)).Code)
+}
+
 func TestCredentials_RequireSessionAndCSRF(t *testing.T) {
 	e := newCredEnv(t)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/credentials/vault", strings.NewReader(`{"token":"x"}`))
@@ -250,4 +262,19 @@ func TestCredentials_Kubeconfig_Rejections(t *testing.T) {
 	e.deps.Config.Kubeconfig.Enabled = &no
 	b, _ = json.Marshal(map[string]string{"label": "work", "content": apiKubeconfig})
 	assert.Equal(t, http.StatusNotFound, e.post(http.MethodPost, "/api/v1/credentials/kubeconfig", string(b)).Code)
+}
+
+func TestCredentials_HandlersWithoutASessionInContext_401(t *testing.T) {
+	e := newCredEnv(t)
+	e.deps.Sessions = nil // no session middleware: handlers must refuse by themselves
+	for _, c := range []struct{ method, path string }{
+		{http.MethodPost, "/api/v1/credentials/vault"}, {http.MethodPost, "/api/v1/credentials/restore"},
+		{http.MethodPost, "/api/v1/credentials/vault/renew"}, {http.MethodDelete, "/api/v1/credentials/vault"},
+		{http.MethodPost, "/api/v1/credentials/kubeconfig"}, {http.MethodDelete, "/api/v1/credentials/kubeconfig/x"},
+	} {
+		req := httptest.NewRequest(c.method, c.path, strings.NewReader(`{}`))
+		rec := httptest.NewRecorder()
+		httpapi.New(e.deps).ServeHTTP(rec, req)
+		assert.Equal(t, http.StatusUnauthorized, rec.Code, c.path)
+	}
 }

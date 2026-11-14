@@ -578,7 +578,7 @@ func TestKubeconfig_Add_StoresSessionCredentialAndReturnsBrowserCopy(t *testing.
 	assert.Equal(t, tokenKubeconfig, got["content"])
 
 	require.Len(t, clusters, 2)
-	assert.Equal(t, cluster.ClusterInfo{
+	assert.Equal(t, cluster.Info{
 		ID: "k:work/ctx1", Name: "prod-cluster", Context: "ctx1", User: "ada", Server: "https://api.prod.example:6443",
 	}, clusters[0])
 	assert.Equal(t, "k:work/ctx2", clusters[1].ID)

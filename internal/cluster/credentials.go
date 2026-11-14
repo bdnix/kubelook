@@ -17,6 +17,7 @@ import (
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
+	"github.com/bdnix/kubelook/internal/kubeconfig"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/vault"
@@ -25,11 +26,14 @@ import (
 // Kinds of session credentials and of browser copies.
 const (
 	kindVaultToken  = "vault_token"
+	kindKubeconfig  = "kubeconfig"
 	kindClusterCred = "cluster_cred"
 	kindClusterRole = "cluster_role"
 
 	// vaultClusterPrefix starts the ID of every cluster that comes from Vault.
 	vaultClusterPrefix = "v:"
+	// kubeconfigClusterPrefix starts the ID of every cluster that comes from an uploaded kubeconfig: "k:<label>/<context>".
+	kubeconfigClusterPrefix = "k:"
 )
 
 // Restore result statuses.
@@ -83,14 +87,25 @@ type VaultStatus struct {
 	Expired      bool       `json:"expired"`
 }
 
+// Info describes a cluster a credential reaches. Vault clusters carry Roles; kubeconfig
+// clusters carry Context, User and Server.
+type Info struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	Context string   `json:"context,omitempty"`
+	User    string   `json:"user,omitempty"`
+	Server  string   `json:"server,omitempty"`
+	Roles   []string `json:"roles,omitempty"`
+}
+
 // RestoreResult is the outcome for one browser copy.
 type RestoreResult struct {
-	Status   string          `json:"status"`
-	Kind     string          `json:"kind,omitempty"`
-	Label    string          `json:"label,omitempty"`
-	Vault    *VaultStatus    `json:"vault,omitempty"`
-	Clusters []vault.Cluster `json:"clusters,omitempty"`
-	Message  string          `json:"message,omitempty"`
+	Status   string       `json:"status"`
+	Kind     string       `json:"kind,omitempty"`
+	Label    string       `json:"label,omitempty"`
+	Vault    *VaultStatus `json:"vault,omitempty"`
+	Clusters []Info       `json:"clusters,omitempty"`
+	Message  string       `json:"message,omitempty"`
 }
 
 // vaultCred is the plaintext of the sealed vault_token session credential.
@@ -104,7 +119,9 @@ type vaultCred struct {
 // browserCopy is the plaintext of a sealed copy kept in the browser.
 type browserCopy struct {
 	Kind    string    `json:"kind"`
-	Token   string    `json:"token,omitempty"`
+	Token   string    `json:"token,omitempty"`   // vault_token
+	Label   string    `json:"label,omitempty"`   // kubeconfig
+	Content string    `json:"content,omitempty"` // kubeconfig
 	SavedAt time.Time `json:"savedAt"`
 }
 
@@ -276,6 +293,8 @@ func (c *Credentials) Restore(ctx context.Context, sess session.Session, sealed 
 			results[i] = RestoreResult{Status: StatusInvalid}
 		case bc.Kind == kindVaultToken:
 			results[i] = c.restoreVaultToken(ctx, sess, bc.Token)
+		case bc.Kind == kindKubeconfig:
+			results[i] = c.restoreKubeconfig(ctx, sess, bc)
 		default:
 			results[i] = RestoreResult{Status: StatusInvalid, Message: "Unsupported credential."}
 		}
@@ -330,7 +349,10 @@ func (c *Credentials) restoreVaultToken(ctx context.Context, sess session.Sessio
 		res.Status = StatusInvalid
 		return res
 	}
-	res.Status, res.Clusters = StatusOK, clusters
+	res.Status = StatusOK
+	for _, cl := range clusters {
+		res.Clusters = append(res.Clusters, Info{ID: vaultClusterPrefix + cl.Name, Name: cl.Name, Roles: cl.Roles})
+	}
 	return res
 }
 
@@ -432,4 +454,91 @@ func (c *Credentials) VaultIdentity(ctx context.Context, sess session.Session) (
 		return "", ""
 	}
 	return vc.EntityID, vc.DisplayName
+}
+
+var errKubeconfigDisabled = fmt.Errorf("kubeconfig upload is disabled: %w", apperr.ErrNotFound)
+
+func infos(f *kubeconfig.File) []Info {
+	out := make([]Info, len(f.Contexts))
+	for i, cx := range f.Contexts {
+		out[i] = Info{ID: cx.ID, Name: cx.Name, Context: cx.Context, User: cx.User, Server: cx.Server}
+	}
+	return out
+}
+
+// storeKubeconfig keeps a parsed kubeconfig in the session, replacing the credentials and
+// connections of an earlier upload with the same label.
+func (c *Credentials) storeKubeconfig(ctx context.Context, sess session.Session, label, content string) error {
+	if err := c.dropKubeconfigClusters(ctx, sess, label); err != nil {
+		return err
+	}
+	sealed, err := c.d.Sealer.Seal([]byte(content), crypto.AAD(crypto.PurposeSessionCredential, sess.Hash))
+	if err != nil {
+		return fmt.Errorf("sealing kubeconfig: %w", err)
+	}
+	return c.d.Sessions.PutCredential(ctx, sess.Hash, store.CredentialRow{Kind: kindKubeconfig, Ref: label, Sealed: sealed}, c.d.Clock.Now())
+}
+
+// dropKubeconfigClusters deletes the cluster credentials of a kubeconfig and closes its connections.
+func (c *Credentials) dropKubeconfigClusters(ctx context.Context, sess session.Session, label string) error {
+	prefix := kubeconfigClusterPrefix + label + "/"
+	rows, err := c.d.Sessions.ListCredentials(ctx, sess.Hash, kindClusterCred)
+	if err != nil {
+		return err
+	}
+	for _, r := range rows {
+		if strings.HasPrefix(r.Ref, prefix) {
+			if err := c.d.Sessions.DeleteCredential(ctx, sess.Hash, kindClusterCred, r.Ref); err != nil && !errors.Is(err, store.ErrNotFound) {
+				return err
+			}
+		}
+	}
+	return c.d.Registry.CloseMatching(sess.Hash, func(name string) bool { return strings.HasPrefix(name, prefix) })
+}
+
+// AddKubeconfig validates an uploaded kubeconfig, keeps it in the session and returns the sealed copy for the browser.
+func (c *Credentials) AddKubeconfig(ctx context.Context, sess session.Session, label, content string) (sealed string, clusters []Info, err error) {
+	if !c.d.Config.Kubeconfig.IsEnabled() {
+		return "", nil, errKubeconfigDisabled
+	}
+	f, err := kubeconfig.Parse(label, []byte(content))
+	if err != nil {
+		return "", nil, err
+	}
+	if err := c.storeKubeconfig(ctx, sess, label, content); err != nil {
+		return "", nil, err
+	}
+	sealed, err = c.sealForBrowser(sess.UserID, browserCopy{Kind: kindKubeconfig, Label: label, Content: content, SavedAt: c.d.Clock.Now().UTC()})
+	if err != nil {
+		return "", nil, err
+	}
+	return sealed, infos(f), nil
+}
+
+// RemoveKubeconfig deletes a kubeconfig, the credentials of its clusters and their open connections.
+func (c *Credentials) RemoveKubeconfig(ctx context.Context, sess session.Session, label string) error {
+	if err := c.d.Sessions.DeleteCredential(ctx, sess.Hash, kindKubeconfig, label); err != nil && !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+	return c.dropKubeconfigClusters(ctx, sess, label)
+}
+
+func (c *Credentials) restoreKubeconfig(ctx context.Context, sess session.Session, bc browserCopy) RestoreResult {
+	res := RestoreResult{Kind: kindKubeconfig, Label: bc.Label}
+	if !c.d.Config.Kubeconfig.IsEnabled() {
+		res.Status, res.Message = StatusInvalid, "Kubeconfig upload is disabled on this server."
+		return res
+	}
+	f, err := kubeconfig.Parse(bc.Label, []byte(bc.Content))
+	if err != nil {
+		res.Status, res.Message = StatusInvalid, err.Error()
+		return res
+	}
+	if err := c.storeKubeconfig(ctx, sess, bc.Label, bc.Content); err != nil {
+		c.d.Log.Warn("storing kubeconfig", "error", err.Error())
+		res.Status = StatusInvalid
+		return res
+	}
+	res.Status, res.Clusters = StatusOK, infos(f)
+	return res
 }
