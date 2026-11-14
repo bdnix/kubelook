@@ -47,6 +47,7 @@ func classify(err error) (status int, code, message string, known bool) {
 		status int
 		code   string
 	}{
+		{apperr.ErrClusterUnavailable, http.StatusNotFound, "cluster_unavailable"}, // before ErrNotFound, which it also matches
 		{ErrNotFound, http.StatusNotFound, "not_found"},
 		{ErrInvalid, http.StatusBadRequest, "bad_request"},
 		{ErrConflict, http.StatusConflict, "conflict"},

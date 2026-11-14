@@ -111,13 +111,18 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	if err != nil {
 		return fail(err)
 	}
+	vaultClient := vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout})
+	cache := cluster.NewDiscoveryCache(o.Clock, mgr.Registry())
 	creds := cluster.NewCredentials(cluster.Deps{
-		Sessions: store.NewSessions(db), Sealer: sealer, Vault: vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout}),
-		Clock: o.Clock, Config: cfg, Audit: c.audit, Registry: mgr.Registry(), Ender: mgr, Log: log,
+		Sessions: store.NewSessions(db), Sealer: sealer, Vault: vaultClient,
+		Clock: o.Clock, Config: cfg, Audit: c.audit, Registry: mgr.Registry(), Ender: mgr, Log: log, Cache: cache,
+	})
+	clusters := cluster.NewRegistry(cluster.RegistryDeps{
+		Credentials: creds, Vault: vaultClient, Sessions: store.NewSessions(db), Cache: cache, Config: cfg, Log: log,
 	})
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, KeyID: sealer.KeyID(),
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil

@@ -32,6 +32,8 @@ type Deps struct {
 	Auth interface{ Register(*http.ServeMux) }
 	// Credentials manages saved credentials; nil (no vault.address) → the credential endpoints answer 404.
 	Credentials *cluster.Credentials
+	// Clusters lists and resolves the session's clusters; nil → /api/v1/clusters answers 404.
+	Clusters *cluster.Registry
 	// KeyID identifies the encryption key; shown in /api/v1/me so the browser can tell when it changed.
 	KeyID string
 }
@@ -60,6 +62,9 @@ func New(d Deps) http.Handler {
 		d.Auth.Register(mux)
 	}
 	d.registerCredentials(mux)
+	if d.Clusters != nil {
+		mux.HandleFunc("GET /api/v1/clusters", d.listClusters)
+	}
 	// API routes are registered above the SPA catch-all; unknown API paths get a JSON 404.
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, d.Log, fmt.Errorf("no such API route: %w", ErrNotFound))

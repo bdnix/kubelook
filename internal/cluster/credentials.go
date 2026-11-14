@@ -66,6 +66,7 @@ type Deps struct {
 	Registry *session.Registry
 	Ender    Ender
 	Log      *slog.Logger
+	Cache    *DiscoveryCache // dropped when the Vault token changes; nil → none
 }
 
 // Credentials manages the credentials of one signed-in user's sessions.
@@ -169,31 +170,74 @@ func (c *Credentials) putVaultCred(ctx context.Context, sess session.Session, vc
 		store.CredentialRow{Kind: kindVaultToken, Sealed: sealed, ExpiresAt: expires}, c.d.Clock.Now())
 }
 
-// getVaultCred reads the session's Vault credential. A credential sealed with another key ends
-// the session and answers 401 key_changed.
-func (c *Credentials) getVaultCred(ctx context.Context, sess session.Session) (vaultCred, error) {
-	row, err := c.d.Sessions.GetCredential(ctx, sess.Hash, kindVaultToken, "")
-	if errors.Is(err, store.ErrNotFound) {
-		return vaultCred{}, errNoVaultToken
-	}
-	if err != nil {
-		return vaultCred{}, err
-	}
-	pt, err := c.d.Sealer.Open(row.Sealed, crypto.AAD(crypto.PurposeSessionCredential, sess.Hash))
+// openSessionCredential opens a sealed session credential. One sealed with another key ends the
+// session and answers 401 key_changed.
+func (c *Credentials) openSessionCredential(ctx context.Context, sess session.Session, sealed string) ([]byte, error) {
+	pt, err := c.d.Sealer.Open(sealed, crypto.AAD(crypto.PurposeSessionCredential, sess.Hash))
 	if errors.Is(err, crypto.ErrUnknownKey) {
 		if eerr := c.d.Ender.End(ctx, sess.Hash); eerr != nil {
 			c.d.Log.Warn("ending session after key change", "error", eerr.Error())
 		}
-		return vaultCred{}, errKeyChanged
+		return nil, errKeyChanged
 	}
 	if err != nil {
-		return vaultCred{}, fmt.Errorf("opening vault credential: %w", err)
+		return nil, fmt.Errorf("opening session credential: %w", err)
+	}
+	return pt, nil
+}
+
+// getVaultCred reads the session's Vault credential.
+func (c *Credentials) getVaultCred(ctx context.Context, sess session.Session) (vaultCred, error) {
+	vc, _, err := c.loadVaultCred(ctx, sess)
+	return vc, err
+}
+
+// loadVaultCred reads the session's Vault credential and the expiry stored with it (zero: none).
+func (c *Credentials) loadVaultCred(ctx context.Context, sess session.Session) (vaultCred, time.Time, error) {
+	row, err := c.d.Sessions.GetCredential(ctx, sess.Hash, kindVaultToken, "")
+	if errors.Is(err, store.ErrNotFound) {
+		return vaultCred{}, time.Time{}, errNoVaultToken
+	}
+	if err != nil {
+		return vaultCred{}, time.Time{}, err
+	}
+	pt, err := c.openSessionCredential(ctx, sess, row.Sealed)
+	if err != nil {
+		return vaultCred{}, time.Time{}, err
 	}
 	var vc vaultCred
 	if err := json.Unmarshal(pt, &vc); err != nil {
-		return vaultCred{}, fmt.Errorf("decoding vault credential: %w", err)
+		return vaultCred{}, time.Time{}, fmt.Errorf("decoding vault credential: %w", err)
 	}
-	return vc, nil
+	return vc, row.ExpiresAt, nil
+}
+
+// loadKubeconfigs returns the session's kubeconfigs sorted by label. One that no longer parses is skipped.
+func (c *Credentials) loadKubeconfigs(ctx context.Context, sess session.Session) ([]*kubeconfig.File, error) {
+	rows, err := c.d.Sessions.ListCredentials(ctx, sess.Hash, kindKubeconfig)
+	if err != nil {
+		return nil, err
+	}
+	files := make([]*kubeconfig.File, 0, len(rows))
+	for _, r := range rows {
+		pt, err := c.openSessionCredential(ctx, sess, r.Sealed)
+		if err != nil {
+			return nil, err
+		}
+		f, err := kubeconfig.Parse(r.Ref, pt)
+		if err != nil {
+			c.d.Log.Warn("skipping a stored kubeconfig that no longer parses", "label", r.Ref, "error", err.Error())
+			continue
+		}
+		files = append(files, f)
+	}
+	return files, nil
+}
+
+func (c *Credentials) invalidateDiscovery(sess session.Session) {
+	if c.d.Cache != nil {
+		c.d.Cache.Invalidate(sess.Hash)
+	}
 }
 
 // lookup asks Vault about the token and maps failures to API errors.
@@ -245,6 +289,7 @@ func (c *Credentials) storeVaultToken(ctx context.Context, sess session.Session,
 	if err := c.putVaultCred(ctx, sess, vc, c.expiry(info)); err != nil {
 		return VaultStatus{}, err
 	}
+	c.invalidateDiscovery(sess)
 	return c.status(info, vc), nil
 }
 
@@ -386,12 +431,14 @@ func (c *Credentials) RenewVaultToken(ctx context.Context, sess session.Session)
 	if err := c.putVaultCred(ctx, sess, vc, c.expiry(info)); err != nil {
 		return VaultStatus{}, err
 	}
+	c.invalidateDiscovery(sess)
 	return c.status(info, vc), nil
 }
 
 // RemoveVaultToken deletes the token and everything that came from it: the credentials of Vault
 // clusters, and the open streams of those clusters.
 func (c *Credentials) RemoveVaultToken(ctx context.Context, sess session.Session) error {
+	c.invalidateDiscovery(sess)
 	if err := c.d.Sessions.DeleteCredential(ctx, sess.Hash, kindVaultToken, ""); err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
