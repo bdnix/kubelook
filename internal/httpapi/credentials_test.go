@@ -53,9 +53,15 @@ func newCredEnv(t *testing.T) *credEnv {
 		ExpiryWarning: config.Duration(30 * time.Minute),
 	}}
 	h.deps.Config = cfg
+	cache := cluster.NewDiscoveryCache(h.fake, mgr.Registry())
+	vc := vault.NewClient(fv.URL(), fv.Client())
 	h.deps.Credentials = cluster.NewCredentials(cluster.Deps{
-		Sessions: store.NewSessions(h.db), Sealer: sealer, Vault: vault.NewClient(fv.URL(), fv.Client()), Clock: h.fake, Config: cfg,
+		Sessions: store.NewSessions(h.db), Sealer: sealer, Vault: vc, Clock: h.fake, Config: cfg,
 		Audit: audit.NewRecorder(h.db, h.fake, e.auditOut, func() string { return "audit-id" }), Registry: mgr.Registry(), Ender: mgr, Log: h.deps.Log,
+		Cache: cache,
+	})
+	h.deps.Clusters = cluster.NewRegistry(cluster.RegistryDeps{
+		Credentials: h.deps.Credentials, Vault: vc, Sessions: store.NewSessions(h.db), Cache: cache, Config: cfg, Log: h.deps.Log,
 	})
 	return e
 }

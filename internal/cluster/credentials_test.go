@@ -34,6 +34,8 @@ const (
 
 type env struct {
 	c        *cluster.Credentials
+	reg      *cluster.Registry
+	cache    *cluster.DiscoveryCache
 	vault    *fakevault.Server
 	db       *store.DB
 	clock    *clock.Fake
@@ -78,10 +80,13 @@ func newEnv(t *testing.T) *env {
 		Address: e.vault.URL(), KubernetesMountPrefix: "kubernetes/", CandidateRoles: []string{"devops-role"},
 		ExpiryWarning: config.Duration(30 * time.Minute),
 	}}
+	e.cache = cluster.NewDiscoveryCache(e.clock, e.sessions.Registry())
 	e.c = cluster.NewCredentials(cluster.Deps{
 		Sessions: store.NewSessions(e.db), Sealer: e.sealer, Vault: e.vaultClient(), Clock: e.clock, Config: e.cfg,
 		Audit: audit.NewRecorder(e.db, e.clock, e.auditOut, newID), Registry: e.sessions.Registry(), Ender: e.sessions, Log: log,
+		Cache: e.cache,
 	})
+	e.reg = cluster.NewRegistry(cluster.RegistryDeps{Credentials: e.c, Vault: e.vaultClient(), Sessions: store.NewSessions(e.db), Cache: e.cache, Config: e.cfg, Log: log})
 	return e
 }
 
