@@ -47,6 +47,8 @@ type env struct {
 	fakes *fakekube.Clients
 	out   *bytes.Buffer
 	patch []clienttesting.PatchActionImpl
+	clock *clock.Fake
+	audit *audit.Recorder
 }
 
 func list(gv, name, kind string, ns bool) *metav1.APIResourceList {
@@ -69,8 +71,9 @@ func newEnv(t *testing.T) *env {
 	db := storetest.New(t)
 	out := &bytes.Buffer{}
 	n := 0
-	rec := audit.NewRecorder(db, clock.NewFake(t0), out, func() string { n++; return fmt.Sprintf("a%d", n) })
-	e := &env{t: t, fakes: fk, out: out, svc: actions.New(actions.Deps{Clients: fk, Clock: clock.NewFake(t0), Audit: rec})}
+	fc := clock.NewFake(t0)
+	rec := audit.NewRecorder(db, fc, out, func() string { n++; return fmt.Sprintf("a%d", n) })
+	e := &env{t: t, fakes: fk, out: out, clock: fc, audit: rec, svc: actions.New(actions.Deps{Clients: fk, Clock: fc, Audit: rec})}
 	fk.Dyn.PrependReactor("patch", "*", func(a clienttesting.Action) (bool, runtime.Object, error) {
 		e.patch = append(e.patch, a.(clienttesting.PatchActionImpl))
 		return true, obj("v1", "X", "x", nil), nil

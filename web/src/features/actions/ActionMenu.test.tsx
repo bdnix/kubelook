@@ -81,7 +81,7 @@ describe('ActionMenu', () => {
   });
 
   it('renders nothing for a kind without known actions', () => {
-    mount({ actions: ['cordon'] });
+    mount({ actions: ['explode'] });
     expect(screen.queryByRole('button', { name: 'Actions' })).toBeNull();
   });
 
