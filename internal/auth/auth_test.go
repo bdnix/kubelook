@@ -2,10 +2,10 @@ package auth_test
 
 import (
 	"context"
-	"errors"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -169,7 +169,7 @@ func startLogin(t *testing.T, e *env, provider string) (*http.Cookie, string) {
 	return oauthCookie(t, w), loc.Query().Get("state")
 }
 
-func parse(e *env, provider, query string, c *http.Cookie) (code, verifier string, err error, w *httptest.ResponseRecorder) {
+func parse(e *env, provider, query string, c *http.Cookie) (code, verifier string, w *httptest.ResponseRecorder, err error) {
 	r := httptest.NewRequest(http.MethodGet, "/auth/"+provider+"/callback?"+query, nil)
 	if c != nil {
 		r.AddCookie(c)
@@ -182,7 +182,7 @@ func parse(e *env, provider, query string, c *http.Cookie) (code, verifier strin
 func TestParseCallback_Valid_ReturnsCodeAndVerifierAndClearsCookie(t *testing.T) {
 	e := newEnv(t, "google")
 	c, state := startLogin(t, e, "google")
-	code, verifier, err, w := parse(e, "google", "code=abc&state="+state, c)
+	code, verifier, w, err := parse(e, "google", "code=abc&state="+state, c)
 	require.NoError(t, err)
 	assert.Equal(t, "abc", code)
 	assert.NotEmpty(t, verifier)
@@ -193,14 +193,14 @@ func TestParseCallback_Valid_ReturnsCodeAndVerifierAndClearsCookie(t *testing.T)
 
 func TestParseCallback_MissingCookie_ErrState(t *testing.T) {
 	e := newEnv(t, "google")
-	_, _, err, _ := parse(e, "google", "code=abc&state=x", nil)
+	_, _, _, err := parse(e, "google", "code=abc&state=x", nil)
 	assert.ErrorIs(t, err, auth.ErrState)
 }
 
 func TestParseCallback_StateMismatch_ErrState(t *testing.T) {
 	e := newEnv(t, "google")
 	c, _ := startLogin(t, e, "google")
-	_, _, err, _ := parse(e, "google", "code=abc&state=other", c)
+	_, _, _, err := parse(e, "google", "code=abc&state=other", c)
 	assert.ErrorIs(t, err, auth.ErrState)
 }
 
@@ -208,27 +208,27 @@ func TestParseCallback_Older_Than_10Minutes_ErrState(t *testing.T) {
 	e := newEnv(t, "google")
 	c, state := startLogin(t, e, "google")
 	e.clock.Advance(10*time.Minute + time.Second)
-	_, _, err, _ := parse(e, "google", "code=abc&state="+state, c)
+	_, _, _, err := parse(e, "google", "code=abc&state="+state, c)
 	assert.ErrorIs(t, err, auth.ErrState)
 }
 
 func TestParseCallback_CookieSealedForOtherProvider_ErrState(t *testing.T) {
 	e := newEnv(t, "google", "github")
 	c, state := startLogin(t, e, "google")
-	_, _, err, _ := parse(e, "github", "code=abc&state="+state, c)
+	_, _, _, err := parse(e, "github", "code=abc&state="+state, c)
 	assert.ErrorIs(t, err, auth.ErrState)
 }
 
 func TestParseCallback_AccessDenied_ErrDenied(t *testing.T) {
 	e := newEnv(t, "google")
 	c, state := startLogin(t, e, "google")
-	_, _, err, _ := parse(e, "google", "error=access_denied&state="+state, c)
+	_, _, _, err := parse(e, "google", "error=access_denied&state="+state, c)
 	assert.ErrorIs(t, err, auth.ErrDenied)
 }
 
 func TestParseCallback_MissingCode_ErrState(t *testing.T) {
 	e := newEnv(t, "google")
 	c, state := startLogin(t, e, "google")
-	_, _, err, _ := parse(e, "google", "state="+state, c)
+	_, _, _, err := parse(e, "google", "state="+state, c)
 	assert.ErrorIs(t, err, auth.ErrState)
 }
