@@ -17,6 +17,8 @@ export interface TableProps {
   /** The health shown as a badge in the `status` column. */
   statusOf?: (row: K8sObject) => Status;
   onSelectionChange?: (keys: string[]) => void;
+  /** Called with the rows as shown (filtered and sorted) whenever they change, for export. */
+  onShownChange?: (rows: K8sObject[]) => void;
   /** The height of the scroll area; measured when absent. */
   viewportHeight?: number;
   rowHeight?: number;
@@ -66,6 +68,7 @@ export function Table({
   onOpen,
   statusOf,
   onSelectionChange,
+  onShownChange,
   viewportHeight,
   rowHeight = 32,
 }: TableProps) {
@@ -91,6 +94,8 @@ export function Table({
     }
     return out;
   }, [rows, columns, filter, sort, now]);
+
+  useEffect(() => onShownChange?.(shown), [shown, onShownChange]);
 
   const [start, end] = visibleRange({
     rowCount: shown.length,

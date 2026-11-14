@@ -7,6 +7,7 @@ import { Banner } from '../../components/Banner';
 import { Button } from '../../components/Button';
 import { Table } from '../../components/Table';
 import { BulkBar } from '../actions/BulkBar';
+import { ExportMenu } from '../export/ExportMenu';
 import { DownloadMenu } from '../filter/DownloadMenu';
 import { FilterBar } from '../filter/FilterBar';
 import { useFilter } from '../filter/useFilter';
@@ -35,6 +36,7 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [query, setQuery] = useState('');
+  const [shown, setShown] = useState<K8sObject[]>([]);
   const filtered = useFilter(live.items, query, { group: descriptor.group, kind: descriptor.kind }, now);
 
   const open = (o: K8sObject) =>
@@ -80,6 +82,13 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
         value={query}
         onChange={setQuery}
       />
+      <ExportMenu
+        cluster={cluster}
+        kind={resource.resource}
+        columns={descriptor.columns}
+        rows={shown}
+        now={now}
+      />
       <DownloadMenu
         cluster={cluster}
         kind={descriptor.kind}
@@ -100,6 +109,7 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
           statusOf={descriptor.status}
           onOpen={open}
           onSelectionChange={setSelected}
+          onShownChange={setShown}
         />
       )}
       <BulkBar

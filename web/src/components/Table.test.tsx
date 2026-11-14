@@ -55,7 +55,7 @@ describe('Table: the rows in view order', () => {
     expect(shown()).toEqual(['pod-003', 'pod-001', 'pod-002']);
     await userEvent.click(screen.getByRole('columnheader', { name: /Restarts/ }));
     expect(shown()).toEqual(['pod-001', 'pod-002', 'pod-003']);
-    await userEvent.type(screen.getByRole('textbox', { name: /Filter Pods/ }), 'pod-002');
+    await userEvent.type(screen.getByRole('searchbox', { name: /Filter Pods/ }), 'pod-002');
     expect(shown()).toEqual(['pod-002']);
   });
 });

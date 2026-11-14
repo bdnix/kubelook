@@ -13,7 +13,7 @@ const rows = [
   { apiVersion: 'v1', kind: 'Pod', metadata: { name: 'web-2' }, status: { phase: 'Pending' } },
   { apiVersion: 'v1', kind: 'Pod', metadata: { name: '=evil()' }, status: { phase: 'Running' } },
 ];
-const text = (b: Uint8Array) => new TextDecoder().decode(b);
+const text = (b: Uint8Array) => new TextDecoder('utf-8', { ignoreBOM: true }).decode(b); // keep the byte order mark
 
 function mount(over: Partial<Parameters<typeof ExportMenu>[0]> = {}) {
   const saveFile = vi.fn();
