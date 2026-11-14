@@ -27,6 +27,8 @@ type meLimits struct {
 	FileTransferBytes   int64 `json:"fileTransferBytes"`
 	LogsHistoryMaxLines int   `json:"logsHistoryMaxLines"`
 	LogsLiveBufferLines int   `json:"logsLiveBufferLines"`
+	// VaultExpiryWarningSeconds is how long before expiry the UI starts warning about the Vault token.
+	VaultExpiryWarningSeconds int `json:"vaultExpiryWarningSeconds"`
 }
 
 type meResponse struct {
@@ -73,7 +75,7 @@ func (d Deps) me(w http.ResponseWriter, r *http.Request) {
 		},
 		Limits: meLimits{
 			FileTransferBytes: c.FileBrowser.MaxTransferBytes, LogsHistoryMaxLines: c.Logs.HistoryMaxLines,
-			LogsLiveBufferLines: c.Logs.LiveBufferLines,
+			LogsLiveBufferLines: c.Logs.LiveBufferLines, VaultExpiryWarningSeconds: int(c.Vault.ExpiryWarning.D().Seconds()),
 		},
 		KeyID: d.KeyID,
 	})

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -37,7 +38,7 @@ func TestMe_ValidSession_ReturnsTheFullPayload(t *testing.T) {
 		Kubeconfig:  config.Toggle{Enabled: &no},
 		FileBrowser: config.FileBrowser{MaxTransferBytes: 1234},
 		Helm:        config.Helm{Version: 4},
-		Vault:       config.Vault{Address: "https://vault.example"},
+		Vault:       config.Vault{Address: "https://vault.example", ExpiryWarning: config.Duration(30 * time.Minute)},
 		Logs:        config.Logs{HistoryMaxLines: 200000, LiveBufferLines: 10000},
 		Maintenance: config.Maintenance{Banner: "back at noon"},
 		Modules:     map[string]config.Module{"keda": {Enabled: "auto"}, "trivy": {Enabled: "false"}},
@@ -53,7 +54,7 @@ func TestMe_ValidSession_ReturnsTheFullPayload(t *testing.T) {
 	assert.JSONEq(t, `"back at noon"`, string(got["maintenanceBanner"]))
 	assert.JSONEq(t, `{"kubeconfig":false,"fileBrowser":true,"nodeShell":false,"vault":true,"helmVersion":4,
 		"modules":{"keda":"auto","trivy":"false"}}`, string(got["features"]))
-	assert.JSONEq(t, `{"fileTransferBytes":1234,"logsHistoryMaxLines":200000,"logsLiveBufferLines":10000}`, string(got["limits"]))
+	assert.JSONEq(t, `{"fileTransferBytes":1234,"logsHistoryMaxLines":200000,"logsLiveBufferLines":10000,"vaultExpiryWarningSeconds":1800}`, string(got["limits"]))
 	assert.JSONEq(t, `null`, string(got["vault"]))
 	assert.JSONEq(t, `"66687aadf862bd77"`, string(got["keyId"]))
 	var settings struct {

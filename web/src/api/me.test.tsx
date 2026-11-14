@@ -10,7 +10,7 @@ const me = {
   settings: { favouriteClusters: ['v:prod'], watchIdleSeconds: 30, theme: 'system' },
   maintenanceBanner: '',
   features: { kubeconfig: true, fileBrowser: true, nodeShell: false, vault: true, helmVersion: 4, modules: {} },
-  limits: { fileTransferBytes: 1, logsHistoryMaxLines: 2, logsLiveBufferLines: 3 },
+  limits: { fileTransferBytes: 1, logsHistoryMaxLines: 2, logsLiveBufferLines: 3, vaultExpiryWarningSeconds: 1800 },
   vault: null,
   keyId: 'k1',
 };

@@ -29,6 +29,7 @@ export interface MeLimits {
   fileTransferBytes: number;
   logsHistoryMaxLines: number;
   logsLiveBufferLines: number;
+  vaultExpiryWarningSeconds: number;
 }
 
 /** The answer of `GET /api/v1/me`: who is signed in and what the server offers. */
