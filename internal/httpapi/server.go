@@ -39,6 +39,8 @@ type Deps struct {
 	Opener *cluster.Opener
 	// Kube reads from clusters; nil → the cluster read endpoints are not mounted.
 	Kube kube.Clients
+	// WS serves GET /api/v1/ws; nil → no WebSocket endpoint.
+	WS http.Handler
 	// KeyID identifies the encryption key; shown in /api/v1/me so the browser can tell when it changed.
 	KeyID string
 }
@@ -72,6 +74,7 @@ func New(d Deps) http.Handler {
 	}
 	d.registerOpen(mux)
 	d.registerKube(mux)
+	d.registerWS(mux)
 	// API routes are registered above the SPA catch-all; unknown API paths get a JSON 404.
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, d.Log, fmt.Errorf("no such API route: %w", ErrNotFound))

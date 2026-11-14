@@ -3,11 +3,13 @@ module github.com/bdnix/kubelook
 go 1.27.4
 
 require (
+	github.com/coder/websocket v1.8.15
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/jackc/pgx/v5 v5.12.0
 	github.com/stretchr/testify v1.12.1
 	go.uber.org/goleak v1.3.0
 	golang.org/x/oauth2 v0.38.0
+	k8s.io/api v0.37.2
 	k8s.io/apimachinery v0.37.2
 	k8s.io/client-go v0.37.2
 	modernc.org/sqlite v1.62.0
@@ -60,7 +62,6 @@ require (
 	google.golang.org/protobuf v1.36.12-0.20260120151049-f2248ac996af // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
-	k8s.io/api v0.37.2 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260721132016-d427ff9ee9ad // indirect
 	k8s.io/utils v0.0.0-20260626114624-be93311217bd // indirect

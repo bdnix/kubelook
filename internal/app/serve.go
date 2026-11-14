@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/vault"
 	"github.com/bdnix/kubelook/internal/webui"
+	"github.com/bdnix/kubelook/internal/ws"
 )
 
 const (
@@ -58,6 +60,7 @@ type components struct {
 	sessions *session.Manager
 	audit    *audit.Recorder
 	opener   *cluster.Opener
+	ws       *ws.Mux
 	handler  http.Handler
 }
 
@@ -128,10 +131,15 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	})
 	clusters.SetStates(opener.StateOf)
 	c.opener = opener
+	publicURL, err := url.Parse(cfg.Server.PublicURL)
+	if err != nil {
+		return fail(fmt.Errorf("parsing server.publicURL: %w", err))
+	}
+	c.ws = ws.NewMux(ws.Deps{Clock: o.Clock, Log: log, Sessions: mgr, PublicHost: publicURL.Host, Fail: httpapi.ErrorWriter(log)})
 	kubeClients := kube.NewClients(kube.Deps{Config: opener, Clock: o.Clock, Closers: mgr.Registry()})
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, KeyID: sealer.KeyID(),
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, WS: c.ws, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil
@@ -208,6 +216,7 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 	case <-ctx.Done():
 	}
 
+	c.ws.Shutdown() // open sockets close with 1001
 	for _, h := range c.sessions.Registry().Hashes() {
 		if err := c.sessions.Registry().Close(h); err != nil {
 			c.log.Warn("closing session resources", "error", err.Error())
