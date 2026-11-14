@@ -38,7 +38,7 @@ type accessEnv struct {
 func newAccessEnv() *accessEnv {
 	e := &accessEnv{fk: fakekube.New(), clock: clock.NewFake(t0), closers: session.NewRegistry()}
 	e.ssar = func(*authv1.ResourceAttributes) (bool, error) { return false, nil }
-	e.fk.Kube.PrependReactor("create", "selfsubjectrulesreviews", func(a clienttesting.Action) (bool, runtime.Object, error) {
+	e.fk.Kube.PrependReactor("create", "selfsubjectrulesreviews", func(clienttesting.Action) (bool, runtime.Object, error) {
 		e.rulesCalls.Add(1)
 		if e.rulesErr != nil {
 			return true, nil, e.rulesErr
