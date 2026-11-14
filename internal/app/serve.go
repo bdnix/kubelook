@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/bdnix/kubelook/internal/audit"
+	"github.com/bdnix/kubelook/internal/auth"
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
@@ -25,6 +26,7 @@ import (
 const (
 	readHeaderTimeout = 10 * time.Second
 	shutdownTimeout   = 10 * time.Second
+	authHTTPTimeout   = 15 * time.Second
 )
 
 // ServeOptions injects the parts of Serve that tests replace.
@@ -102,11 +104,43 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		users: store.NewUsers(db, o.Clock, store.NewID),
 		audit: audit.NewRecorder(db, o.Clock, o.Stdout, store.NewID),
 	}
+	authHandlers, err := newAuth(ctx, cfg, o, log, c, sealer)
+	if err != nil {
+		return fail(err)
+	}
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
+		Auth: authHandlers, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil
+}
+
+// newAuth builds the sign-in handlers. A provider exists only when its client ID is configured.
+func newAuth(ctx context.Context, cfg *config.Config, o ServeOptions, log *slog.Logger, c *components, sealer *crypto.Sealer) (*auth.Handlers, error) {
+	hc := &http.Client{Timeout: authHTTPTimeout}
+	var providers []auth.Provider
+	if g := cfg.Auth.Google; g.ClientID != "" {
+		p, err := auth.NewGoogle(ctx, auth.GoogleConfig{
+			ClientID: g.ClientID, ClientSecret: cfg.GoogleSecret, IssuerURL: g.IssuerURL,
+			AllowedDomains: g.AllowedDomains, Restrict: cfg.Auth.Restrict(),
+		}, o.Clock, hc)
+		if err != nil {
+			return nil, fmt.Errorf("configuring Google sign-in: %w", err)
+		}
+		providers = append(providers, p)
+	}
+	if g := cfg.Auth.GitHub; g.ClientID != "" {
+		providers = append(providers, auth.NewGitHub(auth.GitHubConfig{
+			ClientID: g.ClientID, ClientSecret: cfg.GitHubSecret, BaseURL: g.BaseURL, APIBaseURL: g.APIBaseURL,
+			AllowedOrgs: g.AllowedOrgs, Restrict: cfg.Auth.Restrict(),
+		}, hc))
+	}
+	return auth.NewHandlers(auth.Deps{
+		Providers: providers, PublicURL: cfg.Server.PublicURL, Sealer: sealer, Clock: o.Clock, Rand: o.Rand,
+		CookieSecure: cfg.CookieSecure(), Users: c.users, Sessions: c.sessions, Audit: c.audit, Log: log,
+		HTTPClient: hc, Fail: httpapi.ErrorWriter(log),
+	}), nil
 }
 
 // Serve runs the server until ctx is done, then shuts it down: open streams are closed

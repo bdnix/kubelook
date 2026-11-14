@@ -112,6 +112,7 @@ func (g *github) checkOrgs(ctx context.Context, token string) error {
 
 // getJSON GETs url with the token and decodes a JSON body into v when the status is 200.
 func (g *github) getJSON(ctx context.Context, u, token string, v any) (status int, err error) {
+	//nolint:gosec // G704: u is the operator-configured GitHub API base URL plus a fixed path
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return 0, err
@@ -119,7 +120,7 @@ func (g *github) getJSON(ctx context.Context, u, token string, v any) (status in
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, err := g.hc.Do(req)
+	resp, err := g.hc.Do(req) //nolint:gosec // G704: see above
 	if err != nil {
 		return 0, err
 	}

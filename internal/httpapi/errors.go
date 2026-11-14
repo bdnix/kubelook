@@ -104,3 +104,9 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
 	}
 	return nil
 }
+
+// ErrorWriter returns a function that writes err as the standard JSON error response.
+// Packages that cannot import httpapi (auth) receive it as a dependency.
+func ErrorWriter(log *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
+	return func(w http.ResponseWriter, r *http.Request, err error) { writeError(w, r, log, err) }
+}

@@ -27,6 +27,10 @@ type Deps struct {
 
 	Sessions *session.Manager // nil → no session or CSRF checks (not wired yet)
 	Users    *store.Users
+	// Auth mounts the sign-in routes (/auth/…, /api/v1/auth/…); nil → none.
+	Auth interface{ Register(*http.ServeMux) }
+	// KeyID identifies the encryption key; shown in /api/v1/me so the browser can tell when it changed.
+	KeyID string
 }
 
 // New builds the handler.
@@ -49,6 +53,9 @@ func New(d Deps) http.Handler {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /api/v1/me", d.me)
+	if d.Auth != nil {
+		d.Auth.Register(mux)
+	}
 	// API routes are registered above the SPA catch-all; unknown API paths get a JSON 404.
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, d.Log, fmt.Errorf("no such API route: %w", ErrNotFound))
@@ -64,6 +71,9 @@ func New(d Deps) http.Handler {
 	if d.Sessions != nil {
 		fail := func(w http.ResponseWriter, r *http.Request, err error) { writeError(w, r, d.Log, err) }
 		mws = append(mws, d.Sessions.Require(fail), session.CSRF(fail))
+		if d.Users != nil {
+			mws = append(mws, auditIdentity(d.Users))
+		}
 	}
 	return chain(recordRoute(mux), mws...)
 }

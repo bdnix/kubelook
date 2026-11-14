@@ -12,19 +12,17 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"testing/fstest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/oauth2"
 
+	"github.com/bdnix/kubelook/internal/apperr"
 	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/auth"
 	"github.com/bdnix/kubelook/internal/clock"
-	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
-	"github.com/bdnix/kubelook/internal/httpapi"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/store/storetest"
@@ -90,17 +88,26 @@ func newSigninEnv(t *testing.T) *signinEnv {
 	})
 	sealer, err := crypto.NewSealer(make([]byte, 32), testutil.Rand("seal"))
 	require.NoError(t, err)
+	fail := func(w http.ResponseWriter, _ *http.Request, err error) {
+		status := http.StatusInternalServerError
+		var apiErr *apperr.APIError
+		switch {
+		case errors.As(err, &apiErr):
+			status = apiErr.Status
+		case errors.Is(err, apperr.ErrUnauthenticated):
+			status = http.StatusUnauthorized
+		}
+		w.WriteHeader(status)
+	}
 	h := auth.NewHandlers(auth.Deps{
 		Providers: []auth.Provider{e.provider}, PublicURL: publicURL, Sealer: sealer, Clock: e.clock,
 		Rand: testutil.Rand("state"), CookieSecure: true,
 		Users: e.users, Sessions: e.sessions, Audit: audit.NewRecorder(e.db, e.clock, e.auditOut, newID), Log: log,
-		Fail: func(w http.ResponseWriter, r *http.Request, err error) { httpapi.WriteError(w, r, log, err) },
+		Fail: fail,
 	})
-	e.handler = httpapi.New(httpapi.Deps{
-		Config: &config.Config{Server: config.Server{PublicURL: publicURL}}, Clock: e.clock, Log: log,
-		WebFS: fstest.MapFS{"index.html": {Data: []byte("<html></html>")}}, Sessions: e.sessions, Users: e.users, Auth: h,
-		KeyID: sealer.KeyID(),
-	})
+	mux := http.NewServeMux()
+	h.Register(mux)
+	e.handler = e.sessions.Require(fail)(session.CSRF(fail)(mux))
 	return e
 }
 
@@ -174,9 +181,13 @@ func TestCallback_Success_CreatesUserAndSessionAndAudits(t *testing.T) {
 	assert.Equal(t, 1, e.sessionCount(t))
 	assert.Empty(t, cookieNamed(w, "kubelook_oauth").Value, "the state cookie is cleared")
 
-	me := e.do(httptest.NewRequest(http.MethodGet, "/api/v1/me", nil), &http.Cookie{Name: "kubelook_session", Value: sc.Value})
-	require.Equal(t, http.StatusOK, me.Code)
-	assert.Contains(t, me.Body.String(), `"email":"a@corp.example"`)
+	r := httptest.NewRequest(http.MethodGet, "/", nil)
+	r.AddCookie(&http.Cookie{Name: "kubelook_session", Value: sc.Value})
+	s, err := e.sessions.Load(t.Context(), r)
+	require.NoError(t, err)
+	u, err := e.users.Get(t.Context(), s.UserID)
+	require.NoError(t, err)
+	assert.Equal(t, "a@corp.example", u.Email)
 
 	lines := e.auditLines(t)
 	require.Len(t, lines, 1)
@@ -252,18 +263,17 @@ func TestLogout_EndsSessionClearsCookieAndAudits(t *testing.T) {
 	e := newSigninEnv(t)
 	sc := cookieNamed(e.signIn(t, nil, nil), "kubelook_session")
 	cookie := &http.Cookie{Name: "kubelook_session", Value: sc.Value}
-	me := e.do(httptest.NewRequest(http.MethodGet, "/api/v1/me", nil), cookie)
-	var body struct {
-		CSRFToken string `json:"csrfToken"`
-	}
-	require.NoError(t, json.Unmarshal(me.Body.Bytes(), &body))
+	lr := httptest.NewRequest(http.MethodGet, "/", nil)
+	lr.AddCookie(cookie)
+	loaded, err := e.sessions.Load(t.Context(), lr)
+	require.NoError(t, err)
 
 	closed := 0
 	hash := session.Hash(sc.Value)
 	e.sessions.Registry().Register(hash, "test-stream", func() error { closed++; return nil })
 
 	r := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
-	r.Header.Set("X-CSRF-Token", body.CSRFToken)
+	r.Header.Set("X-CSRF-Token", loaded.CSRFToken)
 	w := e.do(r, cookie)
 	require.Equal(t, http.StatusNoContent, w.Code)
 	assert.Equal(t, -1, cookieNamed(w, "kubelook_session").MaxAge)
