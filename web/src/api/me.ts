@@ -1,12 +1,46 @@
 import { useQuery } from '@tanstack/react-query';
+import { csrfStore } from '../state/csrf';
 import { ApiError } from './client';
 import { useApi } from './context';
 
-/** The signed-in user. The full payload arrives with Step 2.4. */
-export interface Me {
+export interface MeUser {
   id: string;
+  provider: string;
   email: string;
   name: string;
+}
+
+export interface MeSettings {
+  favouriteClusters: string[] | null;
+  watchIdleSeconds: number;
+  theme: string;
+}
+
+export interface MeFeatures {
+  kubeconfig: boolean;
+  fileBrowser: boolean;
+  nodeShell: boolean;
+  vault: boolean;
+  helmVersion: number;
+  modules: Record<string, string>;
+}
+
+export interface MeLimits {
+  fileTransferBytes: number;
+  logsHistoryMaxLines: number;
+  logsLiveBufferLines: number;
+}
+
+/** The answer of `GET /api/v1/me`: who is signed in and what the server offers. */
+export interface Me {
+  user: MeUser;
+  csrfToken: string;
+  settings: MeSettings;
+  maintenanceBanner: string;
+  features: MeFeatures;
+  limits: MeLimits;
+  vault: unknown;
+  keyId: string;
 }
 
 export type MeState =
@@ -14,7 +48,14 @@ export type MeState =
 
 export function useMe(): MeState {
   const api = useApi();
-  const query = useQuery({ queryKey: ['me'], queryFn: () => api.get<Me>('/me') });
+  const query = useQuery({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const me = await api.get<Me>('/me');
+      csrfStore.getState().setToken(me.csrfToken);
+      return me;
+    },
+  });
   if (query.isPending) return { state: 'loading' };
   if (query.isError) {
     return query.error instanceof ApiError && query.error.status === 401

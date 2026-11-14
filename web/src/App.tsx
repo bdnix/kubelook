@@ -1,8 +1,8 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 import { BrowserRouter } from 'react-router';
-import { ApiError, browserClient, type ApiClient } from './api/client';
-import { ApiContext } from './api/context';
+import { ApiError, type ApiClient } from './api/client';
+import { ApiContext, appClient } from './api/context';
 import { AppRoutes } from './features/shell/routes';
 
 function newQueryClient(): QueryClient {
@@ -20,7 +20,7 @@ function newQueryClient(): QueryClient {
 
 export function App({ client }: { client?: ApiClient }) {
   const [queryClient] = useState(newQueryClient);
-  const [defaultClient] = useState(() => browserClient());
+  const [defaultClient] = useState(() => appClient());
   return (
     <QueryClientProvider client={queryClient}>
       <ApiContext.Provider value={client ?? defaultClient}>
