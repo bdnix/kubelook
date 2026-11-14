@@ -293,3 +293,12 @@ func TestServe_ProvidersFollowTheConfiguredClientIDs(t *testing.T) {
 		})
 	}
 }
+
+func TestServe_VaultConfigured_StartsAndKeepsAPIProtected(t *testing.T) {
+	cfg := loadConfig(t, "vault:\n  address: http://127.0.0.1:1\n  candidateRoles: [devops-role]\n")
+	r := start(t, cfg, true)
+	code, _ := get(t, "http://"+r.addr+"/healthz")
+	assert.Equal(t, http.StatusOK, code)
+	code, _ = get(t, "http://"+r.addr+"/api/v1/me")
+	assert.Equal(t, http.StatusUnauthorized, code)
+}

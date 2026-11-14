@@ -105,6 +105,12 @@ func parseEnvelope(envelope string) (keyID string, nonce, ct []byte, err error) 
 	return parts[1], nonce, ct, nil
 }
 
+// KeyIDOf returns the key ID recorded in an envelope without decrypting it.
+func KeyIDOf(envelope string) (string, error) {
+	keyID, _, _, err := parseEnvelope(envelope)
+	return keyID, err
+}
+
 // AAD builds the associated data that binds a sealed value to its purpose and owner.
 // A purpose containing "|" is a programming error and panics.
 func AAD(purpose, binding string) []byte {

@@ -217,3 +217,10 @@ func TestGoogle_IdentifyWhileIssuerDown_Error(t *testing.T) {
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, auth.ErrNotAllowed)
 }
+
+func TestNewGoogle_MissingClientIDOrIssuer_Error(t *testing.T) {
+	for _, cfg := range []auth.GoogleConfig{{IssuerURL: "https://i"}, {ClientID: "c"}} {
+		_, err := auth.NewGoogle(context.Background(), cfg, clock.Real(), nil)
+		require.Error(t, err)
+	}
+}

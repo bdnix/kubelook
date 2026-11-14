@@ -17,9 +17,9 @@ const kubernetesMountType = "kubernetes"
 
 // Cluster is a Kubernetes mount a token can open.
 type Cluster struct {
-	Name  string   // mount path below the prefix, e.g. "prod" or "eu/prod"
-	Mount string   // full mount path without trailing slash, e.g. "kubernetes/prod"
-	Roles []string // allowed roles in preference order; Roles[0] is the default
+	Name  string   `json:"name"`  // mount path below the prefix, e.g. "prod" or "eu/prod"
+	Mount string   `json:"mount"` // full mount path without trailing slash, e.g. "kubernetes/prod"
+	Roles []string `json:"roles"` // allowed roles in preference order; Roles[0] is the default
 }
 
 // Discover computes exactly the clusters the token can open: Kubernetes mounts under prefix

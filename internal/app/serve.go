@@ -15,11 +15,13 @@ import (
 	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/auth"
 	"github.com/bdnix/kubelook/internal/clock"
+	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
 	"github.com/bdnix/kubelook/internal/httpapi"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
+	"github.com/bdnix/kubelook/internal/vault"
 	"github.com/bdnix/kubelook/internal/webui"
 )
 
@@ -27,6 +29,7 @@ const (
 	readHeaderTimeout = 10 * time.Second
 	shutdownTimeout   = 10 * time.Second
 	authHTTPTimeout   = 15 * time.Second
+	vaultHTTPTimeout  = 15 * time.Second
 )
 
 // ServeOptions injects the parts of Serve that tests replace.
@@ -108,9 +111,16 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	if err != nil {
 		return fail(err)
 	}
+	var creds *cluster.Credentials
+	if cfg.Vault.Address != "" {
+		creds = cluster.NewCredentials(cluster.Deps{
+			Sessions: store.NewSessions(db), Sealer: sealer, Vault: vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout}),
+			Clock: o.Clock, Config: cfg, Audit: c.audit, Registry: mgr.Registry(), Ender: mgr, Log: log,
+		})
+	}
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, KeyID: sealer.KeyID(),
+		Auth: authHandlers, Credentials: creds, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil

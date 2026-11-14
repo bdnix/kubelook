@@ -245,3 +245,14 @@ func TestVerbConstants(t *testing.T) {
 	assert.Equal(t, "vault-credential-issued", audit.VerbVaultCredentialIssued)
 	assert.Equal(t, "key-changed", audit.VerbKeyChanged)
 }
+
+func TestUserIdentity_TakesProviderSubjectAndEmail(t *testing.T) {
+	id := audit.UserIdentity(store.User{Provider: "github", Subject: "42", Email: "o@x.example", Name: "Octo"})
+	assert.Equal(t, audit.Identity{AccountProvider: "github", AccountSubject: "42", AccountEmail: "o@x.example"}, id)
+}
+
+func TestIdentityFrom_NothingAttached_Zero(t *testing.T) {
+	assert.Equal(t, audit.Identity{}, audit.IdentityFrom(t.Context()))
+	ctx := audit.WithIdentity(t.Context(), audit.Identity{AccountEmail: "e"})
+	assert.Equal(t, "e", audit.IdentityFrom(ctx).AccountEmail)
+}

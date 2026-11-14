@@ -192,5 +192,3 @@ func TestAuditIdentity_IncludesTheVaultIdentityWhenATokenIsInTheSession(t *testi
 	assert.Equal(t, "oidc-grace", after.VaultDisplayName)
 	assert.Equal(t, "google", after.AccountProvider)
 }
-
-

@@ -205,7 +205,7 @@ func TestRestore_OK_StoresTokenAndReturnsStatusAndClusters(t *testing.T) {
 
 func TestRestore_CopyOfAnotherUser_WrongUser_NothingStored(t *testing.T) {
 	e := newEnv(t)
-	foreign, err := e.sealer.Seal([]byte(`{"kind":"vault_token","token":"`+vaultTok+`","savedAt":"x"}`), crypto.AAD(crypto.PurposeSavedCredential, "someone-else"))
+	foreign, err := e.sealer.Seal([]byte(`{"kind":"vault_token","token":"`+vaultTok+`","savedAt":"2026-11-14T12:00:00Z"}`), crypto.AAD(crypto.PurposeSavedCredential, "someone-else"))
 	require.NoError(t, err)
 	res := e.c.Restore(t.Context(), e.sess, []string{foreign})
 	assert.Equal(t, "wrong_user", res[0].Status)
@@ -245,7 +245,7 @@ func TestRestore_ExpiredGarbageAndUnsupported(t *testing.T) {
 	sealed := e.add(t)
 	require.NoError(t, e.c.RemoveVaultToken(t.Context(), e.sess))
 
-	expired, err := e.sealer.Seal([]byte(`{"kind":"vault_token","token":"gone","savedAt":"x"}`), crypto.AAD(crypto.PurposeSavedCredential, e.user.ID))
+	expired, err := e.sealer.Seal([]byte(`{"kind":"vault_token","token":"gone","savedAt":"2026-11-14T12:00:00Z"}`), crypto.AAD(crypto.PurposeSavedCredential, e.user.ID))
 	require.NoError(t, err)
 	unsupported, err := e.sealer.Seal([]byte(`{"kind":"mystery"}`), crypto.AAD(crypto.PurposeSavedCredential, e.user.ID))
 	require.NoError(t, err)
@@ -499,4 +499,41 @@ type discoveryDown struct{ *vault.Client }
 
 func (d *discoveryDown) Mounts(context.Context, string) (map[string]string, error) {
 	return nil, fmt.Errorf("listing: %w", vault.ErrUnreachable)
+}
+
+func TestAdd_VaultAnswersWithAnError_GenericErrorNotATokenRejection(t *testing.T) {
+	e := newEnv(t)
+	e.vault.ForceStatus(400)
+	_, _, err := e.c.AddVaultToken(t.Context(), e.sess, vaultTok)
+	require.Error(t, err)
+	var a *apperr.APIError
+	assert.NotErrorAs(t, err, &a)
+
+	res := e.c.Restore(t.Context(), e.sess, []string{e.sealedCopy(t)})
+	assert.Equal(t, "invalid", res[0].Status)
+}
+
+func (e *env) sealedCopy(t *testing.T) string {
+	t.Helper()
+	s, err := e.sealer.Seal([]byte(`{"kind":"vault_token","token":"`+vaultTok+`","savedAt":"2026-11-14T12:00:00Z"}`), crypto.AAD(crypto.PurposeSavedCredential, e.user.ID))
+	require.NoError(t, err)
+	return s
+}
+
+func TestRestore_DiscoveryFailsForAnotherReason_Invalid(t *testing.T) {
+	e := newEnv(t)
+	e.c = cluster.NewCredentials(cluster.Deps{
+		Sessions: store.NewSessions(e.db), Sealer: e.sealer, Vault: &discoveryBroken{Client: e.vaultClient()}, Clock: e.clock, Config: e.cfg,
+		Audit: audit.NewRecorder(e.db, e.clock, e.auditOut, func() string { return "a" }), Registry: e.sessions.Registry(), Ender: e.sessions,
+		Log: slog.New(slog.NewJSONHandler(e.logs, nil)),
+	})
+	res := e.c.Restore(t.Context(), e.sess, []string{e.sealedCopy(t)})
+	assert.Equal(t, "invalid", res[0].Status)
+	assert.Contains(t, e.logs.String(), "discovering clusters")
+}
+
+type discoveryBroken struct{ *vault.Client }
+
+func (d *discoveryBroken) Mounts(context.Context, string) (map[string]string, error) {
+	return nil, fmt.Errorf("boom")
 }

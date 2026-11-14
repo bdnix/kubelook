@@ -101,6 +101,35 @@ func (r *Registry) Close(hash string) error {
 	return errors.Join(errs...)
 }
 
+// CloseMatching runs and removes the session's closers whose name satisfies match, in
+// registration order, and returns their joined errors. Unlike Close it leaves the session open:
+// later registrations are kept.
+func (r *Registry) CloseMatching(hash string, match func(name string) bool) error {
+	r.mu.Lock()
+	var hit, keep []*entry
+	for _, e := range r.entries[hash] {
+		if match(e.name) {
+			hit = append(hit, e)
+		} else {
+			keep = append(keep, e)
+		}
+	}
+	if len(keep) == 0 {
+		delete(r.entries, hash)
+	} else {
+		r.entries[hash] = keep
+	}
+	r.mu.Unlock()
+
+	var errs []error
+	for _, e := range hit {
+		if err := e.closeFn(); err != nil {
+			errs = append(errs, fmt.Errorf("closing %s: %w", e.name, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
 // markEnded remembers hash, forgetting the oldest entry beyond the capacity. Callers hold r.mu.
 func (r *Registry) markEnded(hash string) {
 	if _, ok := r.ended[hash]; ok {
