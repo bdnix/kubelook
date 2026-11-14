@@ -54,6 +54,7 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
   return (
     <>
       <h1>{descriptor.title}</h1>
+      {descriptor.note && <p>{descriptor.note}</p>}
       {live.status === 'paused' && (
         <Banner kind="info">Live updates paused. They resume when this tab is visible.</Banner>
       )}
