@@ -14,6 +14,7 @@ func (d Deps) registerKube(mux *http.ServeMux) {
 	}
 	mux.HandleFunc("GET /api/v1/clusters/{cluster}/discovery", d.discovery)
 	d.registerResources(mux, kube.NewResources(d.Kube))
+	d.registerAccess(mux, kube.NewAccess(d.Kube, d.Clock, d.sessionRegistry()))
 }
 
 // discovery answers what the cluster serves.
@@ -29,4 +30,11 @@ func (d Deps) discovery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, disc)
+}
+
+func (d Deps) sessionRegistry() *session.Registry {
+	if d.Sessions == nil {
+		return nil
+	}
+	return d.Sessions.Registry()
 }
