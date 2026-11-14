@@ -22,6 +22,7 @@ import (
 	"github.com/bdnix/kubelook/internal/execs"
 	"github.com/bdnix/kubelook/internal/files"
 	"github.com/bdnix/kubelook/internal/httpapi"
+	"github.com/bdnix/kubelook/internal/jobs"
 	"github.com/bdnix/kubelook/internal/kube"
 	"github.com/bdnix/kubelook/internal/logs"
 	"github.com/bdnix/kubelook/internal/session"
@@ -67,6 +68,7 @@ type components struct {
 	ws           *ws.Mux
 	vaultMonitor *vault.Monitor
 	hub          *watch.Hub
+	jobs         *jobs.Runner
 	handler      http.Handler
 }
 
@@ -154,6 +156,20 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 			return st.WatchIdleSeconds
 		},
 	})
+	c.jobs = jobs.NewRunner(jobs.Deps{
+		Store: store.NewJobs(db), Clock: o.Clock, Sealer: sealer, Log: log, ReplicaID: store.NewID(), NewID: store.NewID,
+		Sessions: store.NewSessions(db),
+		// Jobs run without a request: give them the identity the audit records of a request would carry.
+		Context: func(ctx context.Context, j *jobs.Job) context.Context {
+			u, err := c.users.Get(ctx, j.UserID)
+			if err != nil {
+				return ctx
+			}
+			id := audit.UserIdentity(u)
+			id.VaultEntityID, id.VaultDisplayName = creds.VaultIdentity(ctx, j.Session())
+			return audit.WithIdentity(ctx, id)
+		},
+	})
 	c.ws = ws.NewMux(ws.Deps{Clock: o.Clock, Log: log, Sessions: mgr, PublicHost: publicURL.Host, Fail: httpapi.ErrorWriter(log)})
 	c.ws.Register("watch.open", c.hub.Factory())
 	c.ws.Register("logs.open", logs.NewFactory(logs.Deps{
@@ -170,7 +186,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, WS: c.ws,
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, Jobs: c.jobs, WS: c.ws,
 		Debugger: execs.NewDebugger(execs.DebuggerDeps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit, Rand: o.Rand, Debug: cfg.Debug, NodeShell: cfg.NodeShell}), VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
@@ -229,7 +245,7 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 	c.log.Info("listening", "addr", ln.Addr().String(), "config", cfg)
 
 	var wg sync.WaitGroup
-	for _, loop := range []func(context.Context){c.sessions.RunWatchdog, c.sessions.RunSweep, c.opener.RunRefresher, c.vaultMonitor.Run} {
+	for _, loop := range []func(context.Context){c.sessions.RunWatchdog, c.sessions.RunSweep, c.opener.RunRefresher, c.vaultMonitor.Run, c.jobs.Run} {
 		wg.Add(1)
 		go func() { defer wg.Done(); loop(ctx) }()
 	}
@@ -250,6 +266,7 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 
 	c.ws.Shutdown() // open sockets close with 1001
 	c.hub.Close()
+	c.jobs.Close() // running jobs are cancelled; their rows stay "running" until recovery on a live replica classifies them
 	for _, h := range c.sessions.Registry().Hashes() {
 		if err := c.sessions.Registry().Close(h); err != nil {
 			c.log.Warn("closing session resources", "error", err.Error())

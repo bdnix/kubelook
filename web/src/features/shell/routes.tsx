@@ -8,6 +8,7 @@ import { ClusterPage } from '../clusters/ClusterPage';
 import { ClusterRail } from '../clusters/ClusterRail';
 import { useClusters } from '../clusters/useClusters';
 import { Dock } from '../dock/Dock';
+import { JobsPanel } from '../jobs/JobsPanel';
 import { DrawerRoute } from '../details/DrawerRoute';
 import { AddCredentials } from '../credentials/AddCredentials';
 import { VaultStoreContext } from '../credentials/context';
@@ -89,7 +90,12 @@ function SignedIn({ me }: { me: Me }) {
           <Route path="/c/:cluster/:group/:kind/:name" element={<DrawerRoute />} />
         </Routes>
       }
-      dock={<Dock liveBufferLines={me.limits.logsLiveBufferLines} />}
+      dock={
+        <>
+          <JobsPanel />
+          <Dock liveBufferLines={me.limits.logsLiveBufferLines} />
+        </>
+      }
     >
       <Banners
         maintenanceBanner={me.maintenanceBanner}

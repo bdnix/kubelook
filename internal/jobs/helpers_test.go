@@ -77,12 +77,6 @@ func (s *fakeSessions) Exists(_ context.Context, hashes []string) ([]string, err
 	return out, nil
 }
 
-func (s *fakeSessions) end(hash string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.live, hash)
-}
-
 // world is a database, a clock and sessions shared by one or more runners (replicas).
 type world struct {
 	db       *store.DB
@@ -148,7 +142,8 @@ func (w *world) pass(t *testing.T, kind string, d time.Duration, n int) {
 // recvPass waits for one pass of the named kind and skips the others.
 func (w *world) recvPass(t *testing.T, kind string) {
 	t.Helper()
-	for testutil.Recv(t, w.passes) != kind {
+	for got := ""; got != kind; {
+		got = testutil.Recv(t, w.passes)
 	}
 }
 

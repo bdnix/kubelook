@@ -53,17 +53,23 @@ describe('JobsPanel', () => {
   it('lists jobs with their status, progress and message', async () => {
     const s = setup([
       job(),
-      job({ id: 'j0', status: 'failed', message: 'Node not found', progress: { done: 0, total: 0, text: '' }, offers: ['retry'] }),
+      job({
+        id: 'j0',
+        status: 'failed',
+        message: 'Node not found',
+        progress: { done: 0, total: 0, text: '' },
+        offers: ['retry'],
+      }),
     ]);
     renderApp(<JobsPanel />, { client: s.client, queryClient: s.queryClient });
     const region = await screen.findByRole('region', { name: 'Jobs' });
-    const rows = within(region).getAllByRole('listitem');
-    expect(rows).toHaveLength(2);
-    expect(within(rows[0]!).getByText('Running')).toBeInTheDocument();
-    expect(within(rows[0]!).getByText('Evicted 1 of 3 pods')).toBeInTheDocument();
-    expect(within(rows[0]!).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
-    expect(within(rows[1]!).getByText('Failed')).toBeInTheDocument();
-    expect(within(rows[1]!).getByText('Node not found')).toBeInTheDocument();
+    const [first, second, ...rest] = within(region).getAllByRole('listitem');
+    expect(rest).toHaveLength(0);
+    expect(within(first as HTMLElement).getByText('Running')).toBeInTheDocument();
+    expect(within(first as HTMLElement).getByText('Evicted 1 of 3 pods')).toBeInTheDocument();
+    expect(within(first as HTMLElement).getByRole('progressbar')).toHaveAttribute('aria-valuenow', '1');
+    expect(within(second as HTMLElement).getByText('Failed')).toBeInTheDocument();
+    expect(within(second as HTMLElement).getByText('Node not found')).toBeInTheDocument();
   });
 
   it('polls every 3 seconds only while a job is active', async () => {
@@ -86,7 +92,11 @@ describe('JobsPanel', () => {
 
   it('an interrupted job offers its buttons; Retry starts a new job and refreshes the list', async () => {
     const s = setup([
-      job({ status: 'interrupted', message: 'Drain stopped part-way: 4 pods remain on the node.', offers: ['retry', 'rollback'] }),
+      job({
+        status: 'interrupted',
+        message: 'Drain stopped part-way: 4 pods remain on the node.',
+        offers: ['retry', 'rollback'],
+      }),
     ]);
     renderApp(<JobsPanel />, { client: s.client, queryClient: s.queryClient });
     const region = await screen.findByRole('region', { name: 'Jobs' });
