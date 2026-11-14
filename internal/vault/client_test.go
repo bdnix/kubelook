@@ -2,7 +2,6 @@ package vault_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -246,6 +245,5 @@ func TestErrors_NeverContainTheToken(t *testing.T) {
 	for _, e := range errs {
 		require.Error(t, e)
 		assert.NotContains(t, e.Error(), secretToken)
-		assert.False(t, errors.Is(e, nil))
 	}
 }
