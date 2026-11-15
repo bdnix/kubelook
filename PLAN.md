@@ -2,15 +2,33 @@
 
 Source of truth for *what* to build: [`docs/spec.md`](docs/spec.md) (dated 2026-11-10). This file says *how* and *in what order*.
 Written 2026-11-11. Every version below was looked up on that date (see §3).
+Amended 2026-11-15 after a review of the spec, this plan and the code merged by pull requests 1–6; the changes are listed in "Amendments of 2026-11-15" below and marked **(amended)** where they apply.
 
 **How to use this plan (read first, executor).**
 
-1. Work through the steps strictly in order. The 96 steps are grouped into **10 pull requests** (see "Pull request map" in §7). Never start a pull request before the previous one is merged with CI green.
+1. Work through the pull requests in the order of the "Pull request map" in §7, and the steps in the order the map lists them inside each pull request. This is numeric order with one exception **(amended)**: the integration harness and the tests of what is already built (Steps 7.1–7.7 and 7.11 part A) come early, in pull request 7, and each later pull request adds the integration tests of its own features. The 100 steps are grouped into **11 pull requests**. Never start a pull request before the previous one is merged with CI green.
 2. One pull request = one branch `pr/<nn>-<slug>` (or the branch the repository owner designates) into `main`. A step is a group of commits inside its pull request, never a pull request of its own. Push after every step so CI runs step by step; open the pull request as a draft after the first step and mark it ready after the last.
 3. Inside every step, follow the order **Red → Green → Refactor** exactly as written. Commit after each: `test(<id>): …` (failing tests), `feat(<id>): …` (implementation), `refactor(<id>): …` (only if something changed).
 4. Do not make design decisions. If something is not specified, look in this order: the step → §5 Conventions → §1 Assumptions → `docs/spec.md`. If it is still not answered, stop and ask; do not guess.
-5. Do not upgrade, swap or add dependencies beyond those in §3. Dependabot does upgrades after the project is done.
+5. Do not upgrade, swap or add dependencies beyond those in §3. Dependabot does upgrades after the project is done. One exception **(amended)**: when a required check fails because of a published advisory (`govulncheck`, `npm audit`, Trivy, dependency review), bump the affected dependency to the nearest fixed version (a patch or minor release, or an `overrides` entry for a transitive npm package), in its own `fix(deps): …` commit, and list it under deviations in the pull request. Never silence the check instead.
 6. A step is finished only when its **Acceptance** commands print the expected output *and* `make verify` prints `VERIFY OK` (from Step 0.5 on) *and* CI is green on the pushed commit (from Step 0.7 on, when the pipeline exists). A pull request is finished when every step in it is finished; only then is it merged, as a squash merge whose message is the pull request title.
+
+### Amendments of 2026-11-15
+
+Decided by the repository owner after the review. They change what is still to be built; nothing merged is undone.
+
+| # | Change | Where |
+| --- | --- | --- |
+| M1 | **Real systems first.** The integration harness (kind, Vault, the identity stand-in) and the integration tests of everything merged so far move from pull request 9 to a new pull request 7, before any Phase 5 work, and `integration-tests` is a required check from then on. This is the automated form of the spec's Gate 1, which the spec places before the core features. Every later pull request adds the integration tests of its own features | §7, Phase R, Phase 7 |
+| M2 | **Browser UI tests for every screen.** The Phase 4 screens get the UI tests they lack, with the Monaco and xterm adapters running for real; from here on every step that adds or changes a screen adds its UI test in the same step | §6, Step R.1, Phase 5 |
+| M3 | **YAML language worker.** In real Chromium the YAML worker of the editor fails (`Missing requestHandler or method: doValidation`), so schema validation and completion do not work. Fixed test-first in Step R.2 | §2 G6, Step R.2 |
+| M4 | **Helm 4 only.** Helm 3 passed the end of its security fixes on 2026-11-11. Kubelook ships the Helm 4 SDK only; releases made by Helm 3 stay manageable, which is proven by tests instead of by a second adapter | A31, §3, Steps 5.3–5.5, 7.8, 8.2 |
+| M5 | **Watch budget.** The resource map and the cluster overview must stay inside the 50-watches-per-user limit | A33, Steps 5.9, 5.15 |
+| M6 | **Egress guard.** User-supplied addresses may not point at loopback, link-local or cloud-metadata addresses | A32, Step 6.5 |
+| M7 | **PostgreSQL roles.** `roles.sql` is idempotent, covers tables added by later migrations, and the retention period has one source | Step 7.9 |
+| M8 | **No final release before the human gates.** The pipeline publishes release candidates; the owner cuts `0.1.0` after Gate 1 with a real Vault and the external security review | A34, Step 8.4, §8, §9 |
+| M9 | **Dependency rule.** Advisory-driven bumps are allowed (rule 5 above) | rule 5 |
+| M10 | **Corrections to merged code**: paged first list in the watch hub, one upstream watch per user rather than per session, README status | Step R.3 |
 
 ---
 
@@ -28,6 +46,7 @@ Written 2026-11-11. Every version below was looked up on that date (see §3).
 - Phase 2 — Sign-in and credentials
 - Phase 3 — Cluster access and live data
 - Phase 4 — Core features
+- Phase R — Real-system checkpoint (amended)
 - Phase 5 — Platform features
 - Phase 6 — Hardening
 - Phase 7 — Integration testing (kind + Vault)
@@ -44,7 +63,7 @@ The spec leaves these open. Each line is the decision this plan takes. Items mar
 **Scope**
 
 - A1. The two human gates in the spec's delivery plan (a real user's Vault token in a real organisation; an external security review and penetration test) cannot be executed by this plan. The plan covers them with the integration suite (Phase 7) and a written self-review checklist (`docs/security-review.md`, Step 8.5). They remain open items for the repository owner.
-- A2. "To confirm in the spike" items are checked by integration tests in Step 7.11, which writes the answers to `docs/spike-findings.md`. Until then the plan builds what the spec currently says (for example: YAML save is a full `PUT`).
+- A2. "To confirm in the spike" items are checked by integration tests. **(amended)** `docs/spike-findings.md` is created in pull request 7 (Step 7.11 part A) with the items that can be checked then (minting credentials on a real cluster, U1; the YAML save conflict count), and every later pull request fills in the items its tests answer; Step 7.11 part B completes it. Until an item is answered the plan builds what the spec currently says (for example: YAML save is a full `PUT`).
 - A3. The spec's performance targets (2 s first render, 200 sessions per replica) are measured by the load test in Step 6.4 and reported, not enforced in CI.
 - A4. Shipping audit records to Elasticsearch, a plugin system, port-forwarding and an AI assistant are out of scope (spec non-goals or "future").
 
@@ -79,6 +98,10 @@ The spec leaves these open. Each line is the decision this plan takes. Items mar
 - A27. For merged logs (all pods of a workload or selector), the set of pods is fixed when the stream opens; a "Refresh sources" button re-resolves it. At most 20 streams per view.
 - A28. Flux kinds that suspend by annotation use the value `disabled` to suspend and `enabled` to resume. The spec names the annotation keys but not the values; Step 5.7 requires confirming the values in the documentation the spec links before merging.
 - A29. Karpenter's "scaling decisions" groups are derived from event reasons with the substring rules in Step 5.10, because the spec does not list reasons per group.
+- A31. **(amended, M4)** Helm 4 only. `helm.version` accepts only `4`; the value `3` is refused at start with `helm.version 3 is no longer supported: Kubelook manages Helm 3 releases with the Helm 4 SDK`. Compatibility with releases made by Helm 3 is a tested property: the storage format is shared (verified, §2), Step 5.4 guards reading Helm 3 records in unit tests, and Step 7.8 proves on a real cluster that a release installed with the Helm 3 CLI can be upgraded and rolled back through Kubelook and is still manageable by the Helm 3 CLI afterwards. If that last direction fails, it is recorded in `docs/spike-findings.md` and `docs/operations.md` tells teams to move their CLI to Helm 4; no Helm 3 adapter is added.
+- A32. **(amended, M6)** The egress guard of Step 6.5 is `egress.blockLocalAddresses` (default `true`). It applies to connections whose address a user supplied (kubeconfig API servers and OIDC issuers, session Helm repositories and OCI registries) and refuses loopback, link-local (which includes the cloud metadata address `169.254.169.254`) and unspecified addresses, checked on the resolved IP at connect time. Addresses from deployment configuration (Vault, Google, GitHub, the database, per-cluster Prometheus, org-wide Helm repositories) and the API servers of Vault clusters (set by Vault admins) are not checked. Private ranges (`10/8`, `172.16/12`, `192.168/16`) stay allowed because clusters normally live there; restricting those remains the deployer's firewall, as the spec says.
+- A33. **(amended, M5)** Watch budget. One view may hold at most 24 watches. The resource map watches each kind per namespace while (kinds × selected namespaces) ≤ 24 and otherwise watches each kind across all namespaces and filters server-side; when the user may not list a kind across all namespaces, that kind falls back to the first namespaces that fit and the map says which namespaces were left out. The cluster overview uses all-namespace watches only and opens no watch for a module that is not active.
+- A34. **(amended, M8)** `VERSION` may carry a release-candidate suffix (`0.1.0-rc.1`). The plan's last pull request publishes `0.1.0-rc.1`, marked as a pre-release. The repository owner cuts `0.1.0` by changing `VERSION` after the two human gates of A1 have passed.
 - A30. A Vault mount "without API server address or CA" shows up in two ways, both handled the same: the config read returns the fields empty, or (measured on Vault 2.2.1, see §2) the config read returns HTTP 404 because the mount was never configured.
 
 **Integration testing**
@@ -108,6 +131,13 @@ The spec leaves these open. Each line is the decision this plan takes. Items mar
   - `GET sys/health?standbyok=true&perfstandbyok=true` returns 200 without a token; a paused Vault container makes requests time out.
 - npm peer-dependency ranges: `typescript-eslint@8.72.2` requires `typescript <6.1.0` (hence TypeScript 6.0.3, not 7.x); `eslint-plugin-jsx-a11y@6.10.2` does not accept ESLint 10 (hence not used); `react-router@8.5.1` exports `BrowserRouter`, `MemoryRouter`, `Routes`, `Route`, `Link`, `NavLink`, `Outlet`, `useParams`, `useNavigate`, `useSearchParams`.
 
+**Verified on 2026-11-15, in the review after pull request 6**
+
+- Helm release records are compatible in both directions at the storage level: with `helm.sh/helm/v3@v3.22.1` and `helm.sh/helm/v4@v4.3.1` over one fake Secrets client, a record written by the Helm 3 Secrets driver is read by the Helm 4 driver with name, revision, status, chart and values intact, and a revision written by the Helm 4 driver with `ApplyMethod: "ssa"` is read by the Helm 3 driver, which then sees both revisions. Not verified: applying manifests (a real upgrade or rollback across versions); that is Step 7.8.
+- The built app served by the real binary, with its real response headers, in Chromium with the API answered by the test: the pod list, the details drawer, the Monaco YAML tab and the xterm terminal render, and no Content-Security-Policy violation is reported.
+- In that same run the page throws `Missing requestHandler or method: doValidation` (also `getCodeAction`, `getFoldingRanges`, `findLinks`, `findDocumentSymbols`) as soon as the YAML tab opens: the YAML language worker does not answer. The cause was not established. See G6.
+- Coverage at the merge of pull request 6: Go 90.5% of statements (gate 90%), web 97.4% statements and 91.8% branches.
+
 **Not verified**
 
 - U1. Minting credentials (`POST kubernetes/<c>/creds/<role>`) against a real cluster, and everything else that needs Kubernetes. kind could not start in the planning sandbox: its host uses cgroup v1, and the kubelet in Kubernetes 1.35 refuses to run on cgroup v1 ("kubelet is configured to not run on a host using cgroup v1"). Step 7.2's acceptance checks minting first. **Consequence for the executor:** the machine that runs `make it-up` must use cgroup v2 (`stat -fc %T /sys/fs/cgroup` prints `cgroup2fs`). GitHub's `ubuntu-24.04` runners do.
@@ -123,6 +153,8 @@ The spec leaves these open. Each line is the decision this plan takes. Items mar
 - G3. `install-tools.sh` fetches the kubectl and Helm checksums from the same host as the binaries. The check catches corruption, not a compromised host. Pin the digests in the script if that matters.
 - G4. The Vite dev proxy in `vite.config.ts` may need `ws: true` for the WebSocket path `/api/v1/ws`. Not verified for Vite 8; settle it in Step 3.8 when the first WebSocket client exists.
 - G5. `make verify` runs `tsc` twice (see Step 0.4 pitfalls); accepted.
+- G6. **(amended, M3)** The YAML language worker fails in a real browser (see "Verified on 2026-11-15"). No test caught it because the Monaco adapter is replaced in unit tests and no browser test opened the editor. Close in Step R.2.
+- G7. **(amended, M2)** The UI tests of `web/ui` cover sign-in, credentials, the live pod list, the log dock and the Vault banner only; the screens of Steps 4.2–4.19 have none. Close in Step R.1.
 
 ---
 
@@ -135,9 +167,8 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 | Choice | Version | Why |
 | --- | --- | --- |
 | Go | 1.27.4 | Required by the spec (client-go, Helm SDKs are Go); newest stable; dependencies need ≥ 1.26 |
-| `k8s.io/client-go`, `k8s.io/api`, `k8s.io/apimachinery` | v0.37.2 | Newest; the line both Helm SDKs build against (they require v0.37.1). `k8s.io/kubectl` is deliberately not imported: drain is implemented in Step 4.12 so it can use the fake clock |
-| `helm.sh/helm/v4` | v4.3.1 | Spec: Helm 4 is the default SDK |
-| `helm.sh/helm/v3` | v3.22.1 | Spec: Helm 3 selectable with `helm.version: 3` |
+| `k8s.io/client-go`, `k8s.io/api`, `k8s.io/apimachinery` | v0.37.2 | Newest; the line the Helm SDK builds against (it requires v0.37.1). `k8s.io/kubectl` is deliberately not imported: drain is implemented in Step 4.12 so it can use the fake clock |
+| `helm.sh/helm/v4` | v4.3.1 | Spec: Kubelook runs the Helm 4 SDK. **(amended, M4)** `helm.sh/helm/v3` is not a dependency of the product: Helm 3 is past the end of its security fixes |
 | `net/http` `ServeMux` (standard library) | Go 1.27 | Method and wildcard patterns are built in; no router dependency |
 | `github.com/coder/websocket` | v1.8.15 | Context-aware, maintained WebSocket library with origin checking built into `Accept` |
 | `modernc.org/sqlite` | v1.62.0 | Pure-Go SQLite: static binary with `CGO_ENABLED=0`, runs in a distroless image |
@@ -190,6 +221,7 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 | kind node images | `kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0` and `kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5` | Oldest supported Kubernetes (1.35) and newest |
 | kubectl | v1.37.2 | Test setup |
 | Helm CLI | v4.3.1 | Chart lint, template, install |
+| Helm 3 CLI | v3.22.1, installed as `bin/helm3` by `hack/install-tools.sh` (Step 7.8) | **(amended, M4)** Integration tests only: makes and checks Helm 3 releases for the cross-version test |
 | Vault image | `hashicorp/vault:2.2.1@sha256:962a92876e168d68eaaa24b0b8b49bbce1cb63024060a67bba95cd158a366fc2` | Newest Vault (see U1) |
 | PostgreSQL image | `postgres:18.6-trixie` | Newest stable PostgreSQL |
 | Build images | `golang:1.27.4-trixie`, `node:26.13.0-trixie` | Match tool versions. Digests pinned in the `Dockerfile` |
@@ -234,13 +266,14 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 │   ├── jobs/         # durable jobs: store, runner, lease, recovery
 │   ├── actions/      # workload, node, flux and module actions
 │   ├── certs/        # PEM certificate metadata
-│   ├── helm/         # Driver interface; helm3/ and helm4/ adapters; repositories
+│   ├── helm/         # Driver interface; helm4/ adapter; repositories
 │   ├── flux/         # Flux kinds, status summary, inventory
 │   ├── modules/      # module registry: karpenter, keda, externalsecrets, vaultsecrets, certmanager, gatewayapi, trivy, permissions
 │   ├── resourcemap/  # graph builder
 │   ├── overview/     # cluster overview triage
 │   ├── metrics/      # metrics-server and Prometheus pod/node metrics
 │   ├── telemetry/    # Prometheus metrics registry, OpenTelemetry setup, memory guard
+│   ├── egress/       # dial guard for user-supplied addresses (Step 6.5)
 │   ├── httpapi/      # router, middleware, handlers (thin: decode → call package → encode)
 │   ├── webui/        # embedded built SPA (dist/) and static handler
 │   └── testutil/     # fakes shared by unit tests (fakevault, fakeoidc, fakekube, helmtest); excluded from coverage
@@ -361,22 +394,22 @@ Package dependency rule (enforced by review, and by `depguard` in Step 0.3): `in
 
 ### UI tests (browser, run on every pull request)
 
-- **What they cover:** what jsdom cannot prove: the built app in real Chromium, real IndexedDB (saved credential copies surviving a reload), real navigation and URL encoding, keyboard and focus behaviour, and the user journeys of a phase end to end through the screen. Every phase that adds screens adds UI tests for its main journeys in the same pull request (Phase 2: sign-in page and its error texts, adding a kubeconfig, the cluster rail, restore after reload, key-change notice).
+- **What they cover:** what jsdom cannot prove: the built app in real Chromium, real IndexedDB (saved credential copies surviving a reload), real navigation and URL encoding, keyboard and focus behaviour, and the user journeys of a phase end to end through the screen. Every phase that adds screens adds UI tests for its main journeys in the same pull request (Phase 2: sign-in page and its error texts, adding a kubeconfig, the cluster rail, restore after reload, key-change notice). **(amended, M2)** This rule was not carried into the steps of Phase 4, so those screens have no UI test; Step R.1 adds them. From Step R.1 on the rule is per step: a step that adds or changes a screen names its UI test, the test is written in that step's Red, and the step is not finished until `make test-ui` passes. In UI tests the Monaco and xterm adapters are the real ones (they are replaced only in jsdom unit tests), and every UI test fails on an uncaught page error or a Content-Security-Policy violation (helper `guardPage`, Step R.1).
 - **How:** Playwright (`web/ui/*.ui.ts`, config `web/playwright.config.ts`) serves the production build with `vite preview` and answers `/api/v1/**` from the tests with `page.route`. No backend, Vault or cluster is involved, so they take seconds and never flake on infrastructure. Locators are role- and text-based (`getByRole`, `getByLabel`), assertions are auto-waiting, and there is no `waitForTimeout`.
 - **Run:** `make test-ui` locally (set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to reuse an installed Chromium), CI job `ui-tests`. Failures upload the Playwright report and traces. They are not coverage-counted. `make verify` does not run them because it must work without a browser.
 - **Relation to the other layers:** unit tests (jsdom) prove component logic; UI tests prove the screens in a real browser against a stand-in API; the Phase 7 browser tests (`test/e2e`) prove the same screens against the real stack, including Monaco and xterm.
 
 ### Integration tests (separate CI job, never counted in coverage)
 
-- **What they cover:** behaviour that only a real system can prove. Vault: token lookup, mount listing limited by policy, capability checks (`update` vs `create`), reading mount config, minting credentials, renewal, leases. Kubernetes (two kind clusters, 1.35 and 1.37): list/watch/resume, logs, exec over WebSocket, ephemeral containers, server-side dry run, optimistic-concurrency conflicts, eviction and drain with PodDisruptionBudgets, `SelfSubjectAccessReview`, CRD discovery, Helm 3 and Helm 4 installs. PostgreSQL: both dialects, the insert-only audit role and row-level security. Kubelook as a container image: sign-in flows, sessions across two replicas, logout closing every connection, the browser UI through Playwright (including Monaco and xterm).
+- **What they cover:** behaviour that only a real system can prove. Vault: token lookup, mount listing limited by policy, capability checks (`update` vs `create`), reading mount config, minting credentials, renewal, leases. Kubernetes (two kind clusters, 1.35 and 1.37): list/watch/resume, logs, exec over WebSocket, ephemeral containers, server-side dry run, optimistic-concurrency conflicts, eviction and drain with PodDisruptionBudgets, `SelfSubjectAccessReview`, CRD discovery, Helm installs and releases made by the Helm 3 CLI. PostgreSQL: both dialects, the insert-only audit role and row-level security. Kubelook as a container image: sign-in flows, sessions across two replicas, logout closing every connection, the browser UI through Playwright (including Monaco and xterm).
 - They are Go tests under `test/integration` with build tag `integration` (so `go test ./...` never compiles them) plus Playwright tests under `test/e2e`.
-- They run with `make it` locally and in the CI job `integration-tests` (in `ci.yml`, so publishing waits for them). They must pass for a pull request to merge from pull request 9 (Phase 7) on.
+- They run with `make it` locally and in the CI job `integration-tests` (in `ci.yml`, so publishing waits for them). **(amended, M1)** They must pass for a pull request to merge from pull request 7 (Phase R) on, and a pull request that adds a feature a real system must prove adds that integration test itself.
 
 ---
 
 ## §7 Step dependency map
 
-Steps are executed in numeric order; this map shows the real dependencies so a failure can be traced.
+Steps are executed in the order of the pull request map below (numeric order, except that Steps 7.1–7.7 and 7.11 part A run in pull request 7); this map shows the real dependencies so a failure can be traced.
 
 ```
 0.1 → 0.2 → 0.3 → 0.4 → 0.5 → 0.6 → 0.7 → 0.8 → 0.9
@@ -389,15 +422,16 @@ Steps are executed in numeric order; this map shows the real dependencies so a f
 3.1 broker (needs 2.5–2.9) → 3.2 client factory → 3.4 resource read API (needs 3.3 redact) → 3.5 RBAC
 3.6 ws → 3.7 watch hub (needs 3.2, 3.3) → 3.8 web live lists → 3.9 logs → 3.10 logs web → 3.11 vault outage
 4.1 writes (needs 1.7, 3.4) → 4.2 … 4.19 (each needs 3.x; 4.12 needs 4.11; 4.8 needs 4.7; 4.10 needs 4.9)
-5.1 CRDs → 5.2 module framework → 5.10 … 5.14;  5.3 → 5.4 → 5.5 (needs 4.11) → 5.6;  5.7 → 5.8;  5.9;  5.15
-6.1 → 6.2 → 6.3 → 6.4
-7.1 → 7.2 → 7.3 → 7.4 … 7.10 → 7.11
+7.1 → 7.2 → 7.3 → 7.4 … 7.7 → 7.11 part A;  R.1 → R.2;  R.3   (pull request 7; they need only Phases 0–4)
+5.1 CRDs → 5.2 module framework → 5.10 … 5.14;  5.3 → 5.4 → 5.5 (needs 4.11) → 5.6;  5.7 → 5.8;  5.9;  5.15;  7.8 (needs 5.x and 7.3)
+6.1 → 6.2 → 6.3 → 6.4;  6.5 (needs 3.1, 5.5)
+7.9, 7.10 (need 7.3) → 7.11 part B
 8.1 → 8.2 → 8.3 → 8.4 → 8.5 → 8.6
 ```
 
 ### Pull request map
 
-The whole plan is delivered in 10 pull requests. Each ends in a state where `main` builds, passes `make verify` and is green in CI.
+The whole plan is delivered in 11 pull requests **(amended: pull request 7 is new, and the former 7–10 are now 8–11)**. Each ends in a state where `main` builds, passes `make verify` and is green in CI.
 
 | PR | Steps | Delivers | Ends with |
 | --- | --- | --- | --- |
@@ -407,16 +441,18 @@ The whole plan is delivered in 10 pull requests. Each ends in a state where `mai
 | 4 | 3.1–3.11 | Credential broker, Kubernetes clients, redaction, read API, RBAC checks, WebSocket, watch hub, live lists, logs, Vault outage handling | Live resource lists and log streaming |
 | 5 | 4.1–4.10 | Writes with audit, kind registry, details drawer, YAML editor, workload actions, Secret reveal, shells, debug toolkit, pod file browser | Day-to-day operations on workloads |
 | 6 | 4.11–4.19 | Durable jobs, node actions and drain, full logs, field filter, export, settings, navigation, metrics, "who can" | All core features of the spec |
-| 7 | 5.1–5.15 | Custom resources, module framework, Helm 3 and 4, Flux, resource map, ecosystem modules, cluster overview | All platform features of the spec |
-| 8 | 6.1–6.4 | Prometheus metrics, traces and logs, memory guard, load test | Hardening complete |
-| 9 | 7.1–7.11, 8.1 part A | Integration and browser suites on kind + Vault as required checks; nightly run; spike findings; the debug image published | The CI job `integration-tests` green on the pull request itself |
-| 10 | 8.1 part B, 8.2–8.6 | Debug image digest pin, Helm chart, chart test, publishing from `main` (versions, image, chart, releases), documentation, final verification | §8 Definition of done |
+| 7 | 7.1–7.7, 7.11 part A, R.1–R.3 | **Real-system checkpoint**: the kind + Vault harness; integration tests of sign-in, the Vault path (the spec's Gate 1), the kubeconfig path, live data and day-2 operations; `integration-tests` as a required check; browser UI tests of the Phase 4 screens; the YAML worker fix; corrections | The CI job `integration-tests` green on the pull request itself, and every product bug the new tests found fixed |
+| 8 | 5.1–5.15, 7.8 | Custom resources, module framework, Helm 4, Flux, resource map, ecosystem modules, cluster overview; their integration and UI tests | All platform features of the spec |
+| 9 | 6.1–6.5 | Prometheus metrics, traces and logs, memory guard, load test, egress guard | Hardening complete |
+| 10 | 7.9, 7.10, 7.11 part B, 8.1 part A | PostgreSQL and two replicas, the full-stack browser suite, nightly run, spike findings completed; the debug image published | `integration-tests` green including the browser suite |
+| 11 | 8.1 part B, 8.2–8.6 | Debug image digest pin, Helm chart, chart test, publishing from `main` (versions, image, chart, release candidates), documentation, final verification | §8 Definition of done |
 
 Rules for this grouping:
 
 - Pull request 1 **must** contain the pipeline (Steps 0.7–0.9). Nothing is merged to `main` before CI exists, so every merge in the project's history was checked by CI.
 - Phase 4 is split after Step 4.10 because 4.11 (durable jobs) starts a new dependency chain (4.12 and 5.5 need it); nothing in 4.1–4.10 depends on 4.11–4.19.
-- Step 8.1 needs two merges (the image must be published from `main` before its digest can be pinned), so its part A rides in pull request 9 and part B in pull request 10.
+- Step 8.1 needs two merges (the image must be published from `main` before its digest can be pinned), so its part A rides in pull request 10 and part B in pull request 11.
+- **(amended, M1)** Pull request 7 exists so that nothing more is built on fakes alone. Its tests are written against features that are already merged, so a failing test there is a product bug: fix it in the same pull request, unit test first in the owning package, and list it in the pull request body. If the fixes grow past what one review can hold, split at a step boundary with the owner's agreement, but do not start pull request 8 with a known red integration test.
 - Do not split or merge these groups without the repository owner's agreement. If a pull request must be split because of size, split only at a step boundary.
 
 ---
@@ -3522,11 +3558,106 @@ Command: `make test-frontend`. Expected failure: unresolved imports.
 **Phase 4 exit check.** `make verify` → `VERIFY OK`.
 
 ---
+# Phase R — Real-system checkpoint (amended)
+
+**Delivered in pull request 7.** Added on 2026-11-15 (M1, M2, M3, M10).
+
+Outcome: everything merged so far is proven against real Vault and two real Kubernetes clusters and in a real browser, before any platform feature is built on top of it. This is the automated form of the spec's Gate 1 ("auth design holds").
+
+Order inside the pull request:
+
+1. **Steps 7.1, 7.2, 7.3** (harness, Vault content and fixtures, test framework and the Kubelook container), as written in Phase 7. Step 7.2's acceptance is the first time credentials are minted on a real cluster (U1): if it fails, stop and report before going on.
+2. **Step 7.11 part A** (the `integration-tests` CI job), so the remaining steps of this pull request already run in CI.
+3. **Steps 7.4, 7.5, 7.6, 7.7** (sign-in flows, the Vault path, the kubeconfig path, live data and day-2 operations), as written in Phase 7.
+4. **Steps R.1, R.2, R.3** below.
+
+The steps of Phase 7 are not repeated here; read them there. Two things differ from how they were first written: the PostgreSQL containers, the Helm chart repository and the browser suite are not part of this pull request (Steps 7.8–7.10 add them later), and `make it` must end with `INTEGRATION OK` at the end of every step from 7.3 on.
+
+### Step R.1 — Browser UI tests for the Phase 4 screens
+
+**Goal.** Close G7: the main journey of every screen built in Steps 4.2–4.19 runs in real Chromium with the API answered by the test, with the real Monaco and xterm adapters.
+
+**Files.** Create `web/ui/guard.ts`, `web/ui/fixtures.ts` (the cluster, discovery, pod and socket stand-ins now inline in `live.ui.ts`, moved and extended), `web/ui/{details,editor,actions,shell,files,jobs,settings,navigation,filter}.ui.ts`. Modify `web/ui/helpers.ts`, `web/ui/live.ui.ts`, `web/ui/signin.ui.ts`, `web/ui/credentials.ui.ts` (use `guardPage`).
+
+**Red.** Write the tests first; run `make test-ui`. A test that fails because the product is wrong is a product bug: fix it in this step, with a unit test in the owning feature first.
+
+- `guard.ts`: `guardPage(page)` collects uncaught page errors, console messages containing `Content Security Policy`, and `securitypolicyviolation` events (through `page.addInitScript`); a shared `afterEach` fails the test when any was collected. Every `*.ui.ts` file uses it. Prove it once with a temporary page that throws.
+- `details.ui.ts`: opening a row sets the deep-link URL; loading that URL directly opens the drawer; the tabs are Overview, YAML, Events, Logs, Files, Related; `Escape` closes it and focus returns to the row.
+- `editor.ui.ts`: the YAML tab shows the object in Monaco (assert on the editor's text); typing a change enables Preview; Preview shows the diff from a mocked dry run; Save sends a `PUT` whose body carries the loaded `resourceVersion` and the `X-CSRF-Token` header; a 409 shows the conflict banner; a Secret shows `********`.
+- `actions.ui.ts`: Scale opens its dialog, validates, and posts `/actions` with the right body; an action the access check denies is disabled with the missing permission as its tooltip; delete asks for confirmation naming the object.
+- `shell.ui.ts`: "Open shell" opens a dock tab with an xterm terminal; bytes of a mocked `out` frame appear in the terminal; typing sends `exec.stdin`; a `closed` frame shows the "Start a new shell" prompt.
+- `files.ui.ts`: the Files tab lists a mocked directory, opens a text file in the editor, and shows the conflict message when the save is refused.
+- `jobs.ui.ts`: a bulk action on two selected rows lists both names in the confirmation, submits, and the jobs panel shows the job's progress and an `interrupted` job's Retry button.
+- `settings.ui.ts`: changing the watch idle time sends `PUT /settings`; pasting a new Vault token does not close an open dock tab.
+- `navigation.ui.ts`: `Ctrl+K` opens the palette and Enter navigates; the namespace filter narrows the list and survives a reload (from mocked settings); a deep link to a cluster that is not in the session shows the spec's message.
+- `filter.ui.ts`: a query in the filter bar narrows the list; an invalid query shows its error; Export downloads a CSV (assert through Playwright's `download` event) whose formula-like cell is neutralised.
+
+Command: `make test-ui`. Expected failure: the new files' assertions (and, until Step R.2, the page-error guard in `editor.ui.ts` — mark that one test `test.fail()` with a comment naming Step R.2, and remove the mark there; this is the only allowed expected-failure mark).
+
+**Green.** Fix what the tests find. **Refactor.** Keep stand-ins in `fixtures.ts`; no test file defines its own cluster or pod.
+
+**Acceptance.** `make test-ui` → all passed, with exactly one expected failure until Step R.2. CI job `ui-tests` green. The pull request body lists every product bug these tests found.
+
+**Pitfalls.** Role- and text-based locators and auto-waiting assertions only; no `waitForTimeout`. Monaco renders text in `.view-line` elements, which have no role: reading the editor's text through that class is the one allowed exception, wrapped in a helper `editorText(page)`.
+
+### Step R.2 — YAML language worker
+
+**Goal.** Close G6: schema validation and completion work in the YAML editor in a real browser (spec "Real-time manifest editing").
+
+**Files.** Modify `web/src/adapters/monaco/setup.ts` (and `web/vite.config.ts` only if the worker bundling needs it); modify `web/ui/editor.ui.ts`.
+
+**Red.** In `editor.ui.ts`: with a mocked OpenAPI schema that declares `spec.replicas` as an integer, typing `replicas: "three"` shows a validation marker (Monaco renders `.squiggly-error`; wrap it in a helper next to `editorText`), and no page error is thrown while the tab is open. Remove the `test.fail()` mark of Step R.1. `make test-ui` fails with the worker error of §2.
+
+**Green.** Find the cause first and state it in the commit message; do not guess. Check, in this order: that the worker created for the label `yaml` is `monaco-yaml`'s worker and not the base editor worker (log the label Monaco asks for); that `monaco-yaml@5.5.1` and `monaco-editor@0.57.0` agree on the worker protocol (`npm ls monaco-editor monaco-yaml`, and the peer range in `monaco-yaml`'s `package.json`); that Vite bundles `monaco-yaml/yaml.worker` as a module worker with its dependencies. If the only fix is a different version of `monaco-yaml` or `monaco-editor`, stop and ask the owner (rule 5), naming the version and the reason.
+
+**Refactor.** None.
+
+**Acceptance.** `make test-ui` → all passed, no expected failures left (`grep -rn "test.fail" web/ui | wc -l` → `0`). `make verify` → `VERIFY OK`.
+
+**Pitfalls.** The adapter stays free of branching logic and under 80 lines (Step 4.4). The CSP is not relaxed to make a worker load.
+
+### Step R.3 — Corrections to merged code
+
+**Goal.** Three small deviations from the spec found in the review (M10).
+
+**Files.** Modify `internal/watch/upstream.go`, `internal/watch/hub.go` and their tests; `README.md`.
+
+**Red.** Cases:
+- Paged first list: the upstream lists with `Limit: 500` and follows `Continue` until it is empty, redacting and caching each page before asking for the next, so the unredacted full list is never held at once (spec "Replica memory"). Test with 1,200 objects in the fake: three `List` calls, the snapshot holds 1,200 objects, and the watch starts from the `resourceVersion` of the **first** page's list. A `410 Gone` on a continue token restarts the list from the beginning.
+- One upstream per user: two sessions of the same user subscribing to the same cluster, kind, namespace and selector share one upstream (assert one `List` and one `Watch`), as the spec says ("one upstream watch per user, cluster, kind and namespace"). The upstream runs with the credentials of the session that opened it; when that session ends while another session of the user still subscribes, the upstream restarts under the remaining session and its subscribers get a fresh `snapshot`. The key no longer contains the session hash.
+- `README.md`: the "Under construction" paragraph says what exists now (sign-in, Vault and kubeconfig clusters, live lists, logs, shells, editing, the file browser) and what does not yet (Helm, Flux, modules, the Helm chart, a release). Step 8.5 still rewrites it at the end.
+
+Command: `go test -race -count=5 ./internal/watch/...`. Expected failure: assertion failures.
+
+**Green / Refactor.** Implement. Re-run.
+
+**Acceptance.** Tests `ok` with `-count=5`; `make it` → `INTEGRATION OK` (the watch tests of Step 7.7 still pass); `make verify` → `VERIFY OK`.
+
+**Pitfalls.** A kubeconfig cluster ID contains the file label, and two sessions of one user may hold different files under one label: share an upstream only when both sessions resolve the cluster ID to the same server URL and the same credential fingerprint (SHA-256 of the sealed credential's plaintext, kept in memory only); otherwise keep them apart.
+
+**Phase R exit check.** `make verify` → `VERIFY OK`; `make test-ui` → all passed; `make it-up && make it` → `INTEGRATION OK`; the CI job `integration-tests` is green on the pull request and listed as a required check in `docs/ci.md`.
+
+---
 # Phase 5 — Platform features
 
-**Delivered in pull request 7**.
+**Delivered in pull request 8** (together with Step 7.8, its integration tests).
 
-Outcome: the spec's "Phase 2. Platform": CRD browser, Helm 3 and 4, Flux, resource map, Karpenter, the ecosystem modules, security views and the cluster overview.
+Outcome: the spec's "Phase 2. Platform": CRD browser, Helm (the Helm 4 SDK; releases made by Helm 3 stay manageable), Flux, resource map, Karpenter, the ecosystem modules, security views and the cluster overview.
+
+**UI tests per step (amended, M2).** Each step below that adds a screen also adds the UI test named here, in its Red, using `guardPage` and `web/ui/fixtures.ts` (Step R.1). The step's Acceptance includes `make test-ui`.
+
+| Step | UI test file | Journey |
+| --- | --- | --- |
+| 5.1 | `web/ui/crds.ui.ts` | A custom kind appears under Custom Resources; its list shows a printer column; Create opens the schema form, and the form and the YAML tab stay in sync |
+| 5.2 | `web/ui/modules.ui.ts` | An active module shows in the sidebar and its kinds are absent from Custom Resources; an inactive one is hidden |
+| 5.6 | `web/ui/helm.ui.ts` | Releases list; values hidden until Reveal; the upgrade dialog shows both diffs before Confirm is enabled; a submitted job shows its progress row |
+| 5.8 | `web/ui/flux.ui.ts` | Dashboard counts; Reconcile disabled on a suspended object with its reason; the graph renders nodes that open details |
+| 5.9 | `web/ui/resourcemap.ui.ts` | The map draws nodes and edges from a mocked `graph` frame; the legend is shown; a click opens details; omitted kinds and left-out namespaces are named |
+| 5.10 | `web/ui/karpenter.ui.ts` | Overview cards per NodePool; the treemap regroups when the grouping changes |
+| 5.11–5.14 | `web/ui/modules.ui.ts` (extended) | One list and its action per module: KEDA pause, External Secrets force sync, Trivy rescan confirmation, the ServiceAccount risk list |
+| 5.15 | `web/ui/overview.ui.ts` | The triage sections render from mocked lists; a count links to the filtered list; leaving the page closes every watch channel |
+
+**Integration tests (amended, M1).** Step 7.8 (Helm, modules, Flux actions, CRD browser on the real clusters) is part of this pull request and runs after Step 5.15.
 
 ### Step 5.1 — Custom resource browser and schema forms
 
@@ -3586,7 +3717,7 @@ Command: `make test-backend PKG="./internal/modules/... ./internal/httpapi/..."`
 
 ### Step 5.3 — Helm: driver interface and Helm 4 adapter (read side)
 
-**Goal.** List releases and read a release's details through the Helm 4 SDK under the user's credentials.
+**Goal.** List releases and read a release's details through the Helm 4 SDK under the user's credentials. **(amended, M4)** Also make `helm.version` accept only `4` (A31): in `internal/config`, test first, the value `3` is refused with the message of A31 and any other value is refused as before; `me.features.helmVersion` stays and is always `4`.
 
 **Files.** Create `internal/helm/driver.go`, `internal/helm/getter.go`, `internal/helm/helm4/helm4.go`, tests for each; `internal/testutil/helmtest/chart.go` (builds a tiny in-memory chart for tests; it is under `internal/testutil`, which is already excluded from coverage — no new exclusion).
 
@@ -3646,36 +3777,41 @@ In this step the write methods return `errors.New("not implemented")` and have o
 
 **Pitfalls.** Helm storage driver for production is `"secret"` (the default; ConfigMap storage is read only when a deployer's cluster uses it — not supported for writes in v1; state this in `docs/operations.md`). Never return values from `Get` to HTTP callers without the reveal step (Step 5.6).
 
-### Step 5.4 — Helm 3 adapter and the version switch
+### Step 5.4 — Reading releases made by Helm 3 (amended, M4)
 
-**Goal.** The same `Driver` over the Helm 3 SDK; `helm.version` picks the adapter.
+**Goal.** Guard, in unit tests, that the Helm 4 adapter reads release records written by Helm 3. This step replaces the Helm 3 adapter and the version switch, which are no longer built (A31).
 
-**Files.** Create `internal/helm/helm3/helm3.go`(+test), `internal/helm/factory.go`(+test).
+**Files.** Create `internal/helm/helm4/testdata/helm3/{web.v1.json,web.v2.json,README.md}`, `internal/helm/helm4/helm3compat_test.go`, `internal/helm/factory.go`(+test).
 
-**Commands.** `go get helm.sh/helm/v3@v3.22.1`, then the same `go doc` commands with `helm.sh/helm/v3/pkg/...` (`pkg/release`, `pkg/chart`). Verified: `func (cfg *Configuration) Init(getter genericclioptions.RESTClientGetter, namespace, helmDriver string, log DebugLog) error` (note the extra `log` argument compared with Helm 4); `helm.sh/helm/v3/pkg/kube/fake.PrintingKubeClient`.
+`testdata/helm3/*.json` are two `v1/Secret` objects exactly as the Helm 3.22.1 Secrets storage driver writes them (type `helm.sh/release.v1`, labels `owner=helm`, `name`, `status`, `version`, and the gzip+base64 release in `data.release`): revision 1 `superseded` and revision 2 `deployed` of a release `web` in namespace `demo`, built from `helmtest.Chart()` with user values `replicas: 2` and a Secret in the manifest. They are generated **once**, outside this module, with a throw-away program that imports `helm.sh/helm/v3@v3.22.1` (`driver.NewSecrets` over `k8s.io/client-go/kubernetes/fake`, then dump the Secrets as JSON). `README.md` holds that program's source and the command to run it. `helm.sh/helm/v3` must not appear in `go.mod` (test: `go list -m all | grep -c 'helm.sh/helm/v3'` → `0`).
 
-**Red.** The **same test table** as Step 5.3, run against the Helm 3 adapter: put the shared cases in `internal/testutil/helmtest/conformance.go` as `func RunReadConformance(t *testing.T, newDriver func(t *testing.T) helm.Driver, seed func(…))` and call it from both adapters' tests (refactor Step 5.3's tests to use it — still green). Factory cases: `helm.version: 4` → Helm 4 driver; `3` → Helm 3; anything else → error; each driver gets its own temporary working directory under the job's temp dir.
+**Red.** Cases (the fixtures are loaded into a `kubernetes/fake` clientset; the adapter is built over the Helm 4 Secrets storage driver on that client):
+- `List("demo")` returns `web` at revision 2, `deployed`, with the chart name and version of the fixture.
+- `Get("demo", "web", 0)` returns the user values, the manifest (the Secret in it masked by `redact.Manifest`), notes and hooks; `Get(…, 1)` returns revision 1.
+- `History` returns both revisions, newest first.
+- A record without an apply method (every Helm 3 record) is reported as client-side apply; the adapter never fails on the missing field.
+- Factory cases: `Factory.Driver(ctx, sess, clusterID, namespace, workDir)` returns the Helm 4 driver; each driver gets its own working directory under the job's temporary directory.
 
-Command: `make test-backend PKG=./internal/helm/...`. Expected failure: `undefined: helm3.New`.
+Command: `make test-backend PKG=./internal/helm/...`. Expected failure: `undefined: helm.Factory` / missing fixtures.
 
-**Green.** Implement; `factory.go`:
+**Green.**
 
 ```go
-type Factory struct{ Version int; Clients kube.Clients }
+type Factory struct{ Clients kube.Clients }
 func (f *Factory) Driver(ctx context.Context, sess session.Session, clusterID, namespace, workDir string) (Driver, error)
 ```
 
-**Refactor.** Keep the two adapters as near-identical files; do **not** try to share code through generics across the two SDKs' types. Re-run.
+**Refactor.** None. Re-run.
 
-**Acceptance.** Tests `ok`; `CGO_ENABLED=0 go build ./...` succeeds with both SDKs linked.
+**Acceptance.** Tests `ok`; `CGO_ENABLED=0 go build ./...` succeeds; `go list -m all | grep -c 'helm.sh/helm/v3'` prints `0`.
 
-**Pitfalls.** The two SDKs have identically named packages: always import with aliases `actionv3`, `actionv4`, etc. They must never be mixed in one file.
+**Pitfalls.** This step proves reading only. Upgrading and rolling back a Helm 3 release, and whether the Helm 3 CLI can still manage a release afterwards, need a real cluster: Step 7.8.
 
 ### Step 5.5 — Helm write actions as durable jobs
 
 **Goal.** Install (HTTP repo or OCI), upgrade with edited values, rollback, uninstall and test, as jobs with limits, temp directories and recovery.
 
-**Files.** Modify both adapters (+ conformance tests `RunWriteConformance`); create `internal/helm/jobs.go`, `internal/helm/repos.go`, `internal/helm/chartfetch.go` with tests; `internal/httpapi/helm.go`(+test).
+**Files.** Modify the Helm 4 adapter (+ tests); create `internal/helm/jobs.go`, `internal/helm/repos.go`, `internal/helm/chartfetch.go` with tests; `internal/httpapi/helm.go`(+test).
 
 API (all under `/api/v1/clusters/{cluster}/helm`):
 - `GET /releases?namespace=`; `GET /releases/{namespace}/{name}?revision=` → detail **without** values (`valuesHidden:true`).
@@ -3685,7 +3821,8 @@ API (all under `/api/v1/clusters/{cluster}/helm`):
 - `GET /repositories` → org-wide (`helm.repositories`) plus session repositories (no passwords in the response); `POST /repositories` `{name, url, username?, password?}`; `DELETE /repositories/{name}` (session ones only).
 
 **Red.** Cases:
-- Write conformance for both adapters (memory storage + printing client): install creates revision 1 `deployed`; upgrade with new values → revision 2 and the values are stored; rollback to 1 → revision 3 whose values equal revision 1's; uninstall removes the release; test returns hook results; `Render` returns the manifest without storing a release; install of an existing name → `apperr.ErrConflict`.
+- Write cases for the adapter (memory storage + printing client): install creates revision 1 `deployed`; upgrade with new values → revision 2 and the values are stored; rollback to 1 → revision 3 whose values equal revision 1's; uninstall removes the release; test returns hook results; `Render` returns the manifest without storing a release; install of an existing name → `apperr.ErrConflict`.
+- **(amended, M4)** Apply method: an upgrade or rollback of a release whose latest revision records no apply method or `csa` (every release made by Helm 3) keeps client-side apply; only a first install uses the SDK's default. Assert the option the adapter passes to the SDK's upgrade and rollback actions for both cases (find the field with `go doc helm.sh/helm/v4/pkg/action.Upgrade`), and that the adapter never forces server-side apply onto an existing client-side release.
 - Chart fetch from an `httptest` repository serving `index.yaml` and a `.tgz` built by `helmtest`: downloads into the job's temp directory; a chart larger than `helm.maxChartBytes` → refused with `apperr.ErrTooLarge` and the file removed; basic-auth credentials from the repository entry are sent; the temp directory is removed after success **and** after failure (assert the directory is gone).
 - OCI references (`oci://…`) are passed to the SDK's chart locator unchanged (unit test asserts only the option mapping; the real pull is Step 7.8).
 - Job handler `Run`: records the starting revision in the job target before acting; audit verb per action (`helm-install`, …) with chart name and version, never values; values are stored only in `sealed_params`.
@@ -3694,9 +3831,9 @@ API (all under `/api/v1/clusters/{cluster}/helm`):
 - Session repositories are stored as `helm_repo` session credentials (sealed), gone at sign-out (A20).
 - Memory guard busy → `POST /jobs` answers 503 `server_busy`.
 
-Command: `make test-backend PKG="./internal/helm/... ./internal/httpapi/..."`. Expected failure: conformance failures (`not implemented`).
+Command: `make test-backend PKG="./internal/helm/... ./internal/httpapi/..."`. Expected failure: the write cases fail (`not implemented`).
 
-**Green.** Implement. Per job: `workDir := os.MkdirTemp("", "kubelook-helm-*")`, set the SDK's repository cache/config and registry config paths inside it (look up the exact option names with `go doc helm.sh/helm/v4/pkg/cli.EnvSettings` and `go doc helm.sh/helm/v4/pkg/action.ChartPathOptions`, and the v3 equivalents), `defer os.RemoveAll(workDir)`.
+**Green.** Implement. Per job: `workDir := os.MkdirTemp("", "kubelook-helm-*")`, set the SDK's repository cache/config and registry config paths inside it (look up the exact option names with `go doc helm.sh/helm/v4/pkg/cli.EnvSettings` and `go doc helm.sh/helm/v4/pkg/action.ChartPathOptions`), `defer os.RemoveAll(workDir)`.
 
 **Refactor.** `withWorkDir(fn)` helper; one `classify(startRev int, target, current *Release) (Status, []string)` pure function for `Recover` with a table test. Re-run.
 
@@ -3713,7 +3850,7 @@ Command: `make test-backend PKG="./internal/helm/... ./internal/httpapi/..."`. E
 
 **Files.** Create `web/src/features/helm/{ReleasesPage,ReleaseDetails,ValuesPanel,InstallDialog,UpgradeDialog,RollbackDialog,RepositoriesPanel,useReleases}.tsx` with tests.
 
-**Red.** Cases: the list polls every 15 s while visible (releases are not watchable; fake timers) and shows Name, Namespace, Status, Chart, App version, Revision, Updated; details tabs Values (hidden until "Reveal", which calls the audited endpoint; hidden again on close), Manifest (read-only, Secrets masked), Notes (text only), Hooks, History; upgrade dialog edits values YAML, then shows two diffs — values (old revealed vs new) and manifest (`/preview`) — before the Confirm button is enabled; install dialog picks a repository or OCI reference, chart, version, namespace, release name; rollback picks a revision; uninstall and test confirm first; each action submits a job and shows its progress row; `interrupted` jobs show Retry / Roll back / Uninstall as offered; actions disabled with a reason when the access check denies creating Secrets in the namespace; the page states which Helm major version the console uses (`me.features.helmVersion`).
+**Red.** Cases: the list polls every 15 s while visible (releases are not watchable; fake timers) and shows Name, Namespace, Status, Chart, App version, Revision, Updated; details tabs Values (hidden until "Reveal", which calls the audited endpoint; hidden again on close), Manifest (read-only, Secrets masked), Notes (text only), Hooks, History; upgrade dialog edits values YAML, then shows two diffs — values (old revealed vs new) and manifest (`/preview`) — before the Confirm button is enabled; install dialog picks a repository or OCI reference, chart, version, namespace, release name; rollback picks a revision; uninstall and test confirm first; each action submits a job and shows its progress row; `interrupted` jobs show Retry / Roll back / Uninstall as offered; actions disabled with a reason when the access check denies creating Secrets in the namespace; the page states that the console uses Helm 4 and that releases made by Helm 3 can be managed here (`me.features.helmVersion`).
 
 Command: `make test-frontend`. Expected failure: unresolved imports.
 
@@ -3779,6 +3916,8 @@ Command: `make test-frontend`. Expected failure: unresolved imports.
 **Files.** Create `internal/resourcemap/build.go`, `internal/resourcemap/channel.go`, tests; web `web/src/features/resourcemap/{ResourceMapPage,RelatedMap,useResourceMap,legend}.tsx` with tests.
 
 Channel: `map.open` `d = {cluster, namespaces:[…], focus?:{group, kind, namespace, name}}`. Frames: `graph {nodes:[{id, group, kind, namespace, name, status?}], edges:[{from, to, type}], omittedKinds:[…]}` sent on open and whenever the graph changes (debounced 1 s on the clock).
+
+**Watch budget (amended, M5, A33).** The map needs about eleven kinds. `channel.go` plans its watches with a pure function `planWatches(kinds, namespaces, canListAll func(kind) bool) (watches []watch.Key, leftOut []string)`: per namespace while kinds × namespaces ≤ 24; otherwise one all-namespaces watch per kind, with the graph filtered to the selected namespaces server-side; a kind the user may not list across all namespaces falls back to the first namespaces that fit, and the namespaces dropped are returned in `leftOut` and sent in the `graph` frame as `leftOutNamespaces`. Table test: 1 namespace → 11 per-namespace watches; 2 → 22; 3 → 11 all-namespace watches; 3 with one kind not listable cluster-wide → that kind per namespace and the total still ≤ 24; never more than 24. The map's watches go through the hub like any other, so they count toward the user's 50 and are shared with open list views of the same key.
 
 **Red.** `Build(objects)` cases, one per row of the spec's table: Pod → ConfigMaps/Secrets/PVCs via `envFrom`, `env[].valueFrom.secretKeyRef`, and volumes (`configMap`, `secret`, `persistentVolumeClaim`); Deployment/StatefulSet/DaemonSet → their pods (through owner references, via ReplicaSets for Deployments) and their Helm release (annotations `meta.helm.sh/release-name` + `meta.helm.sh/release-namespace`, label `app.kubernetes.io/managed-by=Helm`); Service → pods matched by selector; Ingress → backend Services and TLS Secrets; HTTPRoute/GRPCRoute → `backendRefs` Services; documented non-links produce no edge (`configMapKeyRef`, projected volumes, Ingress `defaultBackend`); node `status` for pods is the phase; nodes carry names only (assert the JSON of the graph contains no `data` field and no value from the ConfigMap/Secret fixtures); deterministic ordering of nodes and edges. Channel cases: subscribes to hub watches for each needed kind as the user; a kind the user cannot list is left out and named in `omittedKinds`; changes are debounced; `focus` restricts the graph to the focused object's connected component (for the "Resources" map in details). Web: page with namespace selection, legend (colour and icon per kind, pod colour by phase, failed pods marked with an icon and label), hover facts, click → details; the related-map panel for Deployment, DaemonSet, StatefulSet, Pod, Service, Ingress details.
 
@@ -3912,13 +4051,15 @@ Command: `make test-frontend`. Expected failure: unresolved imports.
 
 **Acceptance.** `make test-frontend`, `make coverage-frontend` pass; `make verify` → `VERIFY OK`.
 
-**Pitfalls.** The overview opens several watches at once; it must unsubscribe all of them on leave (test with the fake socket: zero open channels after unmount).
+**Pitfalls.** The overview opens several watches at once; it must unsubscribe all of them on leave (test with the fake socket: zero open channels after unmount). **(amended, M5, A33)** It uses all-namespace watches only (pods, nodes, events, plus one per active module section) and opens none for a section whose module is inactive or whose kind the user cannot list; test that the number of open channels is at most 8 with every module active.
+
+**Phase 5 exit check (amended).** Step 7.8 is done; `make verify` → `VERIFY OK`; `make test-ui` → all passed; `make it-up && make it` → `INTEGRATION OK`.
 
 ---
 
 # Phase 6 — Hardening
 
-**Delivered in pull request 8**.
+**Delivered in pull request 9**.
 
 ### Step 6.1 — Prometheus metrics
 
@@ -3991,12 +4132,39 @@ load:
 
 **Pitfalls.** The load test uses real time by nature; it is the one place outside integration tests where that is allowed, and it never runs in the `ci` workflow (only in `nightly.yml`, Step 7.11).
 
-**Phase 6 exit check.** `make verify` → `VERIFY OK`.
+### Step 6.5 — Egress guard for user-supplied addresses (amended, M6)
+
+**Goal.** A signed-in user cannot point the server at itself or at a cloud metadata service through a kubeconfig, an OIDC issuer or a Helm repository (A32; spec "Security model", SSRF row).
+
+**Files.** Create `internal/egress/egress.go`(+test). Modify `internal/config` (key `egress.blockLocalAddresses`, `*bool`, default `true`), `internal/cluster/opener.go` and `internal/cluster/oidc.go` (kubeconfig clusters and their OIDC refresh), `internal/helm/chartfetch.go` and `internal/helm/repos.go` (session repositories and OCI registries), `internal/app/serve.go`; tests alongside. Modify `test/integration/kubeconfig_test.go`.
+
+**Red.** Cases:
+- `egress.Control(blocked bool) func(network, address string, c syscall.RawConn) error` (a `net.Dialer.Control` function, so it sees the resolved IP of every connection attempt, including after redirects and DNS changes): refuses `127.0.0.0/8`, `::1`, `169.254.0.0/16`, `fe80::/10`, `0.0.0.0`, `::` and IPv4-mapped forms of those (`::ffff:127.0.0.1`) with `egress.ErrBlocked`; allows `10.0.0.1`, `192.168.1.1`, `172.16.0.1` and public addresses; with `blocked=false` allows everything.
+- `egress.Transport(base *http.Transport, blocked bool) *http.Transport` returns a clone whose dialer uses `Control`; a request to an `httptest` server (loopback) through it fails with an error that wraps `ErrBlocked`, and succeeds with `blocked=false`.
+- A host name that resolves to a blocked address is refused (inject a resolver in the test); a URL with a literal blocked IP is refused.
+- Kubeconfig cluster: opening a cluster whose server is `https://127.0.0.1:6443` → 422 `unprocessable`, message `This address isn't allowed: Kubelook doesn't connect to local or link-local addresses from a kubeconfig.`; the same message for an OIDC `idp-issuer-url` on a blocked address and for a session Helm repository.
+- Not guarded: the Vault client, the Google and GitHub clients, per-cluster Prometheus, org-wide Helm repositories and Vault clusters keep their unguarded transports (assert each still reaches a loopback `httptest` server with the guard on).
+- The WebSocket exec dialer of client-go uses the same guarded dial function for kubeconfig clusters (set through `rest.Config.Dial`; assert that an exec against a loopback fake API server is refused).
+
+Command: `make test-backend PKG="./internal/egress/... ./internal/cluster/... ./internal/helm/..."`. Expected failure: `undefined: egress.Control`.
+
+**Green.** Implement. Existing unit tests that reach loopback fakes through a kubeconfig cluster construct their dependencies with the guard off; only the tests of this step turn it on.
+
+**Refactor.** One `guardedRESTConfig(cfg, blocked)` helper in `internal/cluster`. Re-run.
+
+**Acceptance.** Tests `ok`. Integration (`kubeconfig_test.go`, added in this step): a kubeconfig whose server is `https://127.0.0.1:6443` uploads (parsing does not connect) but opening its cluster answers 422 with the message above, while the `--internal` kubeconfig of Step 7.6 still works. `make it` → `INTEGRATION OK`.
+
+**Pitfalls.**
+- Check the IP in `Control`, not the host name before dialling: a name can resolve to something else between the check and the connection.
+- A proxy set through the environment would move the connection to the proxy and defeat the check: guarded transports set `Proxy: nil`.
+- This is not an egress allowlist. The spec still makes the deployer's firewall responsible for everything else; say so in `docs/deployment.md` (Step 8.5).
+
+**Phase 6 exit check.** `make verify` → `VERIFY OK`; `make it-up && make it` → `INTEGRATION OK`.
 
 ---
 # Phase 7 — Integration testing (kind + Vault)
 
-**Delivered in pull request 9** (together with Step 8.1 part A).
+**Delivered across pull requests (amended, M1):** Steps 7.1–7.7 and 7.11 part A in pull request 7 (see Phase R for their order), Step 7.8 in pull request 8, the integration test of Step 6.5 in pull request 9, and Steps 7.9, 7.10 and 7.11 part B in pull request 10 (together with Step 8.1 part A). The step numbers are unchanged.
 
 Outcome: a suite that runs the real Kubelook image against real Vault, two real Kubernetes clusters (kind) and real PostgreSQL, locally with `make it-up && make it` and in CI. No mocks of Vault or Kubernetes. The only stand-in is the identity provider (A23).
 
@@ -4324,15 +4492,21 @@ func (w *WS) Closed(within time.Duration) (code int)
 
 **Pitfalls.** Image pulls inside kind need the network once; pre-pull and `kind load docker-image` the three small images in `it-up.sh` so tests never wait on a registry.
 
-### Step 7.8 — Helm 3 and 4, modules, CRD browser
+### Step 7.8 — Helm (including releases made by Helm 3), modules, CRD browser
 
-**Files.** Create `test/integration/{helm,modules}_test.go`, `test/integration/testdata/charts/demo/` (a minimal chart: one ConfigMap, one Secret, `NOTES.txt`, a test hook Pod using `busybox:1.37`), `hack/it-chartrepo.sh` (packages the chart with `helm package` into `.it/charts/`, generates `index.yaml` with `helm repo index --url http://kubelook-it-fakeidp:8300/charts`). Add `GET /charts/*` to `fakeidp` (test first) serving files from `/charts`, and mount `.it/charts` there in `it-up.sh`, so no extra image is needed. Also add to `hack/it-apps.sh` a container `kubelook-it-app-helm3` (port 18083) with `config/helm3.yaml` = `sqlite.yaml` plus `helm: {version: 3, maxChartBytes: 1048576}`.
+**Files.** Create `test/integration/{helm,modules}_test.go`, `test/integration/testdata/charts/demo/` (a minimal chart: one ConfigMap, one Secret, `NOTES.txt`, a test hook Pod using `busybox:1.37`), `hack/it-chartrepo.sh` (packages the chart with `helm package` into `.it/charts/`, generates `index.yaml` with `helm repo index --url http://kubelook-it-fakeidp:8300/charts`). Add `GET /charts/*` to `fakeidp` (test first) serving files from `/charts`, and mount `.it/charts` there in `it-up.sh`, so no extra image is needed. **(amended, M4)** There is no Helm 3 container. Add the Helm 3 CLI to `hack/install-tools.sh` as `bin/helm3` (v3.22.1, from `get.helm.sh`, checksum-verified like the Helm 4 CLI) and set `helm: {maxChartBytes: 1048576}` in `config/sqlite.yaml`.
 
 **Tests.**
-- With `helm.version: 4` (default container): install `demo` from the HTTP repository into a new namespace as a job → `succeeded`; the release appears in the list; details show notes and a manifest whose Secret values are masked; values are hidden until the reveal call; upgrade with changed values → revision 2; rollback → revision 3; test → hook result; uninstall → gone. `bin/helm list -n <ns>` (Helm 4 CLI) agrees at each step.
-- With `helm.version: 3`: the `kubelook-it-app-helm3` container runs the same sequence.
-- Cross-version (spec "to confirm"): a release installed through the Helm 4 container is listed, upgraded and rolled back through the Helm 3 container, and the other way round. The test **records** the outcome in `.it/findings/helm-cross-version.txt` and fails only if listing fails; write the result into `docs/spike-findings.md` in Step 7.11.
-- Chart size limit: `it-chartrepo.sh` also packages `demo-big` (the demo chart plus a 2 MiB file under `files/`); installing it through the Helm 3 container (limit 1 MiB) fails with `too_large` and the job is `failed`.
+- Install `demo` from the HTTP repository into a new namespace as a job → `succeeded`; the release appears in the list; details show notes and a manifest whose Secret values are masked; values are hidden until the reveal call; upgrade with changed values → revision 2; rollback → revision 3; test → hook result; uninstall → gone. `bin/helm list -n <ns>` (Helm 4 CLI) agrees at each step.
+- **(amended, M4)** Releases made by Helm 3, on both clusters. These assertions are **required**; they are the reason a Helm 3 adapter is not built:
+  1. `bin/helm3 install legacy <the packaged demo chart in .it/charts/> -n <ns> --set greeting=one` (add a `greeting` value to the demo chart, rendered into its ConfigMap) creates revision 1.
+  2. Kubelook lists `legacy` with status `deployed`, revision 1, and shows its notes, masked manifest and (after reveal) its values.
+  3. Upgrade through Kubelook with `greeting: two` → job `succeeded`, revision 2; the ConfigMap in the cluster holds `two`; `kubectl get configmap --show-managed-fields` shows that no field of it moved to a server-side-apply manager (the release stays on client-side apply).
+  4. Rollback through Kubelook to revision 1 → revision 3; the ConfigMap holds `one` again.
+  5. `bin/helm3 list -n <ns>` shows `legacy` at revision 3, `deployed`; `bin/helm3 history legacy -n <ns>` shows three revisions; `bin/helm3 get values legacy -n <ns>` shows `greeting: one`.
+  6. Uninstall through Kubelook → `bin/helm3 list -n <ns>` no longer shows it.
+- **(amended, M4)** The other direction is recorded, not required: after step 5, `bin/helm3 upgrade legacy … --set greeting=three` and `bin/helm3 rollback legacy 1`; and a release first installed through Kubelook (Helm 4) is listed, upgraded and rolled back with `bin/helm3`. The test writes each outcome to `.it/findings/helm-cross-version.txt` and fails only if `bin/helm3 list` fails. The result goes into `docs/spike-findings.md` in this step, and an unfavourable one into the known limits of `docs/operations.md` (Step 8.5): "manage a release with one Helm major version at a time; move the CLI to Helm 4".
+- Chart size limit: `it-chartrepo.sh` also packages `demo-big` (the demo chart plus a 2 MiB file under `files/`); installing it (limit 1 MiB) fails with `too_large` and the job is `failed`.
 - Modules: `GET /clusters/v:alpha/modules` reports `keda`, `externalSecrets`, `certManager`, `vaultSecrets`, `karpenter`, `trivy`, `flux` active and `gatewayApi` inactive; on `v:beta` all CRD-based modules are inactive and `permissions` is active.
 - Flux actions on alpha: create a `Kustomization` custom resource; `fluxReconcile` sets `reconcile.fluxcd.io/requestedAt`; `fluxSuspend` sets `spec.suspend: true`; reconcile while suspended → 409.
 - KEDA pause/resume toggles the annotation; External Secrets force-sync sets `force-sync`.
@@ -4347,24 +4521,41 @@ func (w *WS) Closed(within time.Duration) (code int)
 
 **Files.** Create `deploy/postgres/roles.sql`, `test/integration/postgres_test.go`; extend `hack/it-apps.sh`.
 
-`deploy/postgres/roles.sql` (psql variables `app_password`, `cleanup_password`, `retention_days`; run by a database owner **after** `kubelook migrate`):
+`deploy/postgres/roles.sql` **(amended, M7)** (psql variables `app_password`, `cleanup_password`, `retention_days`; run by the database owner **after every** `kubelook migrate`, not only the first: it is idempotent, and re-running it gives the app role its rights on tables a migration added and changes the retention period):
 
 ```sql
-CREATE ROLE kubelook_app LOGIN PASSWORD :'app_password';
-CREATE ROLE kubelook_cleanup LOGIN PASSWORD :'cleanup_password';
-GRANT SELECT, INSERT, UPDATE, DELETE ON users, user_settings, sessions, session_credentials, jobs TO kubelook_app;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'kubelook_app') THEN CREATE ROLE kubelook_app LOGIN; END IF;
+  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'kubelook_cleanup') THEN CREATE ROLE kubelook_cleanup LOGIN; END IF;
+END $$;
+ALTER ROLE kubelook_app PASSWORD :'app_password';
+ALTER ROLE kubelook_cleanup PASSWORD :'cleanup_password';
+
+-- Every table of the schema, including ones added by later migrations, except the audit table.
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM kubelook_app, kubelook_cleanup;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO kubelook_app;
+REVOKE ALL ON audit_events, schema_migrations FROM kubelook_app;
 GRANT SELECT ON schema_migrations TO kubelook_app;
 GRANT INSERT ON audit_events TO kubelook_app;                      -- insert only: no SELECT, UPDATE, DELETE
 GRANT SELECT (time), DELETE ON audit_events TO kubelook_cleanup;
+
 ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS audit_insert ON audit_events;
+DROP POLICY IF EXISTS audit_cleanup_select ON audit_events;
+DROP POLICY IF EXISTS audit_cleanup_delete ON audit_events;
 CREATE POLICY audit_insert ON audit_events FOR INSERT TO kubelook_app WITH CHECK (true);
+-- retention_days = 0 means "keep forever": the cleanup role then sees and deletes nothing.
 CREATE POLICY audit_cleanup_select ON audit_events FOR SELECT TO kubelook_cleanup
-  USING (time < (extract(epoch FROM now()) * 1000)::bigint - (:retention_days)::bigint * 86400000);
+  USING ((:retention_days)::bigint > 0
+     AND time < (extract(epoch FROM now()) * 1000)::bigint - (:retention_days)::bigint * 86400000);
 CREATE POLICY audit_cleanup_delete ON audit_events FOR DELETE TO kubelook_cleanup
-  USING (time < (extract(epoch FROM now()) * 1000)::bigint - (:retention_days)::bigint * 86400000);
+  USING ((:retention_days)::bigint > 0
+     AND time < (extract(epoch FROM now()) * 1000)::bigint - (:retention_days)::bigint * 86400000);
 ```
 
-`it-apps.sh` additions: run `kubelook migrate` in a one-off container with `KUBELOOK_MIGRATE_DATABASE_URL=postgres://postgres:postgres@kubelook-it-postgres:5432/kubelook`; apply `roles.sql` with `docker exec -i kubelook-it-postgres psql -U postgres -d kubelook -v app_password=app -v cleanup_password=cleanup -v retention_days=1`; start `kubelook-it-pg-1` and `-pg-2` (ports 18081, 18082) with `config/postgres.yaml` (`database.driver: postgres`, `publicURL: http://localhost:18081` for both — they stand behind one name in production; the test client talks to each port directly and sets the cookie for both), `KUBELOOK_DATABASE_URL=postgres://kubelook_app:app@kubelook-it-postgres:5432/kubelook`, and the **same** encryption key.
+One source for the retention period **(amended, M7)**: `retention_days` passed to this script is the floor the database enforces, and `audit.retentionDays` is what the cleanup command asks for. They must be equal. `kubelook audit-cleanup` on PostgreSQL therefore checks before deleting: it counts the rows older than `audit.retentionDays` that it can see, deletes them, and if `audit.retentionDays > 0` and the database policy hides rows it expected to delete (the policy's period is longer) or it is asked to keep longer than the policy allows (it can see rows newer than its own cutoff), it prints `audit-cleanup: retention in the database policy differs from audit.retentionDays; re-run deploy/postgres/roles.sql with retention_days=<n>` and exits 1 without deleting. Add this to `internal/audit/cleanup.go` test-first in this step (the comparison is a pure function over two counts and the dialect; the SQL runs only on PostgreSQL). The Helm chart (Step 8.2) runs `roles.sql` from the same pre-install/pre-upgrade hook as `kubelook migrate` when `database.rolesSecret` is set, passing `audit.retentionDays`, so the two cannot drift in a chart install.
+
+`it-apps.sh` additions: run `kubelook migrate` in a one-off container with `KUBELOOK_MIGRATE_DATABASE_URL=postgres://postgres:postgres@kubelook-it-postgres:5432/kubelook`; apply `roles.sql` with `docker exec -i kubelook-it-postgres psql -U postgres -d kubelook -v app_password=app -v cleanup_password=cleanup -v retention_days=1` (run it **twice**, to prove it is idempotent); start `kubelook-it-pg-1` and `-pg-2` (ports 18081, 18082) with `config/postgres.yaml` (`database.driver: postgres`, `publicURL: http://localhost:18081` for both — they stand behind one name in production; the test client talks to each port directly and sets the cookie for both), `KUBELOOK_DATABASE_URL=postgres://kubelook_app:app@kubelook-it-postgres:5432/kubelook`, and the **same** encryption key.
 
 **Tests.**
 - A session created on replica 1 is valid on replica 2 (`/me` 200); a cluster opened on 1 lists pods through 2 without re-opening.
@@ -4372,6 +4563,7 @@ CREATE POLICY audit_cleanup_delete ON audit_events FOR DELETE TO kubelook_cleanu
 - Stopping replica 1 (`docker stop`) → the session continues on replica 2; a watch re-opened there delivers a snapshot.
 - Durable job recovery: start a drain job on replica 1 against a node whose pod is blocked by a `maxUnavailable: 0` PDB (so it cannot finish), `docker kill kubelook-it-pg-1`, then within 90 s the job is `interrupted` with an offer of `retry` as seen from replica 2. Restart replica 1 in cleanup.
 - Audit tamper resistance: connecting as `kubelook_app`, `UPDATE audit_events …` and `DELETE FROM audit_events` fail with permission errors and `SELECT` fails too; as `kubelook_cleanup`, deleting a row newer than one day affects 0 rows, and a row inserted (by the owner) with a time two days old is deleted; `kubelook audit-cleanup` run as a one-off container with `KUBELOOK_AUDIT_CLEANUP_DATABASE_URL` for the cleanup role prints `deleted 1 records` for that old row.
+- **(amended, M7)** Roles after a later migration: as the owner, create a table `it_probe` (standing in for a table added by a future migration), re-run `roles.sql` → `kubelook_app` can insert into and select from `it_probe`, still cannot select from `audit_events`, and `kubelook_cleanup` has no rights on `it_probe`. Re-running `roles.sql` with `retention_days=0` → as `kubelook_cleanup`, deleting the two-day-old row affects 0 rows; `kubelook audit-cleanup` configured with `audit.retentionDays: 1` then exits 1 with the "retention … differs" message. Restore `retention_days=1` in cleanup.
 - Key change: restart both replicas with a different `KUBELOOK_ENCRYPTION_KEY` → an existing session cookie gets 401 `key_changed`; restoring an old sealed copy returns `key_changed` with the spec's message; the audit output has a `key-changed` line with two key IDs and no key.
 
 **Acceptance.** `go test -tags integration -count=1 -run 'TestPostgres' ./test/integration/...` → `ok`.
@@ -4397,6 +4589,8 @@ CREATE POLICY audit_cleanup_delete ON audit_events FOR DELETE TO kubelook_cleanu
 ### Step 7.11 — CI jobs, nightly run, spike findings
 
 **Goal.** The integration and browser suites gate every pull request; slow checks run nightly; the spec's "to confirm" list gets written answers.
+
+**Two parts (amended, M1).** **Part A, in pull request 7**, right after Step 7.3: the `integration-tests` job below **without** the three browser-suite lines (the `test/e2e` cache path, `npx playwright install` and `make e2e`), added to `publish-image.needs` and to the required checks in `docs/ci.md`; and `docs/spike-findings.md` created with every row of the table below, filled where pull request 7 can answer (U1 from Step 7.2; the YAML save conflict count from Step 7.7) and marked "open — answered in Step …" elsewhere. **Part B, in pull request 10**: the three browser-suite lines, `nightly.yml`, `slow_test.go`, and the remaining rows of `docs/spike-findings.md`.
 
 **Files.** Modify `.github/workflows/ci.yml` (add job `integration-tests`, and add it to `publish-image.needs`). Create `.github/workflows/nightly.yml`, `docs/spike-findings.md`, `test/integration/slow_test.go`.
 
@@ -4454,7 +4648,8 @@ Indent the job by two spaces under `jobs:` like the others, and give every step 
 
 | Spec item | Checked by | If the answer is unfavourable |
 | --- | --- | --- |
-| Helm 4 release managed by Helm 3 and vice versa | Step 7.8 cross-version test | Document in `docs/operations.md` that teams must not mix; no code change |
+| Helm 3 release managed by Kubelook (Helm 4) | Step 7.8, required assertions | Not allowed to be unfavourable: the test fails and the pull request does not merge (A31) |
+| Release touched by Helm 4 managed again by the Helm 3 CLI | Step 7.8, recorded | Document in `docs/operations.md`: one Helm major version at a time, move the CLI to Helm 4; no code change |
 | YAML save conflict rate on a busy object | Step 7.7 edit test variant: 20 saves during a rollout, count 409s (recorded, not asserted) | Open an issue proposing patch-on-save; do not change behaviour without the owner's decision |
 | Trivy rescans after report deletion | Not checkable (A24) | Stays "unconfirmed"; the UI text already says so |
 | Where Kyverno reports violations | Not checkable (A24) | Stays "unconfirmed"; UI note in Step 5.14 |
@@ -4462,7 +4657,7 @@ Indent the job by two spaces under `jobs:` like the others, and give every step 
 | Cluster mounts in a Vault namespace | Not applicable to the test Vault | Owner must answer; if yes, add `vault.namespace` (sent as `X-Vault-Namespace`) in a follow-up step using the same TDD pattern as Step 2.5 |
 | U1: minting credentials on Vault 2.2.1 | Step 7.2 acceptance | See Step 7.2 |
 
-**Acceptance.** The pull request shows `Integration & End-to-End Tests (kind, Vault, PostgreSQL)` green; `publish-image.needs` includes `integration-tests`; `docs/ci.md` lists it as a required check; `docs/spike-findings.md` has a filled Result for every row that is checkable.
+**Acceptance.** Part A: pull request 7 shows `Integration & End-to-End Tests (kind, Vault, PostgreSQL)` green; `publish-image.needs` includes `integration-tests`; `docs/ci.md` lists it as a required check. Part B: the same job green with the browser suite; `docs/spike-findings.md` has a filled Result for every row that is checkable.
 
 **Pitfalls.** The integration job has no write permissions and needs no secrets, so it is safe on fork pull requests.
 
@@ -4472,7 +4667,7 @@ Indent the job by two spaces under `jobs:` like the others, and give every step 
 
 # Phase 8 — Release packaging
 
-**Delivered in pull request 10** (Step 8.1 part A is delivered earlier, in pull request 9).
+**Delivered in pull request 11** (Step 8.1 part A is delivered earlier, in pull request 10).
 
 Outcome: versioned multi-architecture images, the debug image, a Helm chart that installs a working console, and deployment documentation.
 
@@ -4480,17 +4675,17 @@ Outcome: versioned multi-architecture images, the debug image, a Helm chart that
 
 **Goal.** Publish `ghcr.io/bdnix/kubelook-netshoot` and pin Kubelook's default `debug.image` to its digest.
 
-**Files (part A, delivered in pull request 9).** Create `build/netshoot/Dockerfile` (`FROM nicolaka/netshoot:v0.16` plus OCI labels `org.opencontainers.image.source`, `…licenses=Apache-2.0`, `…description`), `.github/workflows/netshoot.yml`; add a `docker` entry for `/build/netshoot` to `.github/dependabot.yml`.
+**Files (part A, delivered in pull request 10).** Create `build/netshoot/Dockerfile` (`FROM nicolaka/netshoot:v0.16` plus OCI labels `org.opencontainers.image.source`, `…licenses=Apache-2.0`, `…description`), `.github/workflows/netshoot.yml`; add a `docker` entry for `/build/netshoot` to `.github/dependabot.yml`.
 
 `netshoot.yml`: triggers `push` to `main` with `paths: [build/netshoot/**]` and `workflow_dispatch`; top-level `permissions: contents: read`; one job with `packages: write`, `id-token: write`, `attestations: write` that reads the tag from the `FROM` line (`TAG=$(sed -n 's/^FROM nicolaka\/netshoot:\([^@ ]*\).*/\1/p' build/netshoot/Dockerfile)`), builds for `linux/amd64,linux/arm64`, pushes `ghcr.io/bdnix/kubelook-netshoot:$TAG`, runs Trivy with `exit-code: "0"` (report only: it is a third-party toolbox image; deployers may replace it via `debug.image`), and attests provenance. A new netshoot release reaches the repository as a Dependabot PR on the `FROM` line; merging it publishes the new image (this is the spec's "rebuilds whenever a new netshoot release appears").
 
-**Files (part B, in pull request 10, after pull request 9 is merged and its workflow has pushed the image).** Create `hack/pin-netshoot.sh` (resolves `docker buildx imagetools inspect ghcr.io/bdnix/kubelook-netshoot:<tag> --format '{{json .Manifest.Digest}}'` and rewrites the constant `DefaultDebugImage` in `internal/config/defaults.go`); modify `internal/config/config_test.go`.
+**Files (part B, in pull request 11, after pull request 10 is merged and its workflow has pushed the image).** Create `hack/pin-netshoot.sh` (resolves `docker buildx imagetools inspect ghcr.io/bdnix/kubelook-netshoot:<tag> --format '{{json .Manifest.Digest}}'` and rewrites the constant `DefaultDebugImage` in `internal/config/defaults.go`); modify `internal/config/config_test.go`.
 
 **Red (part B).** Add the test: the default `debug.image` matches `^ghcr\.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]{64}$`. `make test-backend PKG=./internal/config/...` fails (the default is still a tag). **Green.** Run `hack/pin-netshoot.sh`; test passes. **Refactor.** None.
 
 **Acceptance.** `docker pull "$(grep -o 'ghcr.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]*' internal/config/defaults.go)"` succeeds; `make verify` → `VERIFY OK`.
 
-**Pitfalls.** Part B cannot start before pull request 9 is merged and its `netshoot` workflow run on `main` is green. The integration config keeps overriding `debug.image` with `busybox:1.37`.
+**Pitfalls.** Part B cannot start before pull request 10 is merged and its `netshoot` workflow run on `main` is green. The integration config keeps overriding `debug.image` with `busybox:1.37`.
 
 ### Step 8.2 — Helm chart
 
@@ -4499,13 +4694,13 @@ Outcome: versioned multi-architecture images, the debug image, a Helm chart that
 **Files.** Create `deploy/helm/kubelook/{Chart.yaml,values.yaml,values.schema.json,README.md}`, `deploy/helm/kubelook/templates/{_helpers.tpl,configmap.yaml,deployment.yaml,service.yaml,serviceaccount.yaml,ingress.yaml,pvc.yaml,migrate-job.yaml,audit-cleanup-cronjob.yaml,pdb.yaml,networkpolicy.yaml,NOTES.txt}`, `deploy/helm/kubelook/ci/{sqlite-values.yaml,postgres-values.yaml,full-values.yaml}`, `hack/chart-test.sh`, `ct.yaml`. Modify `Makefile` (target `chart-test`), `.github/workflows/ci.yml` (job `chart-tests`, added to `publish-image.needs` and to the required checks in `docs/ci.md`).
 
 Design rules:
-- `values.yaml` top-level keys are **exactly** the spec's setting names (`auth`, `vault`, `encryption`, `maintenance`, `helm`, `memory`, `debug`, `kubeconfig`, `fileBrowser`, `logs`, `modules`, `audit`) plus the A6 keys, plus chart-only keys: `image.{repository,tag,digest,pullPolicy}`, `replicaCount` (default 1), `database.{driver, existingSecret}` (Secret key `url`), `database.migrationSecret` (Secret key `url`), `auth.google.clientSecretRef` / `auth.github.clientSecretRef` (`{name, key}`), `encryption.keySecret` (Secret key `key`), `audit.cleanup.{schedule, credentialsSecret}`, `persistence.{size, storageClass}` (SQLite), `service.{type, port, sessionAffinity}`, `ingress.*`, `resources` (default limits `memory: 512Mi`), `goMemLimit` (default `460MiB`, about 90% of the memory limit; documented: change both together), `hostAliases`, `podAnnotations`, `nodeSelector`, `tolerations`, `affinity`, `networkPolicy.{enabled, egress}`.
+- `values.yaml` top-level keys are **exactly** the spec's setting names (`auth`, `vault`, `encryption`, `maintenance`, `helm`, `memory`, `debug`, `kubeconfig`, `fileBrowser`, `logs`, `modules`, `audit`) plus the A6 keys, plus chart-only keys: `image.{repository,tag,digest,pullPolicy}`, `replicaCount` (default 1), `database.{driver, existingSecret}` (Secret key `url`), `database.migrationSecret` (Secret key `url`), `database.rolesSecret` (**amended, M7**; Secret keys `appPassword`, `cleanupPassword`; when set, the migrate hook Job also applies `deploy/postgres/roles.sql`, shipped in the chart as a ConfigMap, with `retention_days` = `audit.retentionDays`, using an init step with the `postgres:18.6-trixie` image's `psql`), `auth.google.clientSecretRef` / `auth.github.clientSecretRef` (`{name, key}`), `encryption.keySecret` (Secret key `key`), `audit.cleanup.{schedule, credentialsSecret}`, `persistence.{size, storageClass}` (SQLite), `service.{type, port, sessionAffinity}`, `ingress.*`, `resources` (default limits `memory: 512Mi`), `goMemLimit` (default `460MiB`, about 90% of the memory limit; documented: change both together), `hostAliases`, `podAnnotations`, `nodeSelector`, `tolerations`, `affinity`, `networkPolicy.{enabled, egress}`.
 - The ConfigMap renders `config.yaml` from the spec-named values (only keys the app knows; test by loading it with `kubelook`'s own config loader in `hack/chart-test.sh`).
 - Deployment: one container, `args: [serve]`, env from Secrets (`KUBELOOK_ENCRYPTION_KEY`, provider secrets, `KUBELOOK_DATABASE_URL`), `GOMEMLIMIT`, config mounted at `/etc/kubelook`, `emptyDir` at `/tmp`, PVC at `/data` when SQLite; `securityContext`: `runAsNonRoot: true`, `runAsUser: 65532`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile.type: RuntimeDefault`; probes `/healthz` (liveness) and `/readyz` (readiness); checksum annotation of the ConfigMap; strategy `Recreate` when SQLite, `RollingUpdate` otherwise.
 - ServiceAccount with `automountServiceAccountToken: false` (the console has no cluster rights of its own).
 - `migrate-job.yaml`: `helm.sh/hook: pre-install,pre-upgrade` Job running `kubelook migrate` with `KUBELOOK_MIGRATE_DATABASE_URL` from `database.migrationSecret`; rendered only for PostgreSQL.
 - `audit-cleanup-cronjob.yaml`: rendered when `audit.retentionDays > 0`; runs `kubelook audit-cleanup`; PostgreSQL: env `KUBELOOK_AUDIT_CLEANUP_DATABASE_URL` from `audit.cleanup.credentialsSecret` (required); SQLite: mounts the same PVC with pod affinity to the console pod.
-- `values.schema.json` fails the install when: `encryption.keySecret` is empty; `replicaCount > 1` with `database.driver: sqlite`; `database.driver: postgres` without `database.existingSecret`; `helm.version` not 3 or 4; `audit.retentionDays > 0` with PostgreSQL and no `audit.cleanup.credentialsSecret`.
+- `values.schema.json` fails the install when: `encryption.keySecret` is empty; `replicaCount > 1` with `database.driver: sqlite`; `database.driver: postgres` without `database.existingSecret`; `helm.version` other than 4 (**amended, M4**); `audit.retentionDays > 0` with PostgreSQL and no `audit.cleanup.credentialsSecret`.
 
 **Red.** Write `hack/chart-test.sh` first. It runs `helm lint` and `helm template` for each `ci/*.yaml` file and asserts with `grep`/`bin/kubectl apply --dry-run=client`:
 - SQLite values: one Deployment with strategy `Recreate`, a PVC, no migrate Job, no CronJob (`retentionDays: 0`).
@@ -4545,7 +4740,7 @@ CI job `chart-tests` (in `ci.yml`, display name `Helm Chart: Lint & Template Tes
 
 **Files.** Create `VERSION`, `hack/version.sh`, `docs/releasing.md`. Modify `.github/workflows/ci.yml` (job `publish-image`, new jobs `publish-chart` and `create-release`), `Makefile` (target `version`).
 
-**Version source.** `VERSION` holds one line, a semantic version without `v` (first content: `0.1.0`). `hack/version.sh` prints it after checking it matches `^[0-9]+\.[0-9]+\.[0-9]+$` (exit 1 otherwise). The backend-tests job runs it, so a malformed `VERSION` fails the pull request that introduces it.
+**Version source (amended, M8, A34).** `VERSION` holds one line, a semantic version without `v`, optionally with a release-candidate suffix (first content: `0.1.0-rc.1`). `hack/version.sh` prints it after checking it matches `^[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$` (exit 1 otherwise), and `hack/version.sh --prerelease` prints `true` when the suffix is present. A release candidate is published like a release with three differences: the GitHub release is created with `--prerelease`, the image does not get the moving `<major>.<minor>` tag, and the chart's `README.md` and the release notes start with "Release candidate: the external security review and the test against a real organisation's Vault are still open." The plan never publishes a version without the suffix: the repository owner does that, after the gates of A1. The backend-tests job runs it, so a malformed `VERSION` fails the pull request that introduces it.
 
 **Release detection.** A `main` build is a release build when `v$(cat VERSION)` does not exist as a tag yet. The first job that needs it (`publish-image`) computes `release=true|false` with `git ls-remote --tags origin "refs/tags/v$version"` and exposes `version` and `release` as job outputs. Checking the tag rather than the diff means a release whose build failed is published by the next green `main` build, and a revert never publishes the same version twice.
 
@@ -4553,21 +4748,21 @@ CI job `chart-tests` (in `ci.yml`, display name `Helm Chart: Lint & Template Tes
 
 | Job | Needs | Publishes on every `main` build | Also publishes on a release build |
 | --- | --- | --- | --- |
-| `publish-image` | every required job | `ghcr.io/bdnix/kubelook:main` and `:sha-<sha>`, SBOM, provenance, cosign signature | tags `<version>` and `<major>.<minor>`; Trivy scan of the pushed digest (`exit-code: "1"`) |
+| `publish-image` | every required job | `ghcr.io/bdnix/kubelook:main` and `:sha-<sha>`, SBOM, provenance, cosign signature | tag `<version>`, and `<major>.<minor>` unless it is a release candidate; Trivy scan of the pushed digest (`exit-code: "1"`) |
 | `publish-chart` | `publish-image` | `oci://ghcr.io/bdnix/charts/kubelook` version `<version>-main.<short-sha>` | version `<version>` |
 | `create-release` | `publish-image`, `publish-chart` | — (skipped) | tag `v<version>` on the built commit and a GitHub release with generated notes and the chart archive |
 
 - `publish-image` (`packages: write`, `id-token: write`, `attestations: write`): as in Step 0.8, plus the version tags on release builds, `sigstore/cosign-installer` then `cosign sign --yes ghcr.io/bdnix/kubelook@<digest>`. Build argument `VERSION` is `<version>` on release builds and `<version>-main.<short-sha>` otherwise. Outputs: `version`, `release`, `digest`.
 - `publish-chart` (`packages: write`): `make tools`; copy the chart, set `image.digest` in the copy's `values.yaml` to `publish-image`'s digest; `helm package` with `--version` and `--app-version` from the table; `helm push … oci://ghcr.io/bdnix/charts`. On release builds, upload the archive as an artifact for `create-release`.
-- `create-release` (`contents: write`; runs only when `release == 'true'`): download the chart artifact; `gh release create "v$version" --target "$GITHUB_SHA" --generate-notes kubelook-*.tgz` with `GH_TOKEN: ${{ github.token }}`. `gh release create` creates the tag; no job pushes a tag by itself.
+- `create-release` (`contents: write`; runs only when `release == 'true'`): download the chart artifact; `gh release create "v$version" --target "$GITHUB_SHA" --generate-notes kubelook-*.tgz` (plus `--prerelease` when `hack/version.sh --prerelease` prints `true`) with `GH_TOKEN: ${{ github.token }}`. `gh release create` creates the tag; no job pushes a tag by itself.
 
-**Cutting a release** (documented in `docs/releasing.md`): open a pull request that changes `VERSION` (and nothing else is required); merge it once every required check is green; the `main` build publishes the release. Preconditions: `main` green including `integration-tests`; `docs/spike-findings.md` up to date; `hack/pin-netshoot.sh` run. Verification: `cosign verify ghcr.io/bdnix/kubelook:<version> --certificate-identity-regexp 'https://github.com/bdnix/kubelook/.*' --certificate-oidc-issuer https://token.actions.githubusercontent.com`, and `gh attestation verify`. Rollback: a released version is never re-published; fix forward with a pull request that bumps `VERSION` again.
+**Cutting a release** (documented in `docs/releasing.md`): open a pull request that changes `VERSION` (and nothing else is required); merge it once every required check is green; the `main` build publishes the release. Preconditions: `main` green including `integration-tests`; `docs/spike-findings.md` up to date; `hack/pin-netshoot.sh` run; and, for a version without the `-rc` suffix, both human gates of A1 recorded as passed in `docs/security-review.md`. Verification: `cosign verify ghcr.io/bdnix/kubelook:<version> --certificate-identity-regexp 'https://github.com/bdnix/kubelook/.*' --certificate-oidc-issuer https://token.actions.githubusercontent.com`, and `gh attestation verify`. Rollback: a released version is never re-published; fix forward with a pull request that bumps `VERSION` again.
 
-**Red.** Tests for the version script, run by `make test-release-scripts` (part of `backend-tests`): `hack/version.sh` with `0.1.0` prints it; with `v0.1.0`, `0.1`, an empty file or two lines exits 1.
+**Red.** Tests for the version script, run by `make test-release-scripts` (part of `backend-tests`): `hack/version.sh` with `0.1.0` or `0.1.0-rc.1` prints it; with `v0.1.0`, `0.1`, `0.1.0-beta`, `0.1.0-rc`, an empty file or two lines exits 1; `--prerelease` prints `true` for `0.1.0-rc.1` and `false` for `0.1.0`.
 
 **Green.** Write the scripts and the jobs.
 
-**Acceptance.** `make test-release-scripts` passes. `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/ci.yml` prints nothing. After the pull request merges, the `main` build shows `publish-image` and `publish-chart` green and `create-release` green for the first version (`0.1.0` has no tag yet, so that first merge is a release). The executor does not push tags or create releases by hand; say in the PR that the merge publishes `0.1.0`.
+**Acceptance.** `make test-release-scripts` passes. `go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 .github/workflows/ci.yml` prints nothing. After the pull request merges, the `main` build shows `publish-image` and `publish-chart` green and `create-release` green for the first version (`0.1.0-rc.1` has no tag yet, so that first merge publishes a pre-release). The executor does not push tags or create releases by hand; say in the PR that the merge publishes the release candidate `0.1.0-rc.1` and that `0.1.0` is the owner's to cut after the gates of A1.
 
 **Pitfalls.**
 - The publish jobs never run on `pull_request` events, so fork and Dependabot pull requests never get a token that can push, sign or release.
@@ -4587,8 +4782,8 @@ Required content:
 - `vault-policy.md`: the policy users need (spec "Vault policy users need"), a sample policy file, the role requirements (`kubernetes_role_type=ClusterRole` with `clusterRoleBinding: true`, allowed namespaces include `vault.credsNamespace`), and the note about the internal `sys/internal/ui/mounts` endpoint and re-testing on Vault upgrades (`make it`).
 - `postgres.md`: owner vs app vs cleanup roles, running `kubelook migrate`, applying `deploy/postgres/roles.sql`, what tamper resistance covers and that SQLite cannot provide it.
 - `docker-run.md`: `docker run` for the console (SQLite volume), for `migrate`, and for `audit-cleanup` with a crontab line; marked "documented, not a supported deployment" (spec).
-- `operations.md`: encryption-key rotation procedure and its user-visible effects (spec text), maintenance banner use before restarts, what happens on replica restarts (shells end, watches resume, jobs become interrupted), Vault outage behaviour, metrics list, log format, audit record format, known limits (resource map non-links, Helm ConfigMap storage, OCI install test coverage, event retention), Safari storage note.
-- `security-review.md`: the threat table from the spec with, per row, where it is implemented and which test proves it; the CSP value; the list of open human gates (A1).
+- `operations.md`: encryption-key rotation procedure and its user-visible effects (spec text), maintenance banner use before restarts, what happens on replica restarts (shells end, watches resume, jobs become interrupted), Vault outage behaviour, metrics list, log format, audit record format, known limits (resource map non-links and the watch budget of A33, Helm ConfigMap storage, OCI install test coverage, event retention, Helm 3: releases made by Helm 3 are managed with the Helm 4 SDK and what Step 7.8 recorded about going back to the Helm 3 CLI), how to read the audit log (SQL as the database owner or a read-only role the deployer creates, or the JSON lines on standard output; the console has no audit viewer), Safari storage note.
+- `security-review.md`: the threat table from the spec with, per row, where it is implemented and which test proves it; the CSP value; the egress guard and what it does not cover (A32); the list of open human gates (A1), each with a line the owner fills in when it passes (date, who, link), which is the precondition for cutting `0.1.0` (A34).
 - `README.md`: what Kubelook is, quick start (kind + Vault via `make it-up`), links to the docs, development commands (`make verify`, `make it`), licence.
 
 `hack/docs-check.sh` (the "test" for this step, written first): fails if any key from `internal/config`'s table is missing in `docs/configuration.md` (it greps for each key printed by `go test ./internal/config -run TestPrintKeys -v`, a small test that prints the key list), if any relative Markdown link in `docs/` or `README.md` points to a missing file, or if `README.md` still contains "Under construction". Prints `DOCS OK`.
@@ -4614,7 +4809,7 @@ hack/it-chart.sh && KUBELOOK_IT_BASE_URL=http://localhost:18090 go test -tags in
 make it-down
 ```
 
-**Acceptance.** Every box in §9 ticked in the description of pull request 10, with the command output for the coverage lines pasted in.
+**Acceptance.** Every box in §9 ticked in the description of pull request 11, with the command output for the coverage lines pasted in.
 
 ---
 
@@ -4622,12 +4817,12 @@ make it-down
 
 The project is done when all of the following are true on `main`:
 
-1. Every step of Phases 0–8 is merged, in order, through the 10 pull requests of §7, each of which was green in CI when merged.
+1. Every step of Phases 0–8 and Phase R is merged, in order, through the 11 pull requests of §7, each of which was green in CI when merged.
 2. `make verify` prints `VERIFY OK` on a clean clone. In particular: Go unit-test statement coverage ≥ 90% (`Total coverage threshold (90%) satisfied: PASS`), and web unit-test coverage ≥ 90% lines, statements and functions and ≥ 80% branches, with only the exclusions listed in §6.
 3. The `ci` workflow is green on pull requests: `backend-tests`, `frontend-tests`, `ui-tests`, `image-scan`, `dependency-review`, `chart-tests`, `integration-tests`, `chart-install-tests`; and on `main` additionally `publish-image`, `publish-chart` and `create-release`.
 4. The integration jobs are green: the kind + Vault suite (`make it`), the browser suite (`make e2e`) and the chart install test.
 5. Every feature in `docs/spec.md` "Functional requirements", "Authentication and cluster discovery", "Security model" and "Architecture" maps to a merged step (the mapping is the step titles of Phases 2–6), or is listed in §1 as out of scope with a reason.
-6. Release artifacts can be produced: a `main` build whose `VERSION` has no tag publishes the image, chart and GitHub release (Step 8.4), the chart installs a working console in kind (Step 8.3), and the image runs as non-root on a distroless base with no fixable HIGH or CRITICAL vulnerabilities at release time.
+6. Release artifacts can be produced: a `main` build whose `VERSION` has no tag publishes the image, chart and GitHub release (Step 8.4), as a release candidate until the owner cuts `0.1.0` (A34), the chart installs a working console in kind (Step 8.3), and the image runs as non-root on a distroless base with no fixable HIGH or CRITICAL vulnerabilities at release time.
 7. Deployment documentation exists and passes `hack/docs-check.sh`.
 8. `docs/spike-findings.md` records a result for every checkable "to confirm" item and names the ones still open for the repository owner (A1, A24).
 
@@ -4644,6 +4839,8 @@ Run on a clean clone at the final commit. Every line must be true.
 - [ ] `grep -rn "time\.Sleep" --include=*_test.go internal/ web/src 2>/dev/null | wc -l` → `0`
 - [ ] `go test -race -count=3 -shuffle=on ./...` → all `ok` (no flaky tests)
 - [ ] `make build` → `BUILD OK`; `bin/kubelook version` prints a version
+- [ ] `make test-ui` → all passed; `grep -rn "test.fail" web/ui | wc -l` → `0`; every `web/ui/*.ui.ts` file uses `guardPage`
+- [ ] `go list -m all | grep -c 'helm.sh/helm/v3'` → `0`
 
 **CI/CD**
 - [ ] `grep -c 'uses: .*@v[0-9]' .github/workflows/*.yml` → `0` for every file (all actions pinned to commit SHAs)
@@ -4656,7 +4853,7 @@ Run on a clean clone at the final commit. Every line must be true.
 **Integration (real Vault, real Kubernetes)**
 - [ ] `stat -fc %T /sys/fs/cgroup` → `cgroup2fs` on the machine running the suite (Kubernetes 1.35+ in kind needs cgroup v2)
 - [ ] `make it-up` → `IT UP` (two kind clusters on Kubernetes 1.35 and 1.37, Vault, PostgreSQL)
-- [ ] `make it` → `INTEGRATION OK` (sign-in flows, Vault discovery exactness, re-mint, logout closes connections, kubeconfig path, watch/logs/exec/files/edit/actions, redaction, audit, Helm 3 and 4, modules, PostgreSQL replicas and audit roles)
+- [ ] `make it` → `INTEGRATION OK` (sign-in flows, Vault discovery exactness, re-mint, logout closes connections, kubeconfig path and the egress guard, watch/logs/exec/files/edit/actions, redaction, audit, Helm including a release made by the Helm 3 CLI, modules, PostgreSQL replicas and audit roles)
 - [ ] `make e2e` → `E2E OK`
 - [ ] Chart install test (Step 8.3) → `ok`
 - [ ] `make it-down` → `IT DOWN`
@@ -4670,6 +4867,7 @@ Run on a clean clone at the final commit. Every line must be true.
 
 **Open items handed to the repository owner (not blockers for "done", must be listed in the final PR)**
 - [ ] Branch protection with the required checks listed in `docs/ci.md`, and pushes to `main` restricted
-- [ ] First release (`VERSION` 0.1.0) published by a `main` build and verified with `cosign verify` and `gh attestation verify`
+- [ ] Release candidate `0.1.0-rc.1` published by a `main` build as a pre-release and verified with `cosign verify` and `gh attestation verify`
 - [ ] Spec Gate 1 with a real organisation's Vault, and Gate 2 (external security review and penetration test)
+- [ ] After both gates: `0.1.0` cut by the owner with a pull request that changes `VERSION` (A34)
 - [ ] Unconfirmed spike items in `docs/spike-findings.md`
