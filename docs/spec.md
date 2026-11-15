@@ -1,6 +1,6 @@
 # Kubelook — Product & Technical Spec
 
-Last updated: 2026-11-10
+Last updated: 2026-11-15
 
 ## Overview
 
@@ -97,7 +97,7 @@ Each cluster has its own Kubernetes secrets engine mount at `kubernetes/<cluster
 2. Every context becomes a cluster in the sidebar, named `<file label>/<context>`.
 3. Supported auth: embedded client certificates, bearer tokens, and OIDC `auth-provider` refresh tokens. For OIDC, the backend contacts the `idp-issuer-url` named in the kubeconfig to refresh the token, so that URL is a second user-supplied address besides the server URL. When the issuer returns a new refresh token, the backend gives the browser a fresh encrypted copy of the kubeconfig, because the saved one no longer works.
 4. Rejected with a clear message: file-path references (`client-certificate`, `certificate-authority` and the OIDC `idp-certificate-authority` by path), and any user entry that uses an `exec` credential plugin. The console never runs commands from a kubeconfig; `exec` plugins are not supported. This rules out the kubeconfigs that EKS and GKE generate, and the ones AKS generates for clusters that use Microsoft Entra ID, because they use `exec` plugins and would also need cloud credentials on the server. (AKS clusters without Entra ID hand out certificate-based kubeconfigs, which work.) Those clusters are reached through Vault, or through a kubeconfig with an embedded token, such as one built from a Vault-minted service account token.
-5. The console does not filter server URLs itself. It connects to whatever address a kubeconfig names, so whoever deploys it must restrict its outbound traffic with a firewall or network policy, for example to the cluster API servers, Vault, the database, Google or GitHub, the OIDC issuers of uploaded kubeconfigs, and the Helm repositories and OCI registries users may install from. A plain Kubernetes NetworkPolicy filters by IP address and port, not by host name. An allowlist that leaves out Helm sources disables installing charts from them.
+5. The console blocks only local addresses itself. A kubeconfig's server URL and OIDC issuer may not resolve to a loopback or link-local address, which includes the cloud metadata address `169.254.169.254` (`egress.blockLocalAddresses`, on by default; see the Security model). Beyond that it connects to whatever address a kubeconfig names, so whoever deploys it must restrict its outbound traffic with a firewall or network policy, for example to the cluster API servers, Vault, the database, Google or GitHub, the OIDC issuers of uploaded kubeconfigs, and the Helm repositories and OCI registries users may install from. A plain Kubernetes NetworkPolicy filters by IP address and port, not by host name. An allowlist that leaves out Helm sources disables installing charts from them.
 
 ### Sessions
 
@@ -146,7 +146,7 @@ flowchart TB
 
 The browser talks only to the backend. The backend talks to Google or GitHub to sign the user in, to Vault for cluster credentials, to the database for sessions, encrypted session credentials, user settings, jobs and audit records, and to each cluster's API server as the user.
 
-- **Backend language: Go.** client-go, the Helm SDKs and the Flux APIs are all Go.
+- **Backend language: Go.** client-go, the Helm SDK and the Flux APIs are all Go.
 - **Frontend:** React and TypeScript, Monaco for YAML, xterm.js for shells.
 - **Watch hub:** one upstream watch per user, cluster, kind and namespace, fanned out to every open view. It's closed after an idle timeout. A watch that drops while its view is still open (a network blip, or a move to another replica) is resumed from the last `resourceVersion`; if the API server answers `410 Gone` because that version is too old, the backend lists again and starts a new watch. The browser reports when a tab is hidden (the Page Visibility API), and a watch that only hidden tabs or closed views use is closed once the idle timeout passes. The timeout is 30 seconds by default. Each user can change it for themselves on the settings page, between 30 seconds and 5 minutes; it is not a deployment setting. When the user returns to the view, the list reloads and goes live again.
 - **One WebSocket per tab** carries watch events, log lines, exec frames and file-transfer chunks as tagged channels, with a heartbeat.
@@ -245,7 +245,7 @@ A graphical file browser inside a running container, so users do not have to run
 ### Helm
 
 - Releases live in the cluster as storage objects prefixed `sh.helm.release.v1` ([Helm SDK](https://pkg.go.dev/helm.sh/helm/v3/pkg/storage)). The backend runs Helm's Go SDK under the user's credentials, so Helm can do only what the user's RBAC allows.
-- **Helm 3 and Helm 4 are both supported.** The two SDKs are separate Go modules (`helm.sh/helm/v3` and `helm.sh/helm/v4`), so one Kubelook build carries both. The deployment setting `helm.version` picks which one the console uses for every Helm action: `4` (the default) or `3`. Teams whose Helm CLI is still version 3 set `3`, so releases made from the console and from the CLI stay interchangeable. Helm 4 is the default because the Helm project ends security fixes for Helm 3 on 2026-11-11 ([Helm 4 announcement](https://helm.sh/blog/helm-4-released/)); Helm 3 support is removed from Kubelook once no supported cluster needs it. Each Helm minor supports a window of Kubernetes versions (3.20.x and 4.1.x both cover 1.32 to 1.35), so the bundled SDK versions follow the clusters. The spike confirms whether a release written by one major version can be managed by the other.
+- **Kubelook runs the Helm 4 SDK and manages releases made by Helm 3 with it.** The Helm 3 SDK is not bundled: the Helm project ended security fixes for Helm 3 on 2026-11-11 ([Helm 4 announcement](https://helm.sh/blog/helm-4-released/)). Helm 3 and Helm 4 store releases in the same format, and each SDK reads the records the other writes (checked with Helm 3.22.1 and 4.3.1). A release made by Helm 3 keeps client-side apply when Kubelook upgrades it or rolls it back. Every Kubelook release is tested on real clusters for this: a release installed with the Helm 3 CLI is listed, upgraded, rolled back and uninstalled through the console, and the Helm 3 CLI still lists it in between. Whether the Helm 3 CLI can upgrade a release again after Helm 4 has changed it is measured by the same test and documented; teams that still use the Helm 3 CLI should plan to move it to Helm 4. Each Helm minor supports a window of Kubernetes versions, so the bundled SDK version follows the clusters.
 - The SDK writes downloaded charts and repository indexes to disk; Kubelook points it at a temporary directory per job and removes it afterwards.
 - List releases across namespaces with status, chart, app version and revision.
 - Detail: user-supplied values, computed values, rendered manifest, notes, hooks and revision history.
@@ -373,7 +373,7 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | Backend or database compromise | Saved Vault tokens and kubeconfigs are kept only as encrypted copies in each user's browser, never in the database. Active-session credentials in the database are encrypted with the deployer-provided key in `KUBELOOK_ENCRYPTION_KEY`, so reading them needs both the database and that key. Vault tokens expire at their TTL unless the user renews them and never outlive the maximum TTL set in Vault, and cluster credentials expire at their TTL. Saved kubeconfigs are a known exposure: their certificates and tokens can be long-lived, so a stolen browser copy together with the encryption key exposes them until they are rotated. |
 | Privilege escalation through the console | All Kubernetes calls use the user's own credential. The console has no cluster rights of its own. |
 | Malicious content from a cluster (log lines, annotations, Helm notes, CRD fields, terminal output) | Everything a cluster supplies is rendered as text, never as HTML. Links are made only from `http` and `https` URLs. The CSP forbids inline script. The exact CSP and the rendering rules are part of the security review. |
-| SSRF through user-supplied addresses (kubeconfig server URLs, OIDC issuer URLs, Helm repositories and OCI registries, per-cluster Prometheus sources) | Left to the deployment: whoever deploys the console restricts its outbound traffic with a firewall or network policy. The console has no egress filter of its own. |
+| SSRF through user-supplied addresses (kubeconfig server URLs, OIDC issuer URLs, Helm repositories and OCI registries, per-cluster Prometheus sources) | Addresses a user supplies (kubeconfig servers and OIDC issuers, Helm repositories and registries added per session) may not resolve to loopback or link-local addresses, so the console can't be pointed at itself or at a cloud metadata service (`egress.blockLocalAddresses`, on by default, checked on the resolved IP when connecting). Everything else is left to the deployment: private ranges stay reachable because clusters live there, so whoever deploys the console restricts its outbound traffic with a firewall or network policy. The console has no egress allowlist of its own. Addresses from the deployment settings (Vault, Prometheus sources, org-wide Helm repositories) are trusted. |
 | Abuse of shells | Exec goes through the Kubernetes API, never a shell on the console host. Sessions are audited; idle shells time out (proposed 15 min). |
 | Data theft or tampering through the file browser | Uses the `exec` subresource under the user's own RBAC. Size limit from the deployment settings. Every view, save, upload, download and delete is audited with path and size, never content. The feature can be switched off. |
 | Tunnels into the cluster network | Not offered. The console has no port-forward or TCP tunnel feature. |
@@ -383,6 +383,8 @@ The backend is a credential broker, so a compromise of the backend exposes every
 **Audit log.** We record sign-in and sign-out, every Vault credential issued (path and lease ID, never the token), every mutating Kubernetes call (verb, resource, cluster, namespace, outcome), every Helm and Flux action, every Secret reveal and certificate view, exec start and stop, every file-browser action (path and size, never content), every debug container created, every bulk node action, and every log view and download (cluster, namespace, pod, container, time range or tail size, and for downloads the format; never the log lines themselves). A log view is one record when the stream opens and one when it closes, not one per line. Each record names both the signed-in Google or GitHub account and the Vault identity behind the action, since a user could paste someone else's Vault token. This is the only place the person, the cluster and the action appear together in full: each cluster's own audit log shows the service account Vault minted, not the person. (Vault's default name for a generated service account includes the first 8 characters of the token's display name and of the role name, so the cluster log carries a hint, not an identity.) The Vault identity is the token's entity ID and display name. For clusters from a kubeconfig there is no Vault identity; the record names the kubeconfig's context and user entry instead.
 
 **Audit storage.** Records are stored in the console's database (SQLite or PostgreSQL) in an `audit_events` table with one column per field: time, signed-in account, Vault identity, cluster, namespace, verb, resource kind and name, outcome, and a JSON column for action-specific details. Each record is written when the action happens, with no in-memory buffer, so a crash or restart loses nothing. If the record can't be written, the action is refused. Every record is also printed to the console's standard output as one JSON line, so the cluster's log pipeline keeps a copy outside the database. **Tamper resistance:** on PostgreSQL, the console writes audit records with a database role that can only insert into `audit_events`, with no update or delete rights, so taking over the console doesn't let anyone change or erase past records. Retention is set by whoever deploys the console and runs as a separate cleanup command (`kubelook audit-cleanup`, proposed name) with its own role, which can only delete records older than the configured number of days; `0` keeps them forever. Table privileges alone can't limit deletes by age, so this is enforced with a row-level security policy on `audit_events`. SQLite has no database roles, so a single-replica SQLite install can't enforce this: whoever controls the console's volume can alter the audit log. Installs that need a tamper-resistant audit trail use PostgreSQL. The cleanup command reads its database credentials from its own environment variable (`KUBELOOK_AUDIT_CLEANUP_DATABASE_URL`, proposed name), never the console's. The Helm chart runs it as a Kubernetes CronJob; outside Kubernetes, the docs give the `docker run` command to schedule with the machine's own cron. Shipping records to an Elasticsearch endpoint is a planned future option.
+
+**Reading the audit log.** The console has no audit viewer in v1, and its own database role can't read `audit_events`. Whoever operates the console reads the records with SQL, as the database owner or through a read-only role they create, or from the JSON lines in the log pipeline. No console user can read another user's records through the console.
 
 | Helm setting | Default | Purpose |
 | --- | --- | --- |
@@ -395,7 +397,8 @@ The backend is a credential broker, so a compromise of the backend exposes every
 | --- | --- | --- |
 | `encryption.keySecret` | none (required) | Helm chart only: name of the Kubernetes Secret the chart passes to the app as `KUBELOOK_ENCRYPTION_KEY` |
 | `maintenance.banner` | none | Message shown to every signed-in user on every page, used to announce planned restarts |
-| `helm.version` | `4` | Which Helm SDK the console uses: `4` or `3` |
+| `helm.version` | `4` | The Helm SDK the console uses. Only `4` is accepted; the setting remains so a later major version can be added |
+| `egress.blockLocalAddresses` | `true` | Refuses loopback and link-local addresses (cloud metadata included) for addresses a user supplies |
 | `helm.maxConcurrentJobs` | `5` (proposed) | Most Helm jobs one replica runs at once; more are queued |
 | `helm.maxChartBytes` | `10485760` (10 MiB, proposed) | Largest chart a replica accepts |
 | `memory.refuseNewWorkPercent` | `80` (proposed) | Share of the pod's memory limit above which new watches, shells and Helm jobs are refused |
@@ -431,6 +434,8 @@ The targets below are proposed starting points, to be confirmed after the spike.
 
 The work is done in four phases, in order, and a phase with a gate must pass it before the next starts. The spike comes first because the Vault discovery design is the biggest unknown.
 
+Gate 1 has an automated form that runs first: a test suite against a real Vault and real Kubernetes clusters (kind) that proves the three statements of the gate, and that must pass on every change before the platform features are built. The run with a real user's token in a real organisation, and Gate 2, stay with the people who own the deployment. Until both have passed, releases are published as release candidates only.
+
 | Phase | Scope | Gate to the next phase |
 | --- | --- | --- |
 | 0. Spike | Google and GitHub sign-in; Vault token sign-in and cluster discovery; pods list and logs on one cluster | Auth design holds |
@@ -455,7 +460,9 @@ The work is done in four phases, in order, and a phase with a gate must pass it 
 - The user's Vault token is used only to discover clusters and mint cluster credentials. The console never reads secret data from Vault, so there is no Vault secret browser, no comparison of Vault and cluster values, and no Vault-side secret editing.
 - Ecosystem features are built-in modules that hide themselves when a cluster lacks the CRDs, not plugins.
 - Features borrowed from Freelens extensions are reimplemented from their documented behaviour. No extension code is copied.
-- Helm 3 and Helm 4 are both supported, chosen with `helm.version` (default `4`).
+- Kubelook bundles the Helm 4 SDK only and manages releases made by Helm 3 with it. The earlier plan to bundle both SDKs behind `helm.version` is dropped: Helm 3 is past the end of its security fixes, and the release format is shared.
+- User-supplied addresses may not point at loopback or link-local addresses. The wider egress policy stays with the deployment.
+- No final release before the two gates: the pipeline publishes release candidates until then.
 - There is no separate stream service. A replica restart ends its shells; planned restarts are announced with a maintenance banner.
 - The audit log is built in Phase 1, together with the features it records.
 - Cluster credentials are requested from Vault for 30 minutes at a time and aren't revoked at logout.
@@ -465,7 +472,7 @@ The work is done in four phases, in order, and a phase with a gate must pass it 
 
 These are facts the spec depends on that have not been checked yet. Phase 0 checks them; none needs a decision now.
 
-- A release written by Helm 4 can be managed by Helm 3, and the other way round.
+- A release made by Helm 3 can be upgraded and rolled back by the console's Helm 4 SDK on a real cluster (reading each other's records is already confirmed), and whether the Helm 3 CLI can manage it again afterwards.
 - How often a YAML save conflicts on a busy object, such as a Deployment during a rollout. If it is often, saving switches to a patch of the user's changes.
 - Trivy Operator scans again after a report is deleted.
 - Where Kyverno reports violations.
