@@ -1,0 +1,135 @@
+/* Levels: colour plus a text label (see levelLabel), never colour alone. */
+.log-level {
+  font-weight: 600;
+  margin-right: 0.25rem;
+}
+.level-trace {
+  color: #6b7280;
+}
+.level-debug {
+  color: #4b5563;
+}
+.level-info {
+  color: #1d4ed8;
+}
+.level-warn {
+  color: #92400e;
+}
+.level-error {
+  color: #b91c1c;
+}
+.level-fatal {
+  color: #7f1d1d;
+  text-decoration: underline;
+}
+.log-fields {
+  opacity: 0.8;
+}
+.tok-timestamp,
+.tok-uuid {
+  opacity: 0.8;
+}
+.tok-logger {
+  font-weight: 600;
+}
+.log-note {
+  font-style: italic;
+}
+
+/* One colour per source, from a stable hash of pod and container. */
+.log-source {
+  margin-right: 0.5rem;
+  font-size: 0.85em;
+}
+.source-0 {
+  color: #1d4ed8;
+}
+.source-1 {
+  color: #047857;
+}
+.source-2 {
+  color: #b45309;
+}
+.source-3 {
+  color: #7c3aed;
+}
+.source-4 {
+  color: #be123c;
+}
+.source-5 {
+  color: #0e7490;
+}
+.source-6 {
+  color: #4d7c0f;
+}
+.source-7 {
+  color: #a21caf;
+}
+.source-8 {
+  color: #c2410c;
+}
+.source-9 {
+  color: #0f766e;
+}
+.source-10 {
+  color: #6d28d9;
+}
+.source-11 {
+  color: #854d0e;
+}
+@media (prefers-color-scheme: dark) {
+  .level-trace {
+    color: #9ca3af;
+  }
+  .level-debug {
+    color: #d1d5db;
+  }
+  .level-info {
+    color: #93c5fd;
+  }
+  .level-warn {
+    color: #fcd34d;
+  }
+  .level-error {
+    color: #fca5a5;
+  }
+  .level-fatal {
+    color: #fecaca;
+  }
+  .source-0 {
+    color: #93c5fd;
+  }
+  .source-1 {
+    color: #6ee7b7;
+  }
+  .source-2 {
+    color: #fcd34d;
+  }
+  .source-3 {
+    color: #c4b5fd;
+  }
+  .source-4 {
+    color: #fda4af;
+  }
+  .source-5 {
+    color: #67e8f9;
+  }
+  .source-6 {
+    color: #bef264;
+  }
+  .source-7 {
+    color: #f0abfc;
+  }
+  .source-8 {
+    color: #fdba74;
+  }
+  .source-9 {
+    color: #5eead4;
+  }
+  .source-10 {
+    color: #c4b5fd;
+  }
+  .source-11 {
+    color: #fde68a;
+  }
+}

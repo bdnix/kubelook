@@ -5,11 +5,14 @@ import { ACTIONS, missingPermission } from '../../kinds/actions';
 import { getArray, getString } from '../../lib/path';
 import type { K8sObject } from '../../state/live';
 import { kubectlCommand } from '../editor/kubectlCommand';
+import { useRefreshJobs } from '../jobs/useJobs';
+import { EMPTY_DIR_NOTE } from './BulkConfirm';
 import { ConfirmDialog, type Clipboard } from './ConfirmDialog';
 import { ExpandDialog } from './ExpandDialog';
 import { RollbackDialog, type Revision } from './RollbackDialog';
 import { ScaleDialog } from './ScaleDialog';
 import { SetImageDialog, type ContainerChoice } from './SetImageDialog';
+import { TaintDialog, type Taint } from './TaintDialog';
 import { useAction } from './useAction';
 
 export interface ActionMenuProps {
@@ -53,6 +56,7 @@ export function ActionMenu({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState<string>();
   const { run, busy, error, reset } = useAction(cluster);
+  const refreshJobs = useRefreshJobs();
   const name = getString(object, 'metadata.name');
   const namespace = getString(object, 'metadata.namespace');
   const known = actions.filter((a) => ACTIONS[a] !== undefined);
@@ -67,7 +71,10 @@ export function ActionMenu({
     reset();
   };
   const exec = async (action: string, params?: unknown) => {
-    if (await run(action, ref, params)) close();
+    if (await run(action, ref, params)) {
+      close();
+      if (action === 'drain') void refreshJobs();
+    }
   };
   const kubectl = (a: 'delete' | 'evict' | 'restart'): string => {
     const r = resource.replace(/s$/, '');
@@ -82,7 +89,7 @@ export function ActionMenu({
   const choose = (id: string) => {
     setOpen(false);
     const def = ACTIONS[id];
-    const direct = !def?.destructive && !['scale', 'setImage', 'expandPVC', 'rollback'].includes(id);
+    const direct = !def?.destructive && !['scale', 'setImage', 'expandPVC', 'rollback', 'taint'].includes(id);
     if (direct) void exec(id);
     else setActive(id);
   };
@@ -163,6 +170,41 @@ export function ActionMenu({
           onCancel={close}
           clipboard={clipboard}
         />
+      )}
+      {active === 'taint' && (
+        <TaintDialog
+          nodeName={name}
+          taints={
+            getArray(object, 'spec.taints').map((t) => ({
+              key: getString(t, 'key'),
+              value: getString(t, 'value') || undefined,
+              effect: getString(t, 'effect'),
+            })) satisfies Taint[]
+          }
+          busy={busy}
+          error={error}
+          onAdd={(t) =>
+            void exec('taintAdd', { key: t.key, effect: t.effect, ...(t.value ? { value: t.value } : {}) })
+          }
+          onRemove={(t) => void exec('taintRemove', t)}
+          onClose={close}
+        />
+      )}
+      {active === 'drain' && (
+        <ConfirmDialog
+          title={`Drain ${kind} ${name}?`}
+          confirmLabel="Drain"
+          destructive
+          busy={busy}
+          error={error}
+          kubectl={kubectlCommand({ type: 'drain', name })}
+          onConfirm={() => void exec('drain')}
+          onCancel={close}
+          clipboard={clipboard}
+        >
+          <p>The node is cordoned first, then its pods are evicted. This runs as a job.</p>
+          <p>{EMPTY_DIR_NOTE}</p>
+        </ConfirmDialog>
       )}
       {(active === 'delete' || active === 'evict' || active === 'restart') && (
         <ConfirmDialog

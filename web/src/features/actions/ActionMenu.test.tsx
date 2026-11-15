@@ -51,7 +51,7 @@ function mount(
       version="v1"
       resource="deployments"
       kind="Deployment"
-      actions={['scale', 'restart', 'pause', 'resume', 'rollback', 'setImage', 'delete', 'cordon']}
+      actions={['scale', 'restart', 'pause', 'resume', 'rollback', 'setImage', 'delete', 'explode']}
       clipboard={clipboard}
       {...props}
     />,
@@ -81,7 +81,7 @@ describe('ActionMenu', () => {
   });
 
   it('renders nothing for a kind without known actions', () => {
-    mount({ actions: ['cordon'] });
+    mount({ actions: ['explode'] });
     expect(screen.queryByRole('button', { name: 'Actions' })).toBeNull();
   });
 

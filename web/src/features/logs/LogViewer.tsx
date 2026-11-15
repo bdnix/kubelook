@@ -1,8 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useApi } from '../../api/context';
 import { Button } from '../../components/Button';
 import { highlight, matches } from '../../lib/highlight';
 import { visibleRange } from '../../lib/window';
+import { exportLogs, type ExportFormat } from './exportLogs';
+import { FieldFilter } from './FieldFilter';
+import { filterLines, levelClass, levelLabel, parsed, sourceColor, type LineFilter } from './levels';
+import type { LogLine } from './logBuffer';
+import { LogText } from './LogText';
+import { MultiSourcePicker, type LogSources } from './MultiSourcePicker';
 import { useLogStream, type LogRequest } from './useLogStream';
+import './logs.css';
 
 const LINE_HEIGHT = 18;
 const OVERSCAN = 10;
@@ -38,7 +46,31 @@ export interface LogViewerProps {
   viewportHeight?: number;
 }
 
-/** One container's log: follows the stream, searches it on the client and downloads what is buffered. */
+const HISTORY_TRIGGER = LINE_HEIGHT; // scrolled this close to the top asks for older lines
+
+const sourceLabel = (l: LogLine) => (l.pod === undefined ? undefined : `${l.pod}/${l.container ?? ''}`);
+
+/** The fields of a JSON line other than the ones shown separately, as `key=value` text. */
+function otherFields(fields: Record<string, unknown>): string {
+  const shown = new Set([
+    'level',
+    'lvl',
+    'severity',
+    'loglevel',
+    'msg',
+    'message',
+    'time',
+    'ts',
+    'timestamp',
+    '@timestamp',
+  ]);
+  return Object.entries(fields)
+    .filter(([k]) => !shown.has(k))
+    .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
+    .join(' ');
+}
+
+/** The log of one pod's containers: follows the stream, structures JSON lines, searches and filters, loads older lines and exports. */
 export function LogViewer({
   cluster,
   namespace,
@@ -48,7 +80,8 @@ export function LogViewer({
   saveFile = browserSaveFile,
   viewportHeight = 360,
 }: LogViewerProps) {
-  const [container, setContainer] = useState(containers[0] ?? '');
+  const api = useApi();
+  const [source, setSource] = useState<LogSources>({ pod, container: containers[0] ?? '' });
   const [follow, setFollow] = useState(true);
   const [timestamps, setTimestamps] = useState(true);
   const [tail, setTail] = useState(500);
@@ -56,30 +89,37 @@ export function LogViewer({
   const [previous, setPrevious] = useState(false);
   const [query, setQuery] = useState('');
   const [regex, setRegex] = useState(false);
+  const [filter, setFilter] = useState<LineFilter>({});
+  const [format, setFormat] = useState<ExportFormat>('text');
+  const [exportError, setExportError] = useState<string>();
   const [scrollTop, setScrollTop] = useState(0);
   const [atBottom, setAtBottom] = useState(true);
   const list = useRef<HTMLDivElement>(null);
 
+  const single = source.pod !== undefined && source.container !== undefined && !source.allContainers;
+  const container = single ? (source.container ?? '') : '';
   const request = useMemo<LogRequest>(
     () => ({
       cluster,
       namespace,
       pod,
       container,
+      sources: single ? undefined : source,
       tailLines: tail,
       sinceSeconds: since || undefined,
       previous,
     }),
-    [cluster, namespace, pod, container, tail, since, previous],
+    [cluster, namespace, pod, container, single, source, tail, since, previous],
   );
   const stream = useLogStream(request, maxLines);
 
   const regexError = regex && query !== '' ? highlight('', query, true).error : undefined;
-  const visible = useMemo(
-    () =>
-      query === '' ? stream.lines : stream.lines.filter((l) => l.marker || matches(l.text, query, regex)),
-    [stream.lines, query, regex],
-  );
+  const visible = useMemo(() => {
+    const searched =
+      query === '' ? stream.lines : stream.lines.filter((l) => l.marker || matches(l.text, query, regex));
+    return filterLines(searched, filter);
+  }, [stream.lines, query, regex, filter]);
+  const search = useMemo(() => (query === '' ? undefined : { query, regex }), [query, regex]);
 
   const [start, end] = visibleRange({
     rowCount: visible.length,
@@ -98,27 +138,29 @@ export function LogViewer({
     }
   }, [visible.length, follow, atBottom]);
 
-  const download = () => {
-    const text = stream.lines
-      .filter((l) => !l.marker)
-      .map((l) => (timestamps ? `${l.ts} ${l.text}` : l.text))
-      .join('\n');
-    saveFile(`${pod}-${container}.log`, new Blob([text + '\n'], { type: 'text/plain' }));
+  const download = async () => {
+    setExportError(undefined);
+    try {
+      await exportLogs({
+        api,
+        saveFile,
+        cluster,
+        namespace,
+        pod,
+        container,
+        lines: stream.lines,
+        format,
+        timestamps,
+      });
+    } catch (e) {
+      setExportError(e instanceof Error ? e.message : 'The download failed.');
+    }
   };
 
   return (
     <div className="log-viewer">
       <div className="log-controls">
-        <label>
-          Container
-          <select value={container} onChange={(e) => setContainer(e.target.value)}>
-            {containers.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-        </label>
+        <MultiSourcePicker pod={pod} containers={containers} value={source} onChange={setSource} />
         <label>
           <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} /> Follow
         </label>
@@ -161,11 +203,23 @@ export function LogViewer({
         <Button onClick={stream.paused ? stream.resume : stream.pause}>
           {stream.paused ? 'Resume' : 'Pause'}
         </Button>
-        <Button onClick={download}>Download</Button>
+        <label>
+          Download as
+          <select value={format} onChange={(e) => setFormat(e.target.value as ExportFormat)}>
+            <option value="text">Text</option>
+            <option value="ndjson">NDJSON</option>
+          </select>
+        </label>
+        <Button onClick={() => void download()}>Download</Button>
       </div>
+      <FieldFilter value={filter} onChange={setFilter} />
+      {exportError && <p role="alert">{exportError}</p>}
       {stream.status === 'connecting' && <p role="status">Connecting…</p>}
       {stream.status === 'ended' && <p role="status">The log ended.</p>}
       {stream.status === 'error' && <p role="alert">{stream.error}</p>}
+      {stream.notice && <p role="status">{stream.notice}</p>}
+      {stream.historyEnd === 'start' && <p className="log-note">Beginning of the available log</p>}
+      {stream.historyEnd === 'cap' && <p className="log-note">No more lines can be loaded.</p>}
       <div
         ref={list}
         className="log-lines"
@@ -176,27 +230,52 @@ export function LogViewer({
           const el = e.currentTarget;
           setScrollTop(el.scrollTop);
           setAtBottom(el.scrollHeight - el.scrollTop - viewportHeight <= LINE_HEIGHT);
+          if (el.scrollTop <= HISTORY_TRIGGER) stream.loadOlder();
         }}
       >
         <div style={{ height: visible.length * LINE_HEIGHT, position: 'relative' }}>
           {visible.slice(start, end).map((l, offset) => {
             const index = start + offset;
-            const { segments } = highlight(l.text, query, regex);
+            const label = sourceLabel(l);
             return (
               <div
                 key={index}
                 className={l.marker ? 'log-line log-marker' : 'log-line'}
                 style={{ position: 'absolute', top: index * LINE_HEIGHT, height: LINE_HEIGHT }}
               >
-                {timestamps && !l.marker && <span className="log-ts">{l.ts} </span>}
-                {segments.map((s, i) =>
-                  s.match ? <mark key={i}>{s.text}</mark> : <span key={i}>{s.text}</span>,
+                {label !== undefined && (
+                  <span className={`log-source source-${sourceColor(l.pod ?? '', l.container ?? '')}`}>
+                    {label}
+                  </span>
                 )}
+                {timestamps && !l.marker && <span className="log-ts">{l.ts} </span>}
+                <LineBody line={l} search={search} />
               </div>
             );
           })}
         </div>
       </div>
     </div>
+  );
+}
+
+/** A line's text: JSON lines show their level as a label and their message, other lines are tokenised. */
+function LineBody({
+  line,
+  search,
+}: {
+  line: LogLine;
+  search: { query: string; regex: boolean } | undefined;
+}) {
+  if (line.marker) return <span>{line.text}</span>;
+  const p = parsed(line);
+  if (!p.json) return <LogText text={line.text} highlight={search} />;
+  const rest = otherFields(p.fields);
+  return (
+    <>
+      {p.level && <span className={`log-level ${levelClass(p.level)}`}>{levelLabel(p.level)}</span>}{' '}
+      <LogText text={p.message ?? (rest === '' ? line.text : '')} highlight={search} />
+      {rest !== '' && <span className="log-fields"> {rest}</span>}
+    </>
   );
 }

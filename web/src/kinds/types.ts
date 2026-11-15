@@ -12,6 +12,8 @@ export interface Column {
   title: string;
   /** The cell's value; `now` is the current time in milliseconds (for ages). */
   value: (obj: K8sObject, now: number) => string | number;
+  /** What the cell shows when it differs from `value` (a number that is sorted and exported, shown as `250m`). */
+  text?: (obj: K8sObject, now: number) => string;
   /** How the column sorts: text (default), numerically, or by creation time (newest first when ascending). */
   sort?: 'text' | 'number' | 'age';
 }

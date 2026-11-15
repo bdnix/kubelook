@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createClient } from '../../api/client';
+import { ApiContext } from '../../api/context';
 import { FakeWebSocket } from '../../test/FakeWebSocket';
 import { SocketContext } from '../../ws/context';
 import { createSocket, type WebSocketCtor } from '../../ws/socket';
@@ -20,7 +22,13 @@ function makeSocket() {
 
 function wrap(node: ReactNode) {
   const socket = makeSocket();
-  const result = render(<SocketContext.Provider value={socket}>{node}</SocketContext.Provider>);
+  // the download is recorded on the server before it is saved
+  const api = createClient({ fetch: () => Promise.resolve(new Response(null, { status: 204 })) });
+  const result = render(
+    <ApiContext.Provider value={api}>
+      <SocketContext.Provider value={socket}>{node}</SocketContext.Provider>
+    </ApiContext.Provider>,
+  );
   act(() => FakeWebSocket.last.serverOpen());
   return { ...result, socket };
 }
@@ -143,7 +151,7 @@ describe('LogViewer', () => {
 
   it('switching the container, tail, since or previous re-opens the stream', async () => {
     wrap(<LogViewer {...props} />);
-    await userEvent.selectOptions(screen.getByLabelText('Container'), 'sidecar');
+    await userEvent.selectOptions(screen.getByLabelText('Source'), 'container:sidecar');
     await userEvent.selectOptions(screen.getByLabelText('Tail'), '1000');
     await userEvent.selectOptions(screen.getByLabelText('Since'), 'Last hour');
     await userEvent.click(screen.getByRole('checkbox', { name: 'Previous instance' }));
@@ -209,7 +217,7 @@ describe('LogViewer', () => {
     send('lines', { lines: [ln(1), ln(2)] });
     send('dropped', { count: 3 });
     await userEvent.click(screen.getByRole('button', { name: 'Download' }));
-    expect(saveFile).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => expect(saveFile).toHaveBeenCalledTimes(1));
     const [name, blob] = saveFile.mock.calls[0] as [string, Blob];
     expect(name).toBe('web-1-app.log');
     const text = await new Promise<string>((resolve) => {

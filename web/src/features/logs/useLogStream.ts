@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSocket } from '../../ws/context';
-import { appendLines, markDropped, type LogLine } from './logBuffer';
+import type { Channel } from '../../ws/socket';
+import { appendLines, markDropped, prependLines, type LogLine } from './logBuffer';
+import type { LogSources } from './MultiSourcePicker';
 
 export interface LogRequest {
   cluster: string;
@@ -10,6 +12,8 @@ export interface LogRequest {
   tailLines?: number;
   sinceSeconds?: number;
   previous?: boolean;
+  /** Several containers: replaces `pod` and `container` in the request to the server. */
+  sources?: LogSources;
 }
 
 export type LogStatus = 'connecting' | 'streaming' | 'ended' | 'error';
@@ -22,7 +26,19 @@ export interface LogStream {
   paused: boolean;
   pause(): void;
   resume(): void;
+  /** Asks the server for older lines of every source that has more; once per source until they arrive. */
+  loadOlder(lines?: number): void;
+  /** Why no older lines can be had: the start of the log, or the server's cap. */
+  historyEnd?: 'start' | 'cap';
+  /** A source that could not be opened or failed, as `pod/container: message`. */
+  notice?: string;
 }
+
+const sourceKey = (pod: string | undefined, container: string | undefined) =>
+  `${pod ?? ''}/${container ?? ''}`;
+
+/** Lines asked for per history request. */
+export const HISTORY_STEP = 500;
 
 interface Last {
   ts: string;
@@ -36,10 +52,16 @@ export function useLogStream(request: LogRequest | undefined, maxLines: number):
   const [status, setStatus] = useState<LogStatus>('connecting');
   const [error, setError] = useState<string>();
   const [paused, setPaused] = useState(false);
+  const [historyEnd, setHistoryEnd] = useState<'start' | 'cap'>();
+  const [notice, setNotice] = useState<string>();
   const buffer = useRef<LogLine[]>([]);
   const pausedRef = useRef(false);
+  const channelRef = useRef<Channel | undefined>(undefined);
+  const pending = useRef(new Set<string>());
+  const ended = useRef(new Map<string, 'start' | 'cap'>());
+  const extra = useRef(0); // lines loaded by history: they do not count against the live buffer size
 
-  const { cluster, namespace, pod, container, tailLines, sinceSeconds, previous } =
+  const { cluster, namespace, pod, container, tailLines, sinceSeconds, previous, sources } =
     request ??
     ({
       cluster: '',
@@ -48,6 +70,7 @@ export function useLogStream(request: LogRequest | undefined, maxLines: number):
       container: '',
     } as LogRequest);
   const enabled = request !== undefined;
+  const sourcesKey = JSON.stringify(sources ?? null);
 
   useEffect(() => {
     if (!enabled) return undefined;
@@ -57,6 +80,11 @@ export function useLogStream(request: LogRequest | undefined, maxLines: number):
     setPaused(false);
     setStatus('connecting');
     setError(undefined);
+    setHistoryEnd(undefined);
+    setNotice(undefined);
+    pending.current = new Set();
+    ended.current = new Map();
+    extra.current = 0;
 
     let last: Last | undefined;
     let skipping: Last | undefined; // lines already seen before a reconnect
@@ -80,13 +108,24 @@ export function useLogStream(request: LogRequest | undefined, maxLines: number):
       return out;
     };
 
+    // Nothing older can be had once any source hit the server's cap, or every source reached its start.
+    const allEnded = (): 'start' | 'cap' | undefined => {
+      const reasons = [...ended.current.values()];
+      if (reasons.includes('cap')) return 'cap';
+      const known = new Set<string>();
+      for (const l of buffer.current) {
+        if (!l.marker)
+          known.add(l.pod === undefined ? sourceKey(pod, container) : sourceKey(l.pod, l.container));
+      }
+      return known.size > 0 && [...known].every((k) => ended.current.has(k)) ? 'start' : undefined;
+    };
+
     const channel = socket.open(
       'logs.open',
       () => ({
         cluster,
         namespace,
-        pod,
-        container,
+        ...(sources ? { sources } : { pod, container }),
         follow: !previous,
         previous: previous || undefined,
         tailLines: last ? undefined : tailLines,
@@ -95,7 +134,14 @@ export function useLogStream(request: LogRequest | undefined, maxLines: number):
       }),
       {
         onFrame(type, data) {
-          const d = (data ?? {}) as { lines?: LogLine[]; count?: number; message?: string };
+          const d = (data ?? {}) as {
+            lines?: LogLine[];
+            count?: number;
+            message?: string;
+            pod?: string;
+            container?: string;
+            reason?: 'start' | 'cap';
+          };
           switch (type) {
             case 'opened':
               setStatus('streaming');
@@ -106,16 +152,36 @@ export function useLogStream(request: LogRequest | undefined, maxLines: number):
               if (fresh.length === 0) return;
               const lastLine = fresh[fresh.length - 1];
               if (lastLine) last = { ts: lastLine.ts, text: lastLine.text };
-              buffer.current = appendLines(buffer.current, fresh, maxLines);
+              buffer.current = appendLines(buffer.current, fresh, maxLines + extra.current);
               publish();
               break;
             }
+            case 'history': {
+              const older = d.lines ?? [];
+              pending.current.delete(sourceKey(d.pod, d.container));
+              if (older.length > 0) {
+                extra.current += older.length;
+                buffer.current = prependLines(buffer.current, older);
+                publish();
+              }
+              break;
+            }
+            case 'historyEnd': {
+              const key = sourceKey(d.pod, d.container);
+              pending.current.delete(key);
+              ended.current.set(key, d.reason === 'cap' ? 'cap' : 'start');
+              setHistoryEnd(allEnded());
+              break;
+            }
+            case 'source_error':
+              setNotice(`${d.pod ?? ''}/${d.container ?? ''}: ${d.message ?? 'The log stream failed.'}`);
+              break;
             case 'dropped':
               buffer.current = markDropped(buffer.current, d.count ?? 0, maxLines);
               publish();
               break;
             case 'eof':
-              setStatus('ended');
+              if (d.pod === undefined) setStatus('ended'); // one container of several ending does not end the view
               break;
             case 'error':
               setError(d.message ?? 'The log stream failed.');
@@ -125,8 +191,25 @@ export function useLogStream(request: LogRequest | undefined, maxLines: number):
         },
       },
     );
-    return () => channel.close();
-  }, [socket, enabled, cluster, namespace, pod, container, tailLines, sinceSeconds, previous, maxLines]);
+    channelRef.current = channel;
+    return () => {
+      channelRef.current = undefined;
+      channel.close();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `sources` is compared by its JSON in sourcesKey
+  }, [
+    socket,
+    enabled,
+    cluster,
+    namespace,
+    pod,
+    container,
+    tailLines,
+    sinceSeconds,
+    previous,
+    maxLines,
+    sourcesKey,
+  ]);
 
   const pause = useCallback(() => {
     pausedRef.current = true;
@@ -138,5 +221,33 @@ export function useLogStream(request: LogRequest | undefined, maxLines: number):
     setLines(buffer.current);
   }, []);
 
-  return { lines, status, error, paused, pause, resume };
+  const loadOlder = useCallback(
+    (count = HISTORY_STEP) => {
+      const channel = channelRef.current;
+      if (!channel) return;
+      // the oldest line of each source in the buffer is where its older lines end
+      const oldest = new Map<string, { pod: string; container: string; ts: number; text: string }>();
+      for (const l of buffer.current) {
+        if (l.marker || l.ts === '') continue;
+        const p = l.pod ?? pod;
+        const c = l.pod === undefined ? container : (l.container ?? '');
+        const key = sourceKey(p, c);
+        const ts = Date.parse(l.ts);
+        const cur = oldest.get(key);
+        if (!cur || ts < cur.ts) oldest.set(key, { pod: p, container: c, ts, text: l.ts });
+      }
+      for (const [key, o] of oldest) {
+        if (pending.current.has(key) || ended.current.has(key)) continue;
+        pending.current.add(key);
+        channel.send('logs.history', {
+          source: { pod: o.pod, container: o.container },
+          before: o.text,
+          lines: count,
+        });
+      }
+    },
+    [pod, container],
+  );
+
+  return { lines, status, error, paused, pause, resume, loadOlder, historyEnd, notice };
 }

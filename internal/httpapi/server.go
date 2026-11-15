@@ -13,7 +13,9 @@ import (
 	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/execs"
+	"github.com/bdnix/kubelook/internal/jobs"
 	"github.com/bdnix/kubelook/internal/kube"
+	"github.com/bdnix/kubelook/internal/metrics"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/vault"
@@ -46,6 +48,10 @@ type Deps struct {
 	Debugger *execs.Debugger
 	// Kube reads from clusters; nil → the cluster read endpoints are not mounted.
 	Kube kube.Clients
+	// Jobs runs long actions as durable jobs; nil → the job endpoints are not mounted.
+	Jobs *jobs.Runner
+	// Metrics reads pod and node usage; nil → the metrics endpoints are not mounted.
+	Metrics *metrics.Service
 	// WS serves GET /api/v1/ws; nil → no WebSocket endpoint.
 	WS http.Handler
 	// VaultMonitor tracks Vault's reachability; nil → /api/v1/status reports Vault as not configured.
@@ -75,6 +81,7 @@ func New(d Deps) http.Handler {
 	})
 	mux.HandleFunc("GET /api/v1/me", d.me)
 	mux.HandleFunc("GET /api/v1/status", d.status)
+	d.registerSettings(mux)
 	if d.Auth != nil {
 		d.Auth.Register(mux)
 	}
@@ -83,6 +90,7 @@ func New(d Deps) http.Handler {
 		mux.HandleFunc("GET /api/v1/clusters", d.listClusters)
 	}
 	d.registerOpen(mux)
+	d.registerJobs(mux)
 	d.registerKube(mux)
 	d.registerWS(mux)
 	// API routes are registered above the SPA catch-all; unknown API paths get a JSON 404.

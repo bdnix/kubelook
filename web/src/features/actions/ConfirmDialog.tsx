@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Button } from '../../components/Button';
 import { ErrorText } from '../../components/ErrorText';
+import { useFocusTrap } from '../../lib/useFocusTrap';
 
 export interface Clipboard {
   writeText(text: string): Promise<void>;
@@ -40,6 +41,7 @@ export function ConfirmDialog({
   children,
 }: ConfirmDialogProps) {
   const ref = useRef<HTMLDivElement>(null);
+  useFocusTrap(ref);
   useEffect(() => ref.current?.focus(), []);
   return (
     <div

@@ -34,11 +34,12 @@ type ExecServer struct {
 	queries []url.Values
 	paths   []string
 	resizes []string
+	resized chan struct{}
 }
 
 // NewExecServer starts the server.
 func NewExecServer() *ExecServer {
-	s := &ExecServer{}
+	s := &ExecServer{resized: make(chan struct{}, 64)}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	return s
 }
@@ -56,6 +57,10 @@ func (s *ExecServer) Paths() []string {
 	defer s.mu.Unlock()
 	return append([]string(nil), s.paths...)
 }
+
+// ResizeReceived has a value for every resize message the server has taken in, so a test can wait for one
+// instead of guessing when it arrives.
+func (s *ExecServer) ResizeReceived() <-chan struct{} { return s.resized }
 
 // Resizes returns the resize messages received, as JSON text.
 func (s *ExecServer) Resizes() []string {
@@ -97,6 +102,10 @@ func (s *ExecServer) serve(w http.ResponseWriter, r *http.Request) {
 			s.mu.Lock()
 			s.resizes = append(s.resizes, string(data[1:]))
 			s.mu.Unlock()
+			select {
+			case s.resized <- struct{}{}:
+			default:
+			}
 		}
 	}
 }

@@ -2,6 +2,7 @@ import { QueryClient } from '@tanstack/react-query';
 import 'fake-indexeddb/auto';
 import { screen, waitFor, within } from '@testing-library/react';
 import { IDBFactory } from 'fake-indexeddb';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { vaultStatusStore } from '../../state/vaultStatus';
 import { fakeClient, jsonResponse, renderApp } from '../../test/render';
@@ -130,8 +131,29 @@ describe('AppRoutes (signed in)', () => {
   });
 
   it('/c/:cluster/* opens the cluster page for the decoded cluster ID', async () => {
-    renderApp(<AppRoutes />, { client: signedIn(), route: '/c/k%3Aprod%2Fctx/core/Pod' });
+    const sources = [
+      {
+        type: 'kubeconfig',
+        label: 'prod',
+        status: 'ok',
+        clusters: [{ id: 'k:prod/ctx', name: 'ctx', state: 'closed' }],
+      },
+    ];
+    renderApp(<AppRoutes />, { client: signedIn({ sources }), route: '/c/k%3Aprod%2Fctx/core/Pod' });
     expect(await screen.findByText('Opening the cluster…')).toBeInTheDocument();
+  });
+
+  it('a link to a cluster that is not in the session says so', async () => {
+    renderApp(<AppRoutes />, { client: signedIn(), route: '/c/k%3Aother%2Fctx/core/Pod' });
+    expect(await screen.findByText(/isn't available in your session/)).toBeInTheDocument();
+  });
+
+  it('opens the command palette on Ctrl+K', async () => {
+    renderApp(<AppRoutes />, { client: signedIn() });
+    await screen.findByRole('heading', { name: 'Choose a cluster' });
+    expect(screen.queryByRole('dialog', { name: 'Command palette' })).toBeNull();
+    await userEvent.keyboard('{Control>}k{/Control}');
+    expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
   });
 
   it('shows the Vault banner and disables closed Vault clusters while the server says Vault is down', async () => {

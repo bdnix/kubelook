@@ -62,7 +62,7 @@ export const nodesKind: KindDescriptor = defineKind({
   title: 'Nodes',
   section: 'Cluster',
   status: nodeStatus,
-  actions: ['cordon', 'uncordon', 'drain', 'delete'],
+  actions: ['cordon', 'uncordon', 'taint', 'drain', 'delete'],
   columns: [
     { id: 'status', title: 'Status', value: (o) => nodeStatus(o).text },
     { id: 'roles', title: 'Roles', value: roles },

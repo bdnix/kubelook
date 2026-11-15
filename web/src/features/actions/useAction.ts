@@ -11,7 +11,10 @@ export interface ActionTargetRef {
   name: string;
 }
 
-/** Runs an action (`POST /clusters/{cluster}/actions`), or a delete (`DELETE` on the object). */
+/**
+ * Runs an action (`POST /clusters/{cluster}/actions`), a delete (`DELETE` on the object) or a node drain
+ * (`POST /clusters/{cluster}/nodes/{node}/drain`, which starts a job).
+ */
 export function useAction(cluster: string) {
   const api = useApi();
   const [busy, setBusy] = useState(false);
@@ -24,7 +27,9 @@ export function useAction(cluster: string) {
       const base = `/clusters/${encodeURIComponent(cluster)}`;
       const group = target.group === '' ? 'core' : target.group;
       try {
-        if (action === 'delete') {
+        if (action === 'drain') {
+          await api.post(`${base}/nodes/${encodeURIComponent(target.name)}/drain`);
+        } else if (action === 'delete') {
           const ns = target.namespace ? `?namespace=${encodeURIComponent(target.namespace)}` : '';
           await api.delete(
             `${base}/resources/${group}/${target.version}/${target.resource}/${encodeURIComponent(target.name)}${ns}`,

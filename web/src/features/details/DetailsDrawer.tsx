@@ -18,6 +18,7 @@ import { FilesPanel } from '../files/FilesPanel';
 import { ContainerPicker, runningContainers } from '../shell/ContainerPicker';
 import { OpenShell } from '../shell/OpenShell';
 import { EventsTab } from './EventsTab';
+import { MetricsPanel } from '../metrics/MetricsPanel';
 import { OverviewTab } from './OverviewTab';
 import { RelatedTab } from './RelatedTab';
 import { useFocusReturn, useKindItems, useObject, useOwnerChain, useResourceInfo } from './useDetails';
@@ -227,6 +228,7 @@ export function DetailsDrawer({ cluster, group, kind, namespace, name, onClose }
             ))}
           </div>
           <div role="tabpanel">
+            {tab === 'overview' && <MetricsPanel cluster={cluster} kind={kind} object={object} />}
             {tab === 'overview' && (
               <OverviewTab
                 cluster={cluster}

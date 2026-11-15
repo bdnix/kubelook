@@ -89,6 +89,170 @@ describe('ResourceListPage', () => {
     expect(await within(grid).findByText('web-3')).toBeInTheDocument();
   });
 
+  it('selecting rows shows the bulk bar with the actions of the kind', async () => {
+    mount();
+    await connected();
+    act(() =>
+      FakeWebSocket.last.serverSend({
+        ch: 1,
+        t: 'snapshot',
+        d: { items: [pod('1', 'web-1'), pod('2', 'web-2')], more: false },
+      }),
+    );
+    expect(await screen.findByText('web-1')).toBeInTheDocument();
+    expect(screen.queryByRole('toolbar', { name: 'Bulk actions' })).toBeNull();
+    screen.getByRole('grid', { name: 'Pods' }).focus();
+    await userEvent.keyboard('{ }');
+    const bar = await screen.findByRole('toolbar', { name: 'Bulk actions' });
+    expect(within(bar).getByText('1 selected')).toBeInTheDocument();
+    expect(within(bar).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+    await userEvent.keyboard('{ }');
+    await waitFor(() => expect(screen.queryByRole('toolbar', { name: 'Bulk actions' })).toBeNull());
+  });
+
+  it('the field filter keeps the rows that match and tells about a query that does not parse', async () => {
+    mount();
+    await connected();
+    act(() =>
+      FakeWebSocket.last.serverSend({
+        ch: 1,
+        t: 'snapshot',
+        d: { items: [pod('1', 'web-1'), pod('2', 'web-2', 'Pending')], more: false },
+      }),
+    );
+    const grid = await screen.findByRole('grid', { name: 'Pods' });
+    const input = screen.getByRole('combobox', { name: 'Field filter' });
+    await userEvent.type(input, 'status.phase = Pending');
+    expect(within(grid).queryByText('web-1')).toBeNull();
+    expect(within(grid).getByText('web-2')).toBeInTheDocument();
+    await userEvent.clear(input);
+    await userEvent.type(input, 'status.phase =');
+    expect(screen.getByRole('alert')).toHaveTextContent('Expected a value.');
+    expect(within(grid).getByText('web-1')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('shows the columns of the saved column preset, in its order', async () => {
+    mount('open', {
+      'GET /settings': () =>
+        jsonResponse({
+          favouriteClusters: [],
+          namespaceFilters: {},
+          columnPresets: { '/Pod': ['status', 'name'] },
+          filterSets: [],
+          watchIdleSeconds: 30,
+          theme: 'system',
+        }),
+    });
+    await connected();
+    act(() =>
+      FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [pod('1', 'web-1')], more: false } }),
+    );
+    await screen.findByText('web-1');
+    await waitFor(() =>
+      expect(
+        screen
+          .getAllByRole('columnheader')
+          .map((h) => h.textContent?.trim())
+          .filter(Boolean),
+      ).toEqual(['Status', 'Name']),
+    );
+  });
+
+  it('saved filters are listed, load into the query bar and are saved in the user settings', async () => {
+    const doc = {
+      favouriteClusters: [],
+      namespaceFilters: {},
+      columnPresets: {},
+      filterSets: [{ name: 'Pending', kind: 'Pod', query: 'status.phase = Pending' }],
+      watchIdleSeconds: 30,
+      theme: 'system',
+    };
+    mount('open', { 'GET /settings': () => jsonResponse(doc), 'PUT /settings': () => jsonResponse(doc) });
+    await connected();
+    act(() =>
+      FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [pod('1', 'web-1')], more: false } }),
+    );
+    await userEvent.click(await screen.findByRole('button', { name: 'Load Pending' }));
+    expect(screen.getByRole('combobox', { name: 'Field filter' })).toHaveValue('status.phase = Pending');
+    await userEvent.type(screen.getByLabelText('Name'), 'Mine');
+    expect(screen.getByRole('button', { name: 'Save filter' })).toBeEnabled();
+  });
+
+  it('watches each selected namespace once, or all namespaces when none is selected', async () => {
+    const doc = (ns: string[]) => ({
+      favouriteClusters: [],
+      namespaceFilters: ns.length ? { 'v:prod': ns } : {},
+      columnPresets: {},
+      filterSets: [],
+      watchIdleSeconds: 30,
+      theme: 'system',
+    });
+    mount('open', { 'GET /settings': () => jsonResponse(doc(['ns-a', 'ns-b'])) });
+    await connected();
+    await waitFor(() =>
+      expect(
+        FakeWebSocket.last.frames
+          .filter((f) => f.op === 'watch.open')
+          .map((f) => (f.d as { namespace: string }).namespace),
+      ).toEqual(['ns-a', 'ns-b']),
+    );
+  });
+
+  it('more than ten selected namespaces become one all-namespaces watch, filtered here', async () => {
+    const names = Array.from({ length: 11 }, (_, i) => `n${i}`);
+    mount('open', {
+      'GET /settings': () =>
+        jsonResponse({
+          favouriteClusters: [],
+          namespaceFilters: { 'v:prod': names },
+          columnPresets: {},
+          filterSets: [],
+          watchIdleSeconds: 30,
+          theme: 'system',
+        }),
+    });
+    await connected();
+    await waitFor(() =>
+      expect(FakeWebSocket.last.frames.filter((f) => f.op === 'watch.open')).toHaveLength(1),
+    );
+    expect(
+      (FakeWebSocket.last.frames.find((f) => f.op === 'watch.open')?.d as { namespace: string }).namespace,
+    ).toBe('');
+    const inNs = (uid: string, name: string, namespace: string) => ({
+      ...pod(uid, name),
+      metadata: { ...pod(uid, name).metadata, namespace },
+    });
+    act(() =>
+      FakeWebSocket.last.serverSend({
+        ch: 1,
+        t: 'snapshot',
+        d: { items: [inNs('1', 'inside', 'n3'), inNs('2', 'outside', 'other')], more: false },
+      }),
+    );
+    expect(await screen.findByText('inside')).toBeInTheDocument();
+    expect(screen.queryByText('outside')).toBeNull();
+  });
+
+  it('the pods list gains CPU and Memory columns when the cluster serves metrics', async () => {
+    mount('open', {
+      'GET /clusters/v%3Aprod/metrics/pods': () =>
+        jsonResponse({
+          available: true,
+          items: [{ namespace: 'ns', name: 'web-1', cpuMillicores: 250, memoryBytes: 134217728 }],
+        }),
+    });
+    await connected();
+    act(() =>
+      FakeWebSocket.last.serverSend({ ch: 1, t: 'snapshot', d: { items: [pod('1', 'web-1')], more: false } }),
+    );
+    const grid = await screen.findByRole('grid', { name: 'Pods' });
+    expect(await within(grid).findByText('250m')).toBeInTheDocument();
+    expect(within(grid).getByText('128Mi')).toBeInTheDocument();
+    expect(within(grid).getByRole('columnheader', { name: /^CPU/ })).toBeInTheDocument();
+  });
+
   it('opens a cluster that is not open before listing', async () => {
     mount('closed', { 'GET /clusters/v%3Aprod/discovery': () => jsonResponse(discovery) });
     expect(screen.getByRole('status')).toHaveTextContent('Opening the cluster');
