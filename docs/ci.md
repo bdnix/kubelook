@@ -14,7 +14,7 @@ The `ci` workflow (`.github/workflows/ci.yml`) runs on every pull request and on
 | `dependency-review` | Dependency Review | Pull requests add no dependency with a high-severity advisory, including GitHub Actions and npm dev dependencies (pull requests only) |
 | `publish-image` | Publish Container Image | On pushes to `main` only, after the five required jobs pass: publishes `ghcr.io/bdnix/kubelook` for `linux/amd64` and `linux/arm64` with SBOM and provenance |
 
-There is no aggregate gate job: branch protection requires the four test jobs directly, and `publish-image` lists them in `needs`. Adding or renaming a required job means updating both. Lint and tests of one side share a job (one checkout, one toolchain setup, one cache), and the coverage run is the unit-test run, so no test executes twice.
+There is no aggregate gate job: branch protection requires the five test jobs directly, and `publish-image` lists them in `needs`. Adding or renaming a required job means updating both. Lint and tests of one side share a job (one checkout, one toolchain setup, one cache), and the coverage run is the unit-test run, so no test executes twice.
 
 Locally: `make it-up && make it` runs the integration suite (needs Docker and a cgroup v2 host; `make it-down` removes it), `make lint`, `make test-backend`, `make test-frontend`, `make coverage`, `make test-ui` (needs Chromium: `cd web && npx playwright install --with-deps chromium`), and `make verify` for lint, coverage and build together.
 
