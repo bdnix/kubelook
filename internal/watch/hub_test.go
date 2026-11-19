@@ -518,11 +518,11 @@ func TestHub_Idle_ReturningBeforeTheTimeoutCancelsTheStop(t *testing.T) {
 	e.watcher(t)
 
 	r.active.Store(false)
-	e.hub.ActivityChanged(keyFor(sessA, ""))
+	e.hub.ActivityChanged(sessA, keyFor(sessA, ""))
 	e.clock.BlockUntil(1)
 	e.clock.Advance(9 * time.Second)
 	r.active.Store(true)
-	e.hub.ActivityChanged(keyFor(sessA, ""))
+	e.hub.ActivityChanged(sessA, keyFor(sessA, ""))
 	e.clock.Advance(5 * time.Second) // the cancelled timer would have fired by now
 	e.clock.Advance(20 * time.Second)
 
@@ -615,7 +615,7 @@ func TestHub_Close_RefusesNewSubscribers(t *testing.T) {
 
 func TestHub_ActivityChanged_UnknownKeyIsIgnored(t *testing.T) {
 	e := newHubEnv(t)
-	e.hub.ActivityChanged(keyFor(sessA, "nope"))
+	e.hub.ActivityChanged(sessA, keyFor(sessA, "nope"))
 }
 
 func TestHub_WatchErrorEventThatIsNotGone_BacksOffAndReconnects(t *testing.T) {
