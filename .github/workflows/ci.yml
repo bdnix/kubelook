@@ -16,8 +16,8 @@ defaults:
   run:
     shell: bash
 
-# Required checks (branch protection): backend-tests, frontend-tests, ui-tests, image-scan.
-# Publishing happens only on pushes to main, after all four have passed.
+# Required checks (branch protection): backend-tests, frontend-tests, ui-tests, integration-tests, image-scan.
+# Publishing happens only on pushes to main, after all five have passed.
 jobs:
   # Lint, unit tests and the vulnerability check of one side share a job: one checkout, one
   # toolchain setup, one cache. The coverage run IS the unit-test run, so no test runs twice.
@@ -134,6 +134,48 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  # The real Kubelook image against real Vault and two real Kubernetes clusters (kind), with the
+  # identity stand-in. No mocks of Vault or Kubernetes (PLAN.md Phase 7). The browser suite and
+  # PostgreSQL arrive in Steps 7.9-7.10. No secrets and no write permissions: safe on fork pull requests.
+  integration-tests:
+    name: "Integration & End-to-End Tests (kind, Vault, PostgreSQL)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Cache tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-${{ hashFiles('hack/install-tools.sh') }}
+      - name: Start the environment (kind, Vault, PostgreSQL, identity stand-in, Kubelook)
+        run: make it-up
+      - name: Integration tests
+        run: make it
+      - name: Collect logs
+        if: ${{ failure() }}
+        run: |
+          mkdir -p it-logs
+          for c in $(docker ps -a --format '{{.Names}}' | grep kubelook-it); do docker logs "$c" > "it-logs/$c.log" 2>&1 || true; done
+          bin/kind export logs it-logs/kind-alpha --name kubelook-it-alpha || true
+          bin/kind export logs it-logs/kind-beta --name kubelook-it-beta || true
+      - name: Upload logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: integration-logs
+          path: it-logs
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Remove the environment
+        if: ${{ always() }}
+        run: make it-down
+
   # Builds the whole product (web app, Go binary, image), so there is no separate build job.
   image-scan:
     name: "Container Image: Build & Vulnerability Scan"
@@ -185,7 +227,7 @@ jobs:
   publish-image:
     name: Publish Container Image
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [backend-tests, frontend-tests, ui-tests, image-scan]
+    needs: [backend-tests, frontend-tests, ui-tests, integration-tests, image-scan]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
