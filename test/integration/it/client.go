@@ -13,6 +13,7 @@ import (
 	"net/http/cookiejar"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -38,6 +39,44 @@ type Client struct {
 	t    testing.TB
 	HC   *http.Client
 	CSRF string // set by SignIn* when the session is valid
+
+	mu         sync.Mutex
+	setCookies []*http.Cookie // every Set-Cookie the server sent, in order, for attribute checks
+}
+
+// recorder keeps the Set-Cookie headers of every response, including redirects the client follows.
+type recorder struct {
+	next http.RoundTripper
+	c    *Client
+}
+
+func (r recorder) RoundTrip(req *http.Request) (*http.Response, error) {
+	resp, err := r.next.RoundTrip(req)
+	if err == nil {
+		r.c.mu.Lock()
+		r.c.setCookies = append(r.c.setCookies, resp.Cookies()...)
+		r.c.mu.Unlock()
+	}
+	return resp, err
+}
+
+// SetCookie returns the last Set-Cookie with that name the server sent, or nil.
+func (c *Client) SetCookie(name string) *http.Cookie {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := len(c.setCookies) - 1; i >= 0; i-- {
+		if c.setCookies[i].Name == name {
+			return c.setCookies[i]
+		}
+	}
+	return nil
+}
+
+// NoFollow returns a client that shares the cookie jar and transport but does not follow redirects.
+func (c *Client) NoFollow() *http.Client {
+	hc := *c.HC
+	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	return &hc
 }
 
 // NewClient returns a client with its own cookie jar and no session.
@@ -57,7 +96,9 @@ func NewClient(t testing.TB) *Client {
 		},
 	}
 	t.Cleanup(tr.CloseIdleConnections)
-	return &Client{t: t, HC: &http.Client{Jar: jar, Transport: tr, Timeout: 60 * time.Second}}
+	c := &Client{t: t}
+	c.HC = &http.Client{Jar: jar, Transport: recorder{next: tr, c: c}, Timeout: 60 * time.Second}
+	return c
 }
 
 // Announce tells the identity stand-in which account signs in next.

@@ -2,6 +2,7 @@
 FROM golang:1.27.4-trixie AS build
 WORKDIR /src
 COPY go.mod go.sum ./
+COPY internal/clock/ ./internal/clock/
 COPY test/integration/fakeidp/ ./test/integration/fakeidp/
 RUN CGO_ENABLED=0 go build -trimpath -o /out/fakeidp ./test/integration/fakeidp
 
