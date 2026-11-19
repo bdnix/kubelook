@@ -37,6 +37,12 @@ container_running kubelook-it-fakeidp || { remove_container kubelook-it-fakeidp;
   -p 127.0.0.1:8300:8300 kubelook-fakeidp:dev >/dev/null; }
 wait_http http://127.0.0.1:8300/healthz 30
 
+# 4b. Pre-load the small workload images so tests never wait on a registry.
+for img in busybox:1.37 registry.k8s.io/pause:3.10; do
+  docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img" >/dev/null
+  for c in alpha beta; do kind load docker-image "$img" --name "kubelook-it-$c" >/dev/null; done
+done
+
 # 5. Vault content and test fixtures (Step 7.2), Kubelook containers (Step 7.3)
 "$ROOT/hack/vault-setup.sh"
 "$ROOT/hack/it-apps.sh"
