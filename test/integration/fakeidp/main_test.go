@@ -15,23 +15,24 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/bdnix/kubelook/internal/clock"
 )
 
 const issuer = "http://kubelook-it-fakeidp:8300/oidc"
 
 func newServer(t *testing.T) *httptest.Server {
 	t.Helper()
-	s := httptest.NewServer(newIDP("http://kubelook-it-fakeidp:8300").handler())
+	s := httptest.NewServer(newIDP("http://kubelook-it-fakeidp:8300", clock.Real()).handler())
 	t.Cleanup(s.Close)
 	return s
 }
 
-func postJSON(t *testing.T, s *httptest.Server, path, body string) *http.Response {
+func postJSON(t *testing.T, s *httptest.Server, path, body string) {
 	t.Helper()
 	resp, err := http.Post(s.URL+path, "application/json", strings.NewReader(body))
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = resp.Body.Close() })
-	return resp
+	require.NoError(t, resp.Body.Close())
 }
 
 func noRedirect() *http.Client {
@@ -60,7 +61,7 @@ func authorize(t *testing.T, s *httptest.Server, path, verifier string) (code, s
 	return loc.Query().Get("code"), loc.Query().Get("state")
 }
 
-func exchange(t *testing.T, s *httptest.Server, path, code, verifier string) (*http.Response, map[string]any) {
+func exchange(t *testing.T, s *httptest.Server, path, code, verifier string) (status int, out map[string]any) {
 	t.Helper()
 	form := url.Values{
 		"grant_type": {"authorization_code"}, "code": {code}, "code_verifier": {verifier},
@@ -73,9 +74,8 @@ func exchange(t *testing.T, s *httptest.Server, path, code, verifier string) (*h
 	resp, err := http.DefaultClient.Do(req)
 	require.NoError(t, err)
 	defer func() { _ = resp.Body.Close() }()
-	var out map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
-	return resp, out
+	return resp.StatusCode, out
 }
 
 func decodeJWT(t *testing.T, raw string) (header, claims map[string]any, signingInput string, sig []byte) {
@@ -143,8 +143,8 @@ func TestOIDC_CodeAndPKCE_YieldsSignedIDToken(t *testing.T) {
 	code, state := authorize(t, s, "/oidc/authorize", "verifier-1")
 	assert.Equal(t, "st-1", state)
 
-	resp, out := exchange(t, s, "/oidc/token", code, "verifier-1")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	status, out := exchange(t, s, "/oidc/token", code, "verifier-1")
+	require.Equal(t, http.StatusOK, status)
 	raw, _ := out["id_token"].(string)
 	header, claims, signingInput, sig := decodeJWT(t, raw)
 	assert.Equal(t, "RS256", header["alg"])
@@ -165,8 +165,8 @@ func TestOIDC_WrongVerifier_Is400(t *testing.T) {
 	s := newServer(t)
 	postJSON(t, s, "/admin/next", `{"sub":"1","email":"a@corp.example"}`)
 	code, _ := authorize(t, s, "/oidc/authorize", "right")
-	resp, _ := exchange(t, s, "/oidc/token", code, "wrong")
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	status, _ := exchange(t, s, "/oidc/token", code, "wrong")
+	assert.Equal(t, http.StatusBadRequest, status)
 }
 
 func TestOIDC_WrongClientSecret_Is401(t *testing.T) {
@@ -206,8 +206,8 @@ func TestOIDC_CodeIsSingleUse(t *testing.T) {
 	code, _ := authorize(t, s, "/oidc/authorize", "v")
 	first, _ := exchange(t, s, "/oidc/token", code, "v")
 	second, _ := exchange(t, s, "/oidc/token", code, "v")
-	assert.Equal(t, http.StatusOK, first.StatusCode)
-	assert.Equal(t, http.StatusBadRequest, second.StatusCode)
+	assert.Equal(t, http.StatusOK, first)
+	assert.Equal(t, http.StatusBadRequest, second)
 }
 
 func githubGet(t *testing.T, s *httptest.Server, path, token string) (int, map[string]any) {
@@ -227,8 +227,8 @@ func githubToken(t *testing.T, s *httptest.Server, next string) string {
 	t.Helper()
 	postJSON(t, s, "/admin/next", next)
 	code, _ := authorize(t, s, "/github/login/oauth/authorize", "v")
-	resp, out := exchange(t, s, "/github/login/oauth/access_token", code, "v")
-	require.Equal(t, http.StatusOK, resp.StatusCode)
+	status, out := exchange(t, s, "/github/login/oauth/access_token", code, "v")
+	require.Equal(t, http.StatusOK, status)
 	tok, _ := out["access_token"].(string)
 	require.NotEmpty(t, tok)
 	return tok
@@ -263,8 +263,8 @@ func TestGitHub_WrongVerifier_Is400(t *testing.T) {
 	s := newServer(t)
 	postJSON(t, s, "/admin/next", `{"sub":"9","github_id":9}`)
 	code, _ := authorize(t, s, "/github/login/oauth/authorize", "right")
-	resp, _ := exchange(t, s, "/github/login/oauth/access_token", code, "wrong")
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	status, _ := exchange(t, s, "/github/login/oauth/access_token", code, "wrong")
+	assert.Equal(t, http.StatusBadRequest, status)
 }
 
 func TestGitHub_UnknownToken_Is401(t *testing.T) {
