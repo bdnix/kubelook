@@ -56,11 +56,20 @@ export const pod = (uid: string, name: string, phase: string) => ({
 export const deployment = (name = 'web', replicas = 2) => ({
   apiVersion: 'apps/v1',
   kind: 'Deployment',
-  metadata: { uid: `uid-${name}`, name, namespace: 'shop', resourceVersion: '20', creationTimestamp: created() },
+  metadata: {
+    uid: `uid-${name}`,
+    name,
+    namespace: 'shop',
+    resourceVersion: '20',
+    creationTimestamp: created(),
+  },
   spec: {
     replicas,
     selector: { matchLabels: { app: name } },
-    template: { metadata: { labels: { app: name } }, spec: { containers: [{ name: 'app', image: 'web:1' }] } },
+    template: {
+      metadata: { labels: { app: name } },
+      spec: { containers: [{ name: 'app', image: 'web:1' }] },
+    },
   },
   status: { replicas, readyReplicas: replicas, availableReplicas: replicas, updatedReplicas: replicas },
 });
@@ -69,7 +78,13 @@ export const secret = () => ({
   apiVersion: 'v1',
   kind: 'Secret',
   type: 'Opaque',
-  metadata: { uid: 'uid-s', name: 'credentials', namespace: 'shop', resourceVersion: '30', creationTimestamp: created() },
+  metadata: {
+    uid: 'uid-s',
+    name: 'credentials',
+    namespace: 'shop',
+    resourceVersion: '30',
+    creationTimestamp: created(),
+  },
   data: { password: '********' },
 });
 
@@ -87,7 +102,11 @@ export const appsOpenApi = {
           metadata: { type: 'object' },
           spec: {
             type: 'object',
-            properties: { replicas: { type: 'integer' }, selector: { type: 'object' }, template: { type: 'object' } },
+            properties: {
+              replicas: { type: 'integer' },
+              selector: { type: 'object' },
+              template: { type: 'object' },
+            },
           },
         },
       },
@@ -96,7 +115,10 @@ export const appsOpenApi = {
 };
 
 type Frame = { ch: number; t: string; d?: unknown };
-type SocketHandler = (msg: { op: string; ch: number; d?: Record<string, unknown> }, send: (f: Frame) => void) => void;
+type SocketHandler = (
+  msg: { op: string; ch: number; d?: Record<string, unknown> },
+  send: (f: Frame) => void,
+) => void;
 
 /**
  * Plays the server of the WebSocket. `watch.open` answers with `items(d)` as a snapshot; `extra` handles any
