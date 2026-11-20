@@ -44,6 +44,17 @@ func readUntil(t *testing.T, ch *it.Channel, want string, within time.Duration) 
 	t.Fatalf("output %q never contained %q", got.String(), want)
 }
 
+// awaitShell waits for the shell's own "opened" frame, which names the shell that started. Input sent before it
+// would stop Kubelook from trying the next shell when the first one is missing, as a real terminal never does.
+func awaitShell(t *testing.T, ch *it.Channel) string {
+	t.Helper()
+	kind, raw := ch.NextOf(60*time.Second, "opened", "error", "exit")
+	require.Equal(t, "opened", kind, "the shell did not start: %s", raw)
+	var opened struct{ Shell string }
+	require.NoError(t, json.Unmarshal(raw, &opened))
+	return opened.Shell
+}
+
 func TestExec_Shell_FallsBackToShAndEchoes_OnBothKubernetesVersions(t *testing.T) {
 	for _, cl := range []string{"alpha", "beta"} {
 		t.Run(cl, func(t *testing.T) {
@@ -52,12 +63,7 @@ func TestExec_Shell_FallsBackToShAndEchoes_OnBothKubernetesVersions(t *testing.T
 			w := c.WS()
 			ch := w.Open("exec.open", map[string]any{"cluster": "v:" + cl, "namespace": "demo", "pod": pod, "cols": 80, "rows": 24})
 			// the mux's "opened" was consumed by Open; the shell's own "opened" names the shell it found
-			var opened struct{ Shell string }
-			ch.Send("exec.stdin", stdin("\n"))
-			kind, raw := ch.NextOf(30*time.Second, "opened", "error", "exit")
-			require.Equal(t, "opened", kind, "the shell did not start: %s", raw)
-			require.NoError(t, json.Unmarshal(raw, &opened))
-			assert.Equal(t, "/bin/sh", opened.Shell, "busybox has no bash, so the fallback to sh is used")
+			assert.Equal(t, "/bin/sh", awaitShell(t, ch), "busybox has no bash, so the fallback to sh is used")
 			ch.Send("exec.stdin", stdin("echo kubelook-$((6*7))\n"))
 			readUntil(t, ch, "kubelook-42", 30*time.Second)
 			ch.Send("exec.resize", map[string]int{"cols": 100, "rows": 30})
@@ -73,6 +79,7 @@ func TestExec_Audit_RecordsStartAndStopButNeverTheOutput(t *testing.T) {
 	c := devopsClient(t, "exec-audit")
 	pod := podOf(t, "alpha", "shell")
 	ch := c.WS().Open("exec.open", map[string]any{"cluster": "v:alpha", "namespace": "demo", "pod": pod, "cols": 80, "rows": 24})
+	awaitShell(t, ch)
 	ch.Send("exec.stdin", stdin("echo kubelook-$((6*7))\n"))
 	readUntil(t, ch, "kubelook-42", 30*time.Second)
 	ch.Send("exec.stdin", stdin("exit\n"))

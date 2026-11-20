@@ -24,6 +24,7 @@ func TestDebug_ADebugContainerOnAPodWithoutAShellOpensAShellAndIsReused(t *testi
 	assert.False(t, first.Reused)
 
 	ch := c.WS().Open("exec.open", map[string]any{"cluster": "v:alpha", "namespace": "demo", "pod": pod, "container": first.Container, "cols": 80, "rows": 24})
+	awaitShell(t, ch)
 	ch.Send("exec.stdin", stdin("echo kubelook-$((6*7))\n"))
 	readUntil(t, ch, "kubelook-42", 60*time.Second)
 
