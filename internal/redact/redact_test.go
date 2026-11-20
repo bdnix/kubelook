@@ -195,3 +195,62 @@ func TestApply_Property_NoOriginalValueSurvives(t *testing.T) {
 		}
 	}
 }
+
+func exposedSecretReport(kind string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "aquasecurity.github.io/v1alpha1",
+		"kind":       kind,
+		"metadata":   map[string]any{"name": "r", "namespace": "ns"},
+		"report": map[string]any{
+			"summary": map[string]any{"criticalCount": int64(1)},
+			"secrets": []any{
+				map[string]any{"ruleID": "aws-access-key-id", "category": "AWS", "severity": "CRITICAL", "title": "AWS Access Key ID", "match": "AKIAIOSFODNN7EXAMPLE", "target": "/app/.env"},
+				map[string]any{"ruleID": "github-pat", "match": "ghp_TOPSECRET", "severity": "HIGH"},
+			},
+		},
+	}}
+}
+
+func TestApply_TrivyExposedSecretReports_LoseTheMatchedText(t *testing.T) {
+	for _, kind := range []string{"ExposedSecretReport", "ClusterExposedSecretReport"} {
+		t.Run(kind, func(t *testing.T) {
+			o := exposedSecretReport(kind)
+			require.True(t, redact.Apply(o))
+			b, err := json.Marshal(o.Object)
+			require.NoError(t, err)
+			assert.NotContains(t, string(b), "AKIAIOSFODNN7EXAMPLE")
+			assert.NotContains(t, string(b), "ghp_TOPSECRET")
+			assert.NotContains(t, string(b), `"match"`)
+			secrets, _, _ := unstructured.NestedSlice(o.Object, "report", "secrets")
+			require.Len(t, secrets, 2)
+			first, _ := secrets[0].(map[string]any)
+			assert.Equal(t, "aws-access-key-id", first["ruleID"], "the rest of each finding stays")
+			assert.Equal(t, "/app/.env", first["target"])
+			summary, _, _ := unstructured.NestedMap(o.Object, "report", "summary")
+			assert.Equal(t, int64(1), summary["criticalCount"])
+		})
+	}
+}
+
+func TestApply_OtherTrivyReportsAndOtherGroupsKeepTheirFields(t *testing.T) {
+	vuln := exposedSecretReport("VulnerabilityReport")
+	require.True(t, redact.Apply(vuln))
+	b, _ := json.Marshal(vuln.Object)
+	assert.Contains(t, string(b), "AKIAIOSFODNN7EXAMPLE", "only exposed-secret reports are redacted")
+	other := exposedSecretReport("ExposedSecretReport")
+	other.SetAPIVersion("example.com/v1")
+	require.True(t, redact.Apply(other))
+	b, _ = json.Marshal(other.Object)
+	assert.Contains(t, string(b), "AKIAIOSFODNN7EXAMPLE", "another group's kind of the same name is not touched")
+}
+
+func TestApply_ExposedSecretReportWithoutSecretsOrWithOddShapes(t *testing.T) {
+	o := exposedSecretReport("ExposedSecretReport")
+	delete(o.Object["report"].(map[string]any), "secrets")
+	require.True(t, redact.Apply(o))
+	o2 := exposedSecretReport("ExposedSecretReport")
+	o2.Object["report"].(map[string]any)["secrets"] = []any{"not a map", map[string]any{"match": "x"}}
+	require.True(t, redact.Apply(o2))
+	b, _ := json.Marshal(o2.Object)
+	assert.NotContains(t, string(b), `"match"`)
+}
