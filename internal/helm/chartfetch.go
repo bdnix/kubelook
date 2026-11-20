@@ -159,7 +159,7 @@ func (f *Fetcher) download(ctx context.Context, repo Repository, chartURL *url.U
 	}
 	defer func() { _ = resp.Body.Close() }()
 	path := filepath.Join(destDir, "chart.tgz")
-	out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600) //nolint:gosec // the path is a fixed name inside the job's own directory
 	if err != nil {
 		return "", fmt.Errorf("creating the chart file: %w", err)
 	}

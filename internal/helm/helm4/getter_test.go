@@ -71,3 +71,11 @@ func TestRESTClientGetter_HandsOutACopyOfTheConfig(t *testing.T) {
 	c.Host = "changed"
 	assert.Equal(t, "https://x", base.Host)
 }
+
+func TestRESTClientGetter_AnUnusableConnectionIsAnError(t *testing.T) {
+	g := helm4.NewRESTClientGetter(&rest.Config{Host: "https://x.invalid", TLSClientConfig: rest.TLSClientConfig{CAData: []byte("not a certificate")}}, "n")
+	_, err := g.ToDiscoveryClient()
+	assert.Error(t, err)
+	_, err = g.ToRESTMapper()
+	assert.Error(t, err)
+}

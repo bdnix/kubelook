@@ -3,6 +3,7 @@ package helm4_test
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,7 +11,10 @@ import (
 	"helm.sh/helm/v4/pkg/action"
 	"helm.sh/helm/v4/pkg/chart/common"
 	"helm.sh/helm/v4/pkg/cli"
+	kubefake "helm.sh/helm/v4/pkg/kube/fake"
+	ri "helm.sh/helm/v4/pkg/release"
 	v1 "helm.sh/helm/v4/pkg/release/v1"
+	"helm.sh/helm/v4/pkg/storage"
 
 	"github.com/bdnix/kubelook/internal/apperr"
 	"github.com/bdnix/kubelook/internal/helm"
@@ -222,3 +226,98 @@ func TestNoChart_Invalid(t *testing.T) {
 }
 
 var _ = common.DefaultCapabilities
+
+func TestUnknownReleaseOrRevision_IsNotFound(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	assert.ErrorIs(t, r.d.Rollback(ctx, "n", "nope", 1), apperr.ErrNotFound)
+	assert.ErrorIs(t, r.d.Uninstall(ctx, "n", "nope"), apperr.ErrNotFound)
+	_, err := r.d.Test(ctx, "n", "nope")
+	assert.ErrorIs(t, err, apperr.ErrNotFound)
+	_, err = r.d.Install(ctx, helm.InstallOptions{Namespace: "n", Name: "web", Chart: r.chart(t, "1.0.0")})
+	require.NoError(t, err)
+	assert.ErrorIs(t, r.d.Rollback(ctx, "n", "web", 9), apperr.ErrNotFound, "there is no revision 9")
+}
+
+func TestRender_OfAnExistingReleaseIsAnUpgradePreview(t *testing.T) {
+	r := newRig(t)
+	ctx := context.Background()
+	_, err := r.d.Install(ctx, helm.InstallOptions{Namespace: "n", Name: "web", Chart: r.chart(t, "1.0.0"), Values: map[string]any{"replicas": 1}})
+	require.NoError(t, err)
+	manifest, err := r.d.Render(ctx, helm.UpgradeOptions{Namespace: "n", Name: "web", Chart: r.chart(t, "1.1.0"), Values: map[string]any{"replicas": 5}})
+	require.NoError(t, err)
+	assert.Contains(t, manifest, `replicas: "5"`)
+	st, err := r.d.Status(ctx, "n", "web")
+	require.NoError(t, err)
+	assert.Equal(t, 1, st.Revision, "nothing was stored")
+	_, err = r.d.Render(ctx, helm.UpgradeOptions{Namespace: "n", Name: "web"})
+	assert.ErrorIs(t, err, apperr.ErrInvalid, "no chart")
+}
+
+func TestOpenFailure_IsReturned(t *testing.T) {
+	boom := errors.New("no storage")
+	d := helm4.New(func(string) (*action.Configuration, error) { return nil, boom })
+	ctx := context.Background()
+	_, err := d.List(ctx, "")
+	assert.ErrorIs(t, err, boom)
+	_, err = d.Get(ctx, "n", "web", 0)
+	assert.ErrorIs(t, err, boom)
+	_, err = d.History(ctx, "n", "web")
+	assert.ErrorIs(t, err, boom)
+	_, err = d.Status(ctx, "n", "web")
+	assert.ErrorIs(t, err, boom)
+	assert.ErrorIs(t, d.Uninstall(ctx, "n", "web"), boom)
+	assert.ErrorIs(t, d.Rollback(ctx, "n", "web", 1), boom)
+	_, err = d.Test(ctx, "n", "web")
+	assert.ErrorIs(t, err, boom)
+	_, err = d.Install(ctx, helm.InstallOptions{Namespace: "n", Name: "web"})
+	assert.ErrorIs(t, err, boom)
+}
+
+func TestOCIReference_ThatCannotBeReached_IsInvalid(t *testing.T) {
+	r := newRig(t)
+	d := helm4.New(r.Open).WithWorkDir(t.TempDir())
+	_, err := d.Install(context.Background(), helm.InstallOptions{
+		Namespace: "n", Name: "web", Chart: helm.ChartSource{OCI: "oci://127.0.0.1:1/charts/web", Version: "1.0.0"},
+	})
+	assert.ErrorIs(t, err, apperr.ErrInvalid)
+}
+
+// brokenStorage is a Helm storage driver whose every call fails, as a cluster that cannot be read would.
+type brokenStorage struct{ err error }
+
+func (b brokenStorage) Create(string, ri.Releaser) error                   { return b.err }
+func (b brokenStorage) Update(string, ri.Releaser) error                   { return b.err }
+func (b brokenStorage) Delete(string) (ri.Releaser, error)                 { return nil, b.err }
+func (b brokenStorage) Get(string) (ri.Releaser, error)                    { return nil, b.err }
+func (b brokenStorage) List(func(ri.Releaser) bool) ([]ri.Releaser, error) { return nil, b.err }
+func (b brokenStorage) Query(map[string]string) ([]ri.Releaser, error)     { return nil, b.err }
+func (b brokenStorage) Name() string                                       { return "broken" }
+
+func TestStorageFailures_AreReturned_NotMistakenForAMissingRelease(t *testing.T) {
+	boom := errors.New("the cluster cannot be read")
+	d := helm4.New(func(string) (*action.Configuration, error) {
+		cfg := action.NewConfiguration()
+		cfg.Releases = storage.Init(brokenStorage{boom})
+		cfg.KubeClient = &kubefake.PrintingKubeClient{Out: io.Discard}
+		return cfg, nil
+	}).WithWorkDir(t.TempDir())
+	ctx := context.Background()
+	_, err := d.List(ctx, "")
+	assert.ErrorIs(t, err, boom)
+	_, err = d.Get(ctx, "n", "web", 0)
+	assert.ErrorIs(t, err, boom)
+	_, err = d.History(ctx, "n", "web")
+	assert.ErrorIs(t, err, boom)
+	_, err = d.Status(ctx, "n", "web")
+	assert.ErrorIs(t, err, boom)
+	assert.ErrorIs(t, d.Rollback(ctx, "n", "web", 1), boom)
+	assert.ErrorIs(t, d.Uninstall(ctx, "n", "web"), boom)
+	_, err = d.Test(ctx, "n", "web")
+	assert.ErrorIs(t, err, boom)
+	local := helm.ChartSource{Path: helmtest.Save(t, helmtest.Chart(), t.TempDir())}
+	_, err = d.Install(ctx, helm.InstallOptions{Namespace: "n", Name: "web", Chart: local})
+	assert.ErrorIs(t, err, boom, "a storage failure is not read as 'the name is free'")
+	_, err = d.Upgrade(ctx, helm.UpgradeOptions{Namespace: "n", Name: "web", Chart: local})
+	assert.ErrorIs(t, err, boom)
+}

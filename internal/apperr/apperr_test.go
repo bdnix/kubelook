@@ -29,3 +29,9 @@ func TestAPIError_ErrorText(t *testing.T) {
 	var target *apperr.APIError
 	assert.True(t, errors.As(fmt.Errorf("x: %w", err), &target))
 }
+
+func TestErrClusterUnavailable_SaysWhatToDoAndMatchesNotFound(t *testing.T) {
+	assert.Contains(t, apperr.ErrClusterUnavailable.Error(), "upload that kubeconfig first")
+	assert.ErrorIs(t, apperr.ErrClusterUnavailable, apperr.ErrNotFound)
+	assert.NotErrorIs(t, apperr.ErrClusterUnavailable, apperr.ErrConflict)
+}

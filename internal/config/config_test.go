@@ -2,6 +2,7 @@ package config_test
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -280,4 +281,20 @@ func TestLogValue_ContainsNoSecrets(t *testing.T) {
 	for _, secret := range []string{"hunter2", "google-secret-value", "github-secret-value", strings.Repeat("K", 32), base64.StdEncoding.EncodeToString([]byte(strings.Repeat("K", 32)))} {
 		assert.NotContains(t, out, secret)
 	}
+}
+
+func TestModule_UnmarshalJSON(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{`{"enabled":"auto"}`, "auto"},
+		{`{"enabled":false}`, "false"},
+		{`{"enabled":true}`, "true"},
+		{`{}`, ""},
+	} {
+		var m config.Module
+		require.NoError(t, json.Unmarshal([]byte(tc.in), &m), tc.in)
+		assert.Equal(t, tc.want, m.Enabled, tc.in)
+	}
+	var m config.Module
+	assert.Error(t, json.Unmarshal([]byte(`{"enabled":5}`), &m))
+	assert.Error(t, json.Unmarshal([]byte(`{"enabeld":"auto"}`), &m), "an unknown field is refused")
 }

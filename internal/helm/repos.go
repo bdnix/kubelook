@@ -98,7 +98,7 @@ func (r *Repos) Add(ctx context.Context, sess session.Session, name, address, us
 	if _, taken := r.org(name); taken {
 		return fmt.Errorf("the name %q is used by a repository of the organisation: %w", name, apperr.ErrConflict)
 	}
-	raw, err := json.Marshal(repoSecret{URL: address, Username: username, Password: password})
+	raw, err := json.Marshal(repoSecret{URL: address, Username: username, Password: password}) //nolint:gosec // the result is sealed before it is stored
 	if err != nil {
 		return err
 	}

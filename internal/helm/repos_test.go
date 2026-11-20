@@ -123,3 +123,13 @@ func TestRepos_DeleteRemovesSessionRepositoriesOnly(t *testing.T) {
 	assert.ErrorIs(t, r.Delete(t.Context(), s, "bitnami"), apperr.ErrForbidden)
 	assert.ErrorIs(t, r.Delete(t.Context(), s, "nope"), apperr.ErrNotFound)
 }
+
+func TestRepos_ACorruptEntryIsAnError(t *testing.T) {
+	w := newWorld(t)
+	r := w.repos()
+	require.NoError(t, w.sessions.PutCredential(t.Context(), "h1", store.CredentialRow{Kind: store.CredHelmRepo, Ref: "mine", Sealed: "garbage"}, t0))
+	_, err := r.List(t.Context(), w.session("h1"))
+	assert.Error(t, err)
+	_, err = r.Resolve(t.Context(), w.session("h1"), "mine")
+	assert.Error(t, err)
+}

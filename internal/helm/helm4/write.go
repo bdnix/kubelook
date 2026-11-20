@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"helm.sh/helm/v4/pkg/action"
@@ -62,7 +63,7 @@ func (a *Adapter) loadChart(namespace string, src helm.ChartSource) (*chart.Char
 	}
 	ch, err := loader.Load(path)
 	if err != nil {
-		return nil, fmt.Errorf("loading the chart: %v: %w", err, apperr.ErrInvalid)
+		return nil, fmt.Errorf("loading the chart: %w: %w", err, apperr.ErrInvalid)
 	}
 	return ch, nil
 }
@@ -84,27 +85,26 @@ func (a *Adapter) fetchOCI(namespace string, src helm.ChartSource) (string, erro
 	inst.Version = src.Version
 	located, err := a.locate(inst, src.OCI, settings)
 	if err != nil {
-		return "", fmt.Errorf("fetching %s: %v: %w", src.OCI, err, apperr.ErrInvalid)
+		return "", fmt.Errorf("fetching %s: %w: %w", src.OCI, err, apperr.ErrInvalid)
 	}
 	return located, nil
 }
 
-func (a *Adapter) last(namespace, name string) (*release.Release, *action.Configuration, error) {
+func (a *Adapter) last(namespace, name string) (*release.Release, error) {
 	cfg, err := a.open(namespace)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	r, err := cfg.Releases.Last(name)
 	if err != nil {
-		return nil, cfg, notFound(namespace, name, err)
+		return nil, notFound(namespace, name, err)
 	}
-	rel, err := releaseOf(r)
-	return rel, cfg, err
+	return releaseOf(r)
 }
 
 // Status implements helm.Driver.
 func (a *Adapter) Status(_ context.Context, namespace, name string) (*helm.Release, error) {
-	rel, _, err := a.last(namespace, name)
+	rel, err := a.last(namespace, name)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (a *Adapter) Status(_ context.Context, namespace, name string) (*helm.Relea
 
 // Install implements helm.Driver. A first install uses the SDK's default way of applying.
 func (a *Adapter) Install(ctx context.Context, o helm.InstallOptions) (*helm.Release, error) {
-	if _, _, err := a.last(o.Namespace, o.Name); err == nil {
+	if _, err := a.last(o.Namespace, o.Name); err == nil {
 		return nil, fmt.Errorf("release %s/%s exists: %w", o.Namespace, o.Name, apperr.ErrConflict)
 	} else if !errors.Is(err, apperr.ErrNotFound) {
 		return nil, err
@@ -151,7 +151,7 @@ func (a *Adapter) released(r any) (*helm.Release, error) {
 // "auto" follows the apply method the latest revision recorded, and a record without one (every release made by
 // Helm 3) is client-side.
 func (a *Adapter) Upgrade(ctx context.Context, o helm.UpgradeOptions) (*helm.Release, error) {
-	if _, _, err := a.last(o.Namespace, o.Name); err != nil {
+	if _, err := a.last(o.Namespace, o.Name); err != nil {
 		return nil, err
 	}
 	ch, err := a.loadChart(o.Namespace, o.Chart)
@@ -177,9 +177,13 @@ func (a *Adapter) Upgrade(ctx context.Context, o helm.UpgradeOptions) (*helm.Rel
 const applyFollowsRelease = "auto"
 
 // Rollback implements helm.Driver; like Upgrade it keeps the apply method of the release.
-func (a *Adapter) Rollback(_ context.Context, namespace, name string, revision int) error {
-	if _, _, err := a.last(namespace, name); err != nil {
+func (a *Adapter) Rollback(ctx context.Context, namespace, name string, revision int) error {
+	history, err := a.History(ctx, namespace, name)
+	if err != nil {
 		return err
+	}
+	if !slices.ContainsFunc(history, func(r helm.Revision) bool { return r.Revision == revision }) {
+		return fmt.Errorf("release %s/%s has no revision %d: %w", namespace, name, revision, apperr.ErrNotFound)
 	}
 	cfg, err := a.open(namespace)
 	if err != nil {
@@ -198,7 +202,7 @@ func (a *Adapter) Rollback(_ context.Context, namespace, name string, revision i
 // notFoundOr maps the SDK's "no such revision" and "release: not found" errors.
 func notFoundOr(err error) error {
 	if errors.Is(err, errReleaseGone) {
-		return fmt.Errorf("%v: %w", err, apperr.ErrNotFound)
+		return fmt.Errorf("%w: %w", err, apperr.ErrNotFound)
 	}
 	return err
 }
@@ -257,7 +261,7 @@ func (a *Adapter) Render(ctx context.Context, o helm.UpgradeOptions) (string, er
 		return "", err
 	}
 	var rel any
-	if _, _, lerr := a.last(o.Namespace, o.Name); lerr == nil {
+	if _, lerr := a.last(o.Namespace, o.Name); lerr == nil {
 		up := action.NewUpgrade(cfg)
 		up.Namespace = o.Namespace
 		up.DryRunStrategy = action.DryRunClient

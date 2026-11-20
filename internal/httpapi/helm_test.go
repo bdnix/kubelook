@@ -51,7 +51,7 @@ func newHelmEnv(t *testing.T) *helmEnv {
 	}
 	repo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/index.yaml" {
-			fmt.Fprint(w, "apiVersion: v1\nentries:\n  web:\n    - {version: 1.0.0, urls: [web-1.0.0.tgz]}\n    - {version: 1.1.0, urls: [web-1.1.0.tgz]}\n")
+			_, _ = fmt.Fprint(w, "apiVersion: v1\nentries:\n  web:\n    - {version: 1.0.0, urls: [web-1.0.0.tgz]}\n    - {version: 1.1.0, urls: [web-1.1.0.tgz]}\n")
 			return
 		}
 		http.ServeFile(w, r, filepath.Join(dir, filepath.Base(r.URL.Path)))
@@ -84,7 +84,9 @@ func newHelmEnv(t *testing.T) *helmEnv {
 func (e *helmEnv) post(path, body string) *httptest.ResponseRecorder {
 	return e.sendAs(http.MethodPost, path, "application/json", body)
 }
-func (e *helmEnv) get(path string) *httptest.ResponseRecorder { return e.sendAs(http.MethodGet, path, "", "") }
+func (e *helmEnv) get(path string) *httptest.ResponseRecorder {
+	return e.sendAs(http.MethodGet, path, "", "")
+}
 
 const helmBase = "/api/v1/clusters/v:prod/helm"
 
@@ -124,7 +126,7 @@ func TestHelm_Details_HideTheValues(t *testing.T) {
 
 	old := e.get(helmBase + "/releases/team-a/web?revision=1")
 	assert.Equal(t, http.StatusOK, old.Code)
-	assert.Equal(t, "1", jsonField(t, old, "revision"))
+	assert.Equal(t, "1", jsonNumber(t, old, "revision"))
 	assert.Equal(t, http.StatusNotFound, e.get(helmBase+"/releases/team-a/nope").Code)
 	assert.Equal(t, http.StatusBadRequest, e.get(helmBase+"/releases/team-a/web?revision=x").Code)
 }
@@ -151,7 +153,7 @@ func TestHelm_Preview_ShowsTheCurrentAndTheNewManifest(t *testing.T) {
 	assert.Contains(t, jsonField(t, rec, "currentManifest"), `replicas: "3"`)
 	assert.Contains(t, jsonField(t, rec, "newManifest"), `replicas: "9"`)
 	assert.NotContains(t, rec.Body.String(), "hunter2")
-	assert.Equal(t, "2", jsonField2(t, e.get(helmBase+"/releases/team-a/web"), "revision"), "nothing was stored")
+	assert.Equal(t, "2", jsonNumber(t, e.get(helmBase+"/releases/team-a/web"), "revision"), "nothing was stored")
 }
 
 func TestHelm_Preview_OfAnInstall_HasNoCurrentManifest(t *testing.T) {
@@ -273,7 +275,33 @@ func TestHelm_NotMountedWithoutTheService(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, e.get(helmBase+"/releases").Code)
 }
 
-func jsonField2(t *testing.T, rec *httptest.ResponseRecorder, key string) string {
+// jsonNumber reads a number field as text.
+func jsonNumber(t *testing.T, rec *httptest.ResponseRecorder, key string) string {
 	t.Helper()
-	return jsonField(t, rec, key)
+	var m map[string]any
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &m), rec.Body.String())
+	return fmt.Sprint(m[key])
+}
+
+func TestHelm_RevealValues_Validation(t *testing.T) {
+	e := newHelmEnv(t)
+	assert.Equal(t, http.StatusBadRequest, e.post(helmBase+"/releases/team-a/web/values/reveal", `{"revision":-1}`).Code)
+	assert.Equal(t, http.StatusBadRequest, e.post(helmBase+"/releases/team-a/web/values/reveal", `nonsense`).Code)
+	assert.Equal(t, http.StatusBadRequest, e.post(helmBase+"/releases/Bad%20Ns/web/values/reveal", `{}`).Code)
+	assert.Equal(t, http.StatusBadRequest, e.get(helmBase+"/releases/Bad%20Ns/web").Code)
+	assert.Equal(t, http.StatusNotFound, e.post(helmBase+"/releases/team-a/web/values/reveal", `{"revision":9}`).Code)
+}
+
+func TestHelm_Repositories_NeedASession(t *testing.T) {
+	e := newHelmEnv(t)
+	assert.Equal(t, http.StatusUnauthorized, e.doWithSession(http.MethodGet, helmBase+"/repositories", "", "").Code)
+	assert.Equal(t, http.StatusBadRequest, e.post(helmBase+"/repositories", `nonsense`).Code)
+}
+
+func TestHelm_Releases_ForAClusterWhoseDiscoveryFails(t *testing.T) {
+	e := newHelmEnv(t)
+	assert.Equal(t, http.StatusNotFound, e.post("/api/v1/clusters/v:nope/helm/preview", `{}`).Code)
+	assert.Equal(t, http.StatusNotFound, e.post("/api/v1/clusters/v:nope/helm/jobs", `{}`).Code)
+	assert.Equal(t, http.StatusNotFound, e.post("/api/v1/clusters/v:nope/helm/releases/a/b/values/reveal", `{}`).Code)
+	assert.Equal(t, http.StatusNotFound, e.get("/api/v1/clusters/v:nope/helm/releases/a/b").Code)
 }

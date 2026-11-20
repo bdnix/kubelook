@@ -40,6 +40,8 @@ type jobRig struct {
 	out      *bytes.Buffer
 	tempRoot string
 	handlers map[string]jobs.Handler
+	repos    *helm.Repos
+	audit    *audit.Recorder
 }
 
 func newJobRig(t *testing.T) *jobRig {
@@ -51,9 +53,10 @@ func newJobRig(t *testing.T) *jobRig {
 	rec := audit.NewRecorder(w.db, w.clock, out, func() string { n++; return fmt.Sprintf("a%d", n) })
 	f := &factory{env: helmtest.New(t)}
 	root := t.TempDir()
+	repos := w.repos(config.HelmRepo{Name: "charts", URL: srv.URL})
 	hs := helm.NewJobHandlers(helm.JobDeps{
 		Factory:  f,
-		Repos:    w.repos(config.HelmRepo{Name: "charts", URL: srv.URL}),
+		Repos:    repos,
 		Fetcher:  &helm.Fetcher{MaxBytes: 1 << 20},
 		Audit:    rec,
 		TempRoot: root,
@@ -62,7 +65,7 @@ func newJobRig(t *testing.T) *jobRig {
 	for _, h := range hs {
 		m[h.Type()] = h
 	}
-	return &jobRig{w: w, f: f, out: out, tempRoot: root, handlers: m}
+	return &jobRig{w: w, f: f, out: out, tempRoot: root, handlers: m, repos: repos, audit: rec}
 }
 
 func (r *jobRig) job(t *testing.T, typ string, req helm.JobRequest, startRevision int) *jobs.Job {
@@ -348,4 +351,37 @@ func TestClassify(t *testing.T) {
 			assert.NotEmpty(t, msg)
 		})
 	}
+}
+
+func TestRecover_WithoutAChartVersion_UsesTheNewestTheRepositoryOffers(t *testing.T) {
+	r := newJobRig(t)
+	req := install
+	req.Chart = &helm.ChartRef{Repo: "charts", Name: "web"}
+	require.NoError(t, r.run(t, "helm-install", req, 0))
+	st, _, _ := r.recoverJob(t, "helm-install", req, 0)
+	assert.Equal(t, jobs.Succeeded, st, "the newest release of the chart is 1.1.0")
+	r.tempEmpty(t)
+
+	missing := req
+	missing.Chart = &helm.ChartRef{Repo: "nope", Name: "web"}
+	st, _, _ = r.recoverJob(t, "helm-install", missing, 0)
+	assert.Equal(t, jobs.Interrupted, st)
+}
+
+func TestRecover_BadParameters_CannotBeChecked(t *testing.T) {
+	r := newJobRig(t)
+	j := r.job(t, "helm-install", install, 0)
+	j.Params = json.RawMessage(`{`)
+	st, _, offers := r.handlers["helm-install"].Recover(t.Context(), j)
+	assert.Equal(t, jobs.Interrupted, st)
+	assert.Empty(t, offers)
+}
+
+func TestSubmit_And_Preview_RefuseWhatIsNotHelmWork(t *testing.T) {
+	r := newJobRig(t)
+	svc := &helm.Service{Factory: r.f, Repos: r.w.repos(), Fetcher: &helm.Fetcher{MaxBytes: 1}, TempRoot: r.tempRoot}
+	_, _, err := svc.Preview(t.Context(), r.w.session("h1"), "c", "rollback", helm.JobRequest{Namespace: "n", Name: "web", Revision: 1})
+	assert.ErrorIs(t, err, apperr.ErrInvalid)
+	_, err = svc.Submit(t.Context(), nil, r.w.session("h1"), "c", "explode", helm.JobRequest{})
+	assert.ErrorIs(t, err, apperr.ErrInvalid)
 }

@@ -34,7 +34,7 @@ func repoServer(t *testing.T, auth [2]string, hits *[]string) *httptest.Server {
 			}
 		}
 		if r.URL.Path == "/index.yaml" {
-			fmt.Fprint(w, "apiVersion: v1\nentries:\n  web:\n    - {version: 1.0.0, urls: [web-1.0.0.tgz]}\n    - {version: 2.0.0-rc1, urls: [web-2.0.0-rc1.tgz]}\n    - {version: 1.1.0, urls: [web-1.1.0.tgz]}\n  other:\n    - {version: 3.0.0, urls: ['http://elsewhere.invalid/other-3.0.0.tgz']}\n")
+			_, _ = fmt.Fprint(w, "apiVersion: v1\nentries:\n  web:\n    - {version: 1.0.0, urls: [web-1.0.0.tgz]}\n    - {version: 2.0.0-rc1, urls: [web-2.0.0-rc1.tgz]}\n    - {version: 1.1.0, urls: [web-1.1.0.tgz]}\n  other:\n    - {version: 3.0.0, urls: ['http://elsewhere.invalid/other-3.0.0.tgz']}\n")
 			return
 		}
 		http.ServeFile(w, r, filepath.Join(dir, filepath.Base(r.URL.Path)))
@@ -107,8 +107,8 @@ func TestFetch_AChartOnAnotherHostGetsNoCredentials(t *testing.T) {
 		http.NotFound(w, r)
 	}))
 	t.Cleanup(other.Close)
-	repo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "apiVersion: v1\nentries:\n  web:\n    - {version: 1.0.0, urls: ['%s/web-1.0.0.tgz']}\n", other.URL)
+	repo := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, "apiVersion: v1\nentries:\n  web:\n    - {version: 1.0.0, urls: ['%s/web-1.0.0.tgz']}\n", other.URL)
 	}))
 	t.Cleanup(repo.Close)
 	_, _ = (&helm.Fetcher{MaxBytes: 1 << 20}).Fetch(t.Context(), helm.Repository{URL: repo.URL, Username: "a", Password: "b"}, "web", "", t.TempDir())
@@ -124,4 +124,56 @@ func TestFetch_RefusesAnInvalidChartName(t *testing.T) {
 func TestFetch_RefusesARepositoryThatIsNotHTTP(t *testing.T) {
 	_, err := (&helm.Fetcher{MaxBytes: 1 << 20}).Fetch(t.Context(), helm.Repository{URL: "file:///etc"}, "web", "", t.TempDir())
 	assert.ErrorIs(t, err, apperr.ErrInvalid)
+}
+
+func TestFetch_UsesTheClientItIsGiven(t *testing.T) {
+	srv := repoServer(t, [2]string{}, nil)
+	used := false
+	client := &http.Client{Transport: roundTrip(func(r *http.Request) (*http.Response, error) {
+		used = true
+		return http.DefaultTransport.RoundTrip(r)
+	})}
+	_, err := (&helm.Fetcher{HTTP: client, MaxBytes: 1 << 20}).Fetch(t.Context(), helm.Repository{URL: srv.URL}, "web", "1.0.0", t.TempDir())
+	require.NoError(t, err)
+	assert.True(t, used)
+}
+
+type roundTrip func(*http.Request) (*http.Response, error)
+
+func (f roundTrip) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func TestFetch_BadRepositories(t *testing.T) {
+	serve := func(handler http.HandlerFunc) string {
+		srv := httptest.NewServer(handler)
+		t.Cleanup(srv.Close)
+		return srv.URL
+	}
+	f := &helm.Fetcher{MaxBytes: 1 << 20}
+	notFound := serve(func(w http.ResponseWriter, _ *http.Request) { http.NotFound(w, nil) })
+	_, err := f.Fetch(t.Context(), helm.Repository{URL: notFound}, "web", "", t.TempDir())
+	assert.Error(t, err, "no index")
+	junk := serve(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte("entries: [unclosed")) })
+	_, err = f.Fetch(t.Context(), helm.Repository{URL: junk}, "web", "", t.TempDir())
+	assert.ErrorIs(t, err, apperr.ErrInvalid)
+	noLink := serve(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("entries:\n  web:\n    - {version: 1.0.0, urls: []}\n"))
+	})
+	_, err = f.Fetch(t.Context(), helm.Repository{URL: noLink}, "web", "", t.TempDir())
+	assert.ErrorIs(t, err, apperr.ErrInvalid)
+	fileLink := serve(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("entries:\n  web:\n    - {version: 1.0.0, urls: ['file:///etc/passwd']}\n"))
+	})
+	_, err = f.Fetch(t.Context(), helm.Repository{URL: fileLink}, "web", "", t.TempDir())
+	assert.ErrorIs(t, err, apperr.ErrInvalid, "a chart link must be http or https")
+	missing := serve(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/index.yaml" {
+			_, _ = w.Write([]byte("entries:\n  web:\n    - {version: 1.0.0, urls: [web.tgz]}\n"))
+			return
+		}
+		http.NotFound(w, r)
+	})
+	_, err = f.Fetch(t.Context(), helm.Repository{URL: missing}, "web", "", t.TempDir())
+	assert.Error(t, err, "the archive is not there")
+	_, err = f.Fetch(t.Context(), helm.Repository{URL: missing}, "web", "", "/does/not/exist")
+	assert.Error(t, err, "the job directory is missing")
 }
