@@ -4,17 +4,17 @@ Written answers to the spec's "To confirm in the spike" list. Each section has t
 
 ## Helm 3 release managed by Kubelook (Helm 4)
 
-- **Result:** open — answered in Step 7.8.
-- **How it was checked:** Step 7.8, required assertions.
-- **Date:** —
-- **Consequence for the plan:** not allowed to be unfavourable (A31): the test fails and the pull request does not merge.
+- **Result:** works on both kind clusters (Kubernetes 1.35 and 1.37). A release installed with the Helm 3.22.1 CLI is listed by Kubelook with its notes, masked manifest and values; an upgrade through Kubelook (revision 2) stays on client-side apply (no field moved to a server-side-apply manager); a rollback through Kubelook to revision 1 gives revision 3; the Helm 3 CLI then shows revision 3 `deployed`, three history entries and `greeting: one`; an uninstall through Kubelook removes it.
+- **How it was checked:** `TestHelm_ReleasesMadeByHelm3_AreManagedThroughKubelookAndStayManageableByHelm3` in the `integration-tests` job (Helm 4.3.1 SDK, Helm 3.22.1 CLI).
+- **Date:** 2026-11-20
+- **Consequence for the plan:** none; this was required (A31) and it holds. The same run found that the Helm 4 SDK refuses to run an action without a wait strategy; the adapter now sets the CLI default (hooks only).
 
 ## Release touched by Helm 4 managed again by the Helm 3 CLI
 
-- **Result:** open — answered in Step 7.8.
-- **How it was checked:** Step 7.8, recorded.
-- **Date:** —
-- **Consequence for the plan:** if unfavourable, document in `docs/operations.md`: one Helm major version at a time, move the CLI to Helm 4; no code change.
+- **Result:** favourable in one run on each cluster. After the Kubelook changes, `helm3 upgrade` and `helm3 rollback` of the same release succeeded, and the same two commands succeeded on a release first installed through Kubelook (Helm 4); `helm3 list` worked on both. One run per cluster, not a rate.
+- **How it was checked:** the recorded part of the same test; it writes `.it/findings/helm-cross-version.txt`, which the job prints.
+- **Date:** 2026-11-20
+- **Consequence for the plan:** nothing to add to `docs/operations.md`.
 
 ## YAML save conflict rate on a busy object
 
