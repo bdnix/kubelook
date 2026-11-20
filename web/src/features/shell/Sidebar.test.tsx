@@ -93,7 +93,7 @@ describe('Sidebar', () => {
       ...discovery,
       resources: [...discovery.resources, res('a.io', 'Alpha', 'alphas'), res('a.io', 'Hidden', 'hiddens')],
     };
-    renderApp(<Sidebar cluster="c" discovery={withCrds} canList={(_g, r) => r !== 'hiddens'} />);
+    renderApp(<Sidebar cluster="c" discovery={withCrds} modules={[]} canList={(_g, r) => r !== 'hiddens'} />);
     const section = within(screen.getByRole('region', { name: 'Custom Resources' }));
     expect(section.getAllByRole('link').map((l) => l.textContent)).toEqual(['Alpha']);
     expect(section.getByRole('link', { name: 'Alpha' })).toHaveAttribute('href', '/c/c/a.io/Alpha');
@@ -101,8 +101,58 @@ describe('Sidebar', () => {
   });
 
   it('has no Custom Resources section on a cluster without custom kinds', () => {
-    renderApp(<Sidebar cluster="c" discovery={discovery} canList={all} />);
+    renderApp(<Sidebar cluster="c" discovery={discovery} modules={[]} canList={all} />);
     expect(screen.queryByRole('region', { name: 'Custom Resources' })).toBeNull();
+  });
+
+  describe('modules', () => {
+    const withKeda: Discovery = {
+      ...discovery,
+      resources: [
+        ...discovery.resources,
+        res('keda.sh', 'ScaledObject', 'scaledobjects'),
+        res('keda.sh', 'ScaledJob', 'scaledjobs'),
+      ],
+    };
+    const mod = (name: string, active: boolean, kinds: [string, string, string][] = []) => ({
+      name,
+      active,
+      kinds: kinds.map(([group, kind, resource]) => ({ group, version: 'v1', resource, kind, namespaced: true })),
+    });
+    const modules = [
+      mod('keda', true, [['keda.sh', 'ScaledObject', 'scaledobjects']]),
+      mod('trivy', false),
+      mod('permissions', true),
+    ];
+
+    it('shows the active modules, Permissions under Security, and hides the inactive ones', () => {
+      renderApp(<Sidebar cluster="c" discovery={withKeda} modules={modules} canList={all} />);
+      const section = within(screen.getByRole('region', { name: 'Modules' }));
+      expect(section.getByRole('link', { name: 'KEDA' })).toHaveAttribute('href', '/c/c/modules/keda');
+      const security = within(section.getByRole('group', { name: 'Security' }));
+      expect(security.getAllByRole('link').map((l) => l.textContent)).toEqual(['Permissions and policy']);
+      expect(section.queryByRole('link', { name: 'Trivy Operator' })).toBeNull();
+    });
+
+    it('leaves the kinds of an active module out of Custom Resources, and keeps the other kinds of its group', () => {
+      renderApp(<Sidebar cluster="c" discovery={withKeda} modules={modules} canList={all} />);
+      const custom = within(screen.getByRole('region', { name: 'Custom Resources' }));
+      expect(custom.getAllByRole('link').map((l) => l.textContent)).toEqual(['ScaledJob']);
+    });
+
+    it('lists the kinds of an inactive module under Custom Resources', () => {
+      renderApp(
+        <Sidebar cluster="c" discovery={withKeda} modules={[mod('keda', false), mod('permissions', true)]} canList={all} />,
+      );
+      expect(screen.queryByRole('link', { name: 'KEDA' })).toBeNull();
+      const custom = within(screen.getByRole('region', { name: 'Custom Resources' }));
+      expect(custom.getAllByRole('link').map((l) => l.textContent)).toEqual(['ScaledJob', 'ScaledObject']);
+    });
+
+    it('waits for the modules before it lists custom kinds, so claimed kinds never flash there', () => {
+      renderApp(<Sidebar cluster="c" discovery={withKeda} modules={undefined} canList={all} />);
+      expect(screen.queryByRole('region', { name: 'Custom Resources' })).toBeNull();
+    });
   });
 
   it('shows a loading message until discovery arrives', () => {
