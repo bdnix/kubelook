@@ -1,6 +1,8 @@
 version: "2"
 run:
   timeout: 5m
+  build-tags:
+    - integration # lint the integration tests too
 linters:
   default: standard
   enable:
@@ -56,6 +58,8 @@ linters:
         linters: [forbidigo]
       - path: internal/testutil/
         linters: [forbidigo]
+      - path: test/integration/
+        linters: [forbidigo] # real time and polling are the point of a real-system test
       - path: _test\.go
         linters: [gosec, noctx, unparam]
 formatters:
