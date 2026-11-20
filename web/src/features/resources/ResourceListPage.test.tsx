@@ -388,7 +388,10 @@ describe('ClusterPage', () => {
       <Routes>
         <Route path="/c/:cluster/*" element={<ClusterPage />} />
       </Routes>,
-      { route: '/c/v%3Aprod/a/b/c/d', client: fakeClient({ 'GET /clusters': () => jsonResponse(clusters('open')) }) },
+      {
+        route: '/c/v%3Aprod/a/b/c/d',
+        client: fakeClient({ 'GET /clusters': () => jsonResponse(clusters('open')) }),
+      },
     );
     expect(await screen.findByText('Page not found')).toBeInTheDocument();
   });
