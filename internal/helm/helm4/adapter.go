@@ -28,10 +28,11 @@ type ConfigFunc func(namespace string) (*action.Configuration, error)
 type Adapter struct {
 	open    ConfigFunc
 	workDir string
+	locate  Locator
 }
 
 // New returns an adapter over the configurations `open` produces.
-func New(open ConfigFunc) *Adapter { return &Adapter{open: open} }
+func New(open ConfigFunc) *Adapter { return &Adapter{open: open, locate: defaultLocate} }
 
 // WithWorkDir sets the directory the adapter may write to (chart downloads, registry and repository files).
 func (a *Adapter) WithWorkDir(dir string) *Adapter {
@@ -47,8 +48,11 @@ const (
 	statusMatch     = action.ListAll
 )
 
+// errReleaseGone is what the SDK returns for a release or a revision that does not exist.
+var errReleaseGone = driver.ErrReleaseNotFound
+
 func notFound(namespace, name string, err error) error {
-	if errors.Is(err, driver.ErrReleaseNotFound) {
+	if errors.Is(err, errReleaseGone) {
 		return fmt.Errorf("release %s/%s: %w", namespace, name, apperr.ErrNotFound)
 	}
 	return err

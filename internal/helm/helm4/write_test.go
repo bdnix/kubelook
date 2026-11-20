@@ -2,11 +2,14 @@ package helm4_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"helm.sh/helm/v4/pkg/action"
 	"helm.sh/helm/v4/pkg/chart/common"
+	"helm.sh/helm/v4/pkg/cli"
 	v1 "helm.sh/helm/v4/pkg/release/v1"
 
 	"github.com/bdnix/kubelook/internal/apperr"
@@ -182,6 +185,40 @@ func TestApplyMethod_AServerSideReleaseStaysServerSide(t *testing.T) {
 	d, err := r.d.Get(ctx, "n", "web", 0)
 	require.NoError(t, err)
 	assert.Equal(t, "ssa", d.ApplyMethod)
+}
+
+func TestOCIReference_GoesToTheLocatorUnchanged(t *testing.T) {
+	r := newRig(t)
+	local := helmtest.Save(t, helmtest.Chart(), r.dir)
+	var gotRef, gotVersion string
+	var gotSettings *cli.EnvSettings
+	d := helm4.New(r.Open).WithWorkDir("/work/job1").WithLocator(func(inst *action.Install, ref string, s *cli.EnvSettings) (string, error) {
+		gotRef, gotVersion, gotSettings = ref, inst.Version, s
+		return local, nil
+	})
+	_, err := d.Install(context.Background(), helm.InstallOptions{
+		Namespace: "n", Name: "web", Chart: helm.ChartSource{OCI: "oci://registry.example.com/charts/web", Version: "1.2.3"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "oci://registry.example.com/charts/web", gotRef)
+	assert.Equal(t, "1.2.3", gotVersion)
+	assert.Equal(t, "/work/job1/registry.json", gotSettings.RegistryConfig, "registry files live in the job's directory")
+	assert.Equal(t, "/work/job1/cache", gotSettings.RepositoryCache)
+}
+
+func TestOCIReference_LocatorFailureIsInvalid(t *testing.T) {
+	r := newRig(t)
+	d := helm4.New(r.Open).WithWorkDir(t.TempDir()).WithLocator(func(*action.Install, string, *cli.EnvSettings) (string, error) {
+		return "", errors.New("denied")
+	})
+	_, err := d.Install(context.Background(), helm.InstallOptions{Namespace: "n", Name: "web", Chart: helm.ChartSource{OCI: "oci://x/y"}})
+	assert.ErrorIs(t, err, apperr.ErrInvalid)
+}
+
+func TestNoChart_Invalid(t *testing.T) {
+	r := newRig(t)
+	_, err := r.d.Install(context.Background(), helm.InstallOptions{Namespace: "n", Name: "web"})
+	assert.ErrorIs(t, err, apperr.ErrInvalid)
 }
 
 var _ = common.DefaultCapabilities
