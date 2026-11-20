@@ -3,6 +3,7 @@
 package integration
 
 import (
+	"encoding/json"
 	"net/http"
 	"sort"
 	"testing"
@@ -107,4 +108,51 @@ func names(items []map[string]any) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// devopsClient returns a signed-in client whose Vault token (bob's) opens both clusters with devops-role.
+func devopsClient(t *testing.T, sub string) *it.Client {
+	t.Helper()
+	c := signedIn(t, sub)
+	addToken(t, c, "BOB_TOKEN")
+	for _, id := range []string{"v:alpha", "v:beta"} {
+		status, _, apiErr := open(t, c, id, "devops-role")
+		require.Equal(t, http.StatusOK, status, "opening %s: %+v", id, apiErr)
+	}
+	return c
+}
+
+// frameObject reads the "object" of an event frame or the items of a snapshot frame.
+type eventFrame struct {
+	Type   string         `json:"type"`
+	Object map[string]any `json:"object"`
+}
+
+func objName(o map[string]any) string {
+	md, _ := o["metadata"].(map[string]any)
+	n, _ := md["name"].(string)
+	return n
+}
+
+// waitEvent returns the next event frame of the given type for the named object.
+func waitEvent(t *testing.T, ch *it.Channel, typ, name string, within time.Duration) eventFrame {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for time.Now().Before(deadline) {
+		kind, raw := ch.NextOf(time.Until(deadline), "event")
+		if kind == "" {
+			break
+		}
+		var ev eventFrame
+		require.NoError(t, json.Unmarshal(raw, &ev))
+		if ev.Type == typ && objName(ev.Object) == name {
+			return ev
+		}
+	}
+	t.Fatalf("no %s event for %s within %s", typ, name, within)
+	return eventFrame{}
+}
+
+func watchConfigMaps(cluster, ns string) map[string]any {
+	return map[string]any{"cluster": cluster, "group": "core", "version": "v1", "resource": "configmaps", "namespace": ns}
 }
