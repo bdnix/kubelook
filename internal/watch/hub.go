@@ -4,13 +4,19 @@ package watch
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
 
 	"github.com/bdnix/kubelook/internal/apperr"
 	"github.com/bdnix/kubelook/internal/clock"
@@ -24,12 +30,13 @@ const (
 	DefaultIdleSeconds = 30
 )
 
-// Key identifies one upstream watch. Nothing is shared between sessions.
+// Key identifies one upstream watch: one per user, cluster, kind, namespace and selector. Sessions
+// of the same user share it (see ukey for kubeconfig clusters).
 type Key struct {
-	SessionHash, UserID, Cluster string
-	GVR                          schema.GroupVersionResource
-	Namespace                    string // "" means all namespaces
-	FieldSelector                string // "" means every object; the details drawer watches one object by name
+	UserID, Cluster string
+	GVR             schema.GroupVersionResource
+	Namespace       string // "" means all namespaces
+	FieldSelector   string // "" means every object; the details drawer watches one object by name
 }
 
 // Subscriber receives what an upstream sees. Its methods run on the upstream's goroutine and
@@ -57,6 +64,18 @@ type Deps struct {
 	Closers     *session.Registry                            // nil → upstreams are not tied to the session
 }
 
+// ukey is what the hub indexes upstreams by: the Key, plus for a kubeconfig cluster a fingerprint of
+// the server and the credential. Two sessions of one user may hold different kubeconfig files under
+// one label, so they share an upstream only when both resolve the cluster ID to the same server and
+// the same credential. Vault clusters are the user's own and are shared without the check.
+type ukey struct {
+	Key
+	credential string
+}
+
+// kubeconfigPrefix starts the ID of every cluster that comes from an uploaded kubeconfig.
+const kubeconfigPrefix = "k:"
+
 // Hub owns the upstream watches of one replica.
 type Hub struct {
 	d      Deps
@@ -65,9 +84,10 @@ type Hub struct {
 	wg     sync.WaitGroup
 
 	mu       sync.Mutex
-	ups      map[Key]*upstream
-	order    []*upstream // creation order, for evicting the oldest
-	sessions map[string]bool
+	ups      map[ukey]*upstream
+	order    []*upstream       // creation order, for evicting the oldest
+	fpKey    []byte            // random key of the credential fingerprints; never leaves memory
+	sessions map[string]string // session hash → user ID, for the sessions whose end the hub listens to
 	closed   bool
 }
 
@@ -77,7 +97,9 @@ func NewHub(d Deps) *Hub {
 		d.MaxPerUser = DefaultMaxPerUser
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Hub{d: d, ctx: ctx, cancel: cancel, ups: map[Key]*upstream{}, sessions: map[string]bool{}}
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	return &Hub{d: d, fpKey: key, ctx: ctx, cancel: cancel, ups: map[ukey]*upstream{}, sessions: map[string]string{}}
 }
 
 var errTooManyWatches = &apperr.APIError{Status: http.StatusTooManyRequests, Code: "too_many_watches",
@@ -85,13 +107,18 @@ var errTooManyWatches = &apperr.APIError{Status: http.StatusTooManyRequests, Cod
 
 // Subscribe attaches s to the upstream for k, creating it when this is the first subscriber. The
 // subscriber receives a snapshot first, then events. unsubscribe detaches it.
-func (h *Hub) Subscribe(_ context.Context, sess session.Session, k Key, s Subscriber) (unsubscribe func(), err error) {
+func (h *Hub) Subscribe(ctx context.Context, sess session.Session, k Key, s Subscriber) (unsubscribe func(), err error) {
+	uk, err := h.ukeyFor(ctx, sess, k)
+	if err != nil {
+		return nil, err
+	}
 	for {
-		sub := &subscription{s: s}
-		u, added, err := h.upstreamFor(sess, k, sub)
+		sub := &subscription{s: s, sess: sess}
+		u, added, err := h.upstreamFor(sess, uk, sub)
 		if err != nil {
 			return nil, err
 		}
+		h.listenForEnd(sess)
 		if added || u.send(command{kind: cmdAdd, sub: sub}) {
 			return func() { u.send(command{kind: cmdRemove, sub: sub}) }, nil
 		}
@@ -99,10 +126,40 @@ func (h *Hub) Subscribe(_ context.Context, sess session.Session, k Key, s Subscr
 	}
 }
 
+// ukeyFor adds the credential fingerprint for a kubeconfig cluster.
+func (h *Hub) ukeyFor(ctx context.Context, sess session.Session, k Key) (ukey, error) {
+	if !strings.HasPrefix(k.Cluster, kubeconfigPrefix) {
+		return ukey{Key: k}, nil
+	}
+	cfg, err := h.d.Clients.REST(ctx, sess, k.Cluster)
+	if err != nil {
+		return ukey{}, kube.MapError(err)
+	}
+	return ukey{Key: k, credential: h.fingerprint(cfg)}, nil
+}
+
+// fingerprint is an HMAC-SHA-256, keyed with a random per-hub key, over the server and every credential field of a REST config. It stays in
+// memory and is only compared, never shown or stored.
+func (h *Hub) fingerprint(cfg *rest.Config) string {
+	sum := hmac.New(sha256.New, h.fpKey)
+	for _, part := range [][]byte{
+		[]byte(cfg.Host), []byte(cfg.BearerToken), []byte(cfg.Username), []byte(cfg.Password),
+		cfg.CertData, cfg.KeyData, cfg.CAData,
+	} {
+		_, _ = sum.Write(part)
+		_, _ = sum.Write([]byte{0}) // a separator, so "ab"+"c" differs from "a"+"bc"
+	}
+	return hex.EncodeToString(sum.Sum(nil))
+}
+
 // ActivityChanged tells the hub that a subscriber's Active() changed, so idle timers are re-evaluated.
-func (h *Hub) ActivityChanged(k Key) {
+func (h *Hub) ActivityChanged(sess session.Session, k Key) {
+	uk, err := h.ukeyFor(h.ctx, sess, k)
+	if err != nil {
+		return
+	}
 	h.mu.Lock()
-	u := h.ups[k]
+	u := h.ups[uk]
 	h.mu.Unlock()
 	if u != nil {
 		u.send(command{kind: cmdRecheck})
@@ -111,7 +168,7 @@ func (h *Hub) ActivityChanged(k Key) {
 
 // upstreamFor finds or creates the upstream. A new upstream starts with sub already queued, so that
 // its first list cannot fail before the subscriber is there to hear about it.
-func (h *Hub) upstreamFor(sess session.Session, k Key, sub *subscription) (u *upstream, added bool, err error) {
+func (h *Hub) upstreamFor(sess session.Session, k ukey, sub *subscription) (u *upstream, added bool, err error) {
 	h.mu.Lock()
 	if h.closed {
 		h.mu.Unlock()
@@ -129,16 +186,25 @@ func (h *Hub) upstreamFor(sess session.Session, k Key, sub *subscription) (u *up
 	u.cmds <- command{kind: cmdAdd, sub: sub}
 	h.ups[k] = u
 	h.order = append(h.order, u)
-	first := !h.sessions[k.SessionHash]
-	h.sessions[k.SessionHash] = true
 	h.wg.Add(1)
 	go u.run(h.ctx)
 	h.mu.Unlock()
-	if first && h.d.Closers != nil {
-		// Outside the lock: for an ended session the closer runs at once and takes it.
-		h.d.Closers.Register(k.SessionHash, "watch-hub", func() error { h.stopSession(k.SessionHash); return nil })
-	}
 	return u, true, nil
+}
+
+// listenForEnd registers, once per session, what to do when that session ends.
+func (h *Hub) listenForEnd(sess session.Session) {
+	if h.d.Closers == nil {
+		return
+	}
+	h.mu.Lock()
+	_, known := h.sessions[sess.Hash]
+	h.sessions[sess.Hash] = sess.UserID
+	h.mu.Unlock()
+	if !known {
+		// Outside the lock: for an ended session the closer runs at once and takes it.
+		h.d.Closers.Register(sess.Hash, "watch-hub", func() error { h.stopSession(sess.Hash); return nil })
+	}
 }
 
 // makeRoom frees a slot for a new watch of the user: the oldest watch that only hidden tabs look at
@@ -168,8 +234,8 @@ func (h *Hub) makeRoom(userID string) error {
 
 // removeLocked forgets the upstream. Callers hold h.mu.
 func (h *Hub) removeLocked(u *upstream) {
-	if h.ups[u.key] == u {
-		delete(h.ups, u.key)
+	if h.ups[u.ukey] == u {
+		delete(h.ups, u.ukey)
 	}
 	for i, o := range h.order {
 		if o == u {
@@ -185,21 +251,21 @@ func (h *Hub) remove(u *upstream) {
 	h.mu.Unlock()
 }
 
+// stopSession drops the ended session from the user's upstreams. An upstream with no subscriber
+// left stops; one that ran with the ended session's credentials restarts under a remaining session.
 func (h *Hub) stopSession(hash string) {
 	h.mu.Lock()
+	userID := h.sessions[hash]
 	delete(h.sessions, hash)
-	var stop []*upstream
+	var mine []*upstream
 	for _, u := range h.order {
-		if u.key.SessionHash == hash {
-			stop = append(stop, u)
+		if u.key.UserID == userID {
+			mine = append(mine, u)
 		}
 	}
-	for _, u := range stop {
-		h.removeLocked(u)
-	}
 	h.mu.Unlock()
-	for _, u := range stop {
-		u.send(command{kind: cmdStop})
+	for _, u := range mine {
+		u.send(command{kind: cmdDropSession, hash: hash})
 	}
 }
 

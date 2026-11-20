@@ -34,26 +34,32 @@ const (
 type cmdKind int
 
 const (
-	cmdAdd     cmdKind = iota // attach a subscriber
-	cmdRemove                 // detach a subscriber
-	cmdRecheck                // a subscriber's Active() changed
-	cmdPause                  // tell everyone to reopen later, then stop
-	cmdStop                   // stop silently
+	cmdAdd         cmdKind = iota // attach a subscriber
+	cmdRemove                     // detach a subscriber
+	cmdRecheck                    // a subscriber's Active() changed
+	cmdPause                      // tell everyone to reopen later, then stop
+	cmdStop                       // stop silently
+	cmdDropSession                // a session ended: forget its subscribers, restart if it owned the credentials
 )
 
 type command struct {
 	kind cmdKind
 	sub  *subscription
+	hash string // cmdDropSession
 }
 
-type subscription struct{ s Subscriber }
+type subscription struct {
+	s    Subscriber
+	sess session.Session
+}
 
 // upstream is one list-then-watch loop. Its goroutine owns the cache, the watch and the timers;
 // everything else talks to it through commands.
 type upstream struct {
 	h    *Hub
-	sess session.Session
+	sess session.Session // the session whose credentials the list and watch use
 	key  Key
+	ukey ukey
 	cmds chan command
 	done chan struct{}
 
@@ -78,9 +84,9 @@ type upstream struct {
 	idleC     <-chan time.Time
 }
 
-func newUpstream(h *Hub, sess session.Session, k Key) *upstream {
+func newUpstream(h *Hub, sess session.Session, k ukey) *upstream {
 	return &upstream{
-		h: h, sess: sess, key: k, cmds: make(chan command, commandQueue), done: make(chan struct{}),
+		h: h, sess: sess, key: k.Key, ukey: k, cmds: make(chan command, commandQueue), done: make(chan struct{}),
 		cache: map[types.UID]*unstructured.Unstructured{}, needList: true, bo: newBackoff(firstBackoff, maxBackoff),
 	}
 }
@@ -286,28 +292,52 @@ func (u *upstream) failed(ctx context.Context, err error) bool {
 	return false
 }
 
-// list reads the current state, replaces the cache and sends a snapshot to every subscriber.
+// listPageSize is the page size of the first list (spec "Replica memory").
+const listPageSize = 500
+
+// maxListRestarts bounds how often an expired continue token restarts a list.
+const maxListRestarts = 3
+
+// list reads the current state page by page, replaces the cache and sends a snapshot to every
+// subscriber. Each page is redacted and cached before the next is requested, so the unredacted full
+// list is never held at once. The watch starts from the version of the first page.
 func (u *upstream) list(ctx context.Context) error {
 	dyn, err := u.h.d.Clients.Dynamic(ctx, u.sess, u.key.Cluster)
 	if err != nil {
 		return kube.MapError(err)
 	}
 	res := dyn.Resource(u.key.GVR)
-	var list *unstructured.UnstructuredList
-	if u.key.Namespace != "" {
-		list, err = res.Namespace(u.key.Namespace).List(ctx, metav1.ListOptions{FieldSelector: u.key.FieldSelector})
-	} else {
-		list, err = res.List(ctx, metav1.ListOptions{FieldSelector: u.key.FieldSelector})
+	fresh := map[types.UID]*unstructured.Unstructured{}
+	rv, cont, restarts := "", "", 0
+	for {
+		opts := metav1.ListOptions{FieldSelector: u.key.FieldSelector, Limit: listPageSize, Continue: cont}
+		var page *unstructured.UnstructuredList
+		if u.key.Namespace != "" {
+			page, err = res.Namespace(u.key.Namespace).List(ctx, opts)
+		} else {
+			page, err = res.List(ctx, opts)
+		}
+		if err != nil {
+			if cont != "" && isGone(err) && restarts < maxListRestarts {
+				// the continue token expired: start again from the beginning
+				fresh, rv, cont, restarts = map[types.UID]*unstructured.Unstructured{}, "", "", restarts+1
+				continue
+			}
+			return kube.MapError(err)
+		}
+		if cont == "" {
+			rv = page.GetResourceVersion()
+		}
+		items := redact.List(page.Items)
+		for i := range items {
+			fresh[items[i].GetUID()] = &items[i]
+		}
+		if cont = page.GetContinue(); cont == "" {
+			break
+		}
 	}
-	if err != nil {
-		return kube.MapError(err)
-	}
-	items := redact.List(list.Items)
-	u.cache = make(map[types.UID]*unstructured.Unstructured, len(items))
-	for i := range items {
-		u.cache[items[i].GetUID()] = &items[i]
-	}
-	u.rv, u.ready = list.GetResourceVersion(), true
+	u.cache = fresh
+	u.rv, u.ready = rv, true
 	u.cached.Store(int64(len(u.cache)))
 	snap := u.snapshot()
 	for _, s := range u.subscribers() {
@@ -417,7 +447,37 @@ func (u *upstream) handle(_ context.Context, c command) bool {
 		return true
 	case cmdStop:
 		return true
+	case cmdDropSession:
+		return u.dropSession(c.hash)
 	}
+	return false
+}
+
+// dropSession forgets the subscribers of an ended session. It reports whether the upstream must
+// stop (nobody is left). When the ended session owned the credentials, the upstream restarts under
+// a remaining session: a fresh list, so its subscribers get a fresh snapshot.
+func (u *upstream) dropSession(hash string) bool {
+	u.mu.Lock()
+	kept := u.sublist[:0:0]
+	for _, s := range u.sublist {
+		if s.sess.Hash != hash {
+			kept = append(kept, s)
+		}
+	}
+	u.sublist = kept
+	u.subs.Store(int64(len(kept)))
+	u.mu.Unlock()
+	if len(kept) == 0 {
+		return true
+	}
+	if u.sess.Hash == hash {
+		u.sess = kept[0].sess
+		u.stopWatch()
+		u.stopRetry()
+		u.bo.reset()
+		u.needList = true
+	}
+	u.evalIdle()
 	return false
 }
 
