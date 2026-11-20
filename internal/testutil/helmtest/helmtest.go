@@ -9,6 +9,7 @@ import (
 	"helm.sh/helm/v4/pkg/action"
 	"helm.sh/helm/v4/pkg/chart/common"
 	chart "helm.sh/helm/v4/pkg/chart/v2"
+	chartutil "helm.sh/helm/v4/pkg/chart/v2/util"
 	kubefake "helm.sh/helm/v4/pkg/kube/fake"
 	ri "helm.sh/helm/v4/pkg/release"
 	"helm.sh/helm/v4/pkg/storage"
@@ -80,3 +81,14 @@ func (e *Env) Upgrade(t *testing.T, ch *chart.Chart, namespace, name string, val
 	_, err := up.Run(name, ch, values)
 	require.NoError(t, err)
 }
+
+// Save writes the chart as `<name>-<version>.tgz` in dir and returns its path.
+func Save(t *testing.T, ch *chart.Chart, dir string) string {
+	t.Helper()
+	path, err := chartutil.Save(ch, dir)
+	require.NoError(t, err)
+	return path
+}
+
+// Releases is the storage of the Env, for tests that write records the SDK would not (a Helm 3 record).
+func (e *Env) Releases() *storage.Storage { return e.Cfg.Releases }
