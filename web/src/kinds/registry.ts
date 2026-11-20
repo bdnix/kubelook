@@ -5,6 +5,7 @@ import { externalSecretsDescriptors } from './externalsecrets';
 import { gatewayDescriptors } from './gatewayapi';
 import { karpenterDescriptors } from './karpenter';
 import { kedaDescriptors } from './keda';
+import { trivyDescriptors } from './trivy';
 import { vaultSecretDescriptors } from './vaultsecrets';
 import { getString } from '../lib/path';
 import * as access from './core/access';
@@ -28,6 +29,7 @@ const KINDS: KindDescriptor[] = [
   ...certManagerDescriptors(),
   ...gatewayDescriptors(),
   ...vaultSecretDescriptors(),
+  ...trivyDescriptors(),
 ];
 
 /** Whether the kind has a descriptor of its own (otherwise it is a custom resource or gets the plain columns). */

@@ -10,6 +10,7 @@ import { podsForService, podsMountingClaim, servicesOfIngress } from '../../lib/
 import type { K8sObject } from '../../state/live';
 import { CertificateDetails, mayHoldCertificates } from '../secrets/CertificateDetails';
 import { SecretData } from '../secrets/SecretData';
+import { TrivyReportSection, WorkloadTrivy } from '../trivy/TrivySections';
 import { SecretOperatorBanner } from '../vaultsecrets/SecretOperatorBanner';
 import { VaultSecretOverview } from '../vaultsecrets/VaultSecretOverview';
 import { NodeClaimDetails } from '../karpenter/NodeClaimDetails';
@@ -292,6 +293,17 @@ export function OverviewTab({ cluster, group, kind, object, now, chain, pods }: 
       )}
       {group === 'ricoberger.de' && kind === 'VaultSecret' && (
         <VaultSecretOverview cluster={cluster} object={object} now={now} />
+      )}
+      {group === 'aquasecurity.github.io' && kind.endsWith('Report') && (
+        <TrivyReportSection cluster={cluster} kind={kind} object={object} />
+      )}
+      {(WORKLOADS.includes(kind) || (isCore && kind === 'Pod')) && (
+        <WorkloadTrivy
+          cluster={cluster}
+          kind={kind}
+          name={getString(object, 'metadata.name')}
+          namespace={namespace}
+        />
       )}
       {isCore && kind === 'Node' && <NodeSection object={object} />}
       {isCore && kind === 'Node' && <NodeKarpenterSection cluster={cluster} node={object} />}

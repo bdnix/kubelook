@@ -1,5 +1,4 @@
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router';
+import { screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { createClient } from '../../api/client';
 import { jsonResponse, renderApp } from '../../test/render';
@@ -31,18 +30,8 @@ describe('OverviewTab for custom resources', () => {
   });
 
   it('does not add a spec tree to built-in kinds', () => {
-    render(
-      <MemoryRouter>
-        <OverviewTab
-          cluster="c"
-          group="apps"
-          kind="Deployment"
-          object={widget}
-          now={0}
-          chain={[]}
-          pods={[]}
-        />
-      </MemoryRouter>,
+    renderApp(
+      <OverviewTab cluster="c" group="apps" kind="Deployment" object={widget} now={0} chain={[]} pods={[]} />,
     );
     expect(screen.queryByRole('region', { name: 'Spec' })).toBeNull();
   });
