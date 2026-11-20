@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router';
+import { KarpenterPage } from '../karpenter/KarpenterPage';
 import { clusterPath } from '../../lib/paths';
 import { ModuleGate } from './ModuleGate';
 import { MODULE_ENTRIES } from './registry';
@@ -17,6 +18,7 @@ export function ModulePage({ cluster }: { cluster: string }) {
       fallback={<p>This cluster does not have this module.</p>}
     >
       <h1>{entry?.title}</h1>
+      {name === 'karpenter' && <KarpenterPage cluster={cluster} />}
       <ul>
         {kinds.map((k) => (
           <li key={`${k.group}/${k.kind}`}>

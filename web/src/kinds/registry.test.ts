@@ -15,13 +15,20 @@ describe('kind registry', () => {
     const kinds = knownKinds();
     const ids = kinds.map((k) => `${k.group}/${k.kind}`);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(kinds.length).toBe(35 + 19);
+    expect(kinds.length).toBe(35 + 19 + 6);
     for (const k of kinds) {
       expect(k.columns[0]?.id).toBe('name');
-      expect(k.columns.at(-1)?.id).toBe('age');
+      // the module kinds keep the column order of `kubectl get -o wide`, which has Age in the middle
+      if (k.section !== 'Modules') expect(k.columns.at(-1)?.id).toBe('age');
       expect(SECTIONS).toContain(k.section);
     }
     expect(getKind('apps', 'Deployment').title).toBe('Deployments');
+  });
+
+  it('the node classes of any Karpenter provider get the columns of a node class', () => {
+    const k = getKind('karpenter.example.dev', 'FooNodeClass');
+    expect(k.columns.map((c) => c.title)).toEqual(['Name', 'Ready', 'Age']);
+    expect(k.kind).toBe('FooNodeClass');
   });
 
   it('unknown kinds fall back to Name, Namespace and Age', () => {

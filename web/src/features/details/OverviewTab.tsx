@@ -10,6 +10,8 @@ import { podsForService, podsMountingClaim, servicesOfIngress } from '../../lib/
 import type { K8sObject } from '../../state/live';
 import { CertificateDetails, mayHoldCertificates } from '../secrets/CertificateDetails';
 import { SecretData } from '../secrets/SecretData';
+import { NodeClaimDetails } from '../karpenter/NodeClaimDetails';
+import { NodeKarpenterSection } from '../karpenter/NodeKarpenterSection';
 import { FluxOverview } from '../flux/FluxOverview';
 import { findFluxKind } from '../../kinds/flux';
 import { CustomResourceOverview } from '../crds/CustomResourceOverview';
@@ -286,6 +288,10 @@ export function OverviewTab({ cluster, group, kind, object, now, chain, pods }: 
         </>
       )}
       {isCore && kind === 'Node' && <NodeSection object={object} />}
+      {isCore && kind === 'Node' && <NodeKarpenterSection cluster={cluster} node={object} />}
+      {group === 'karpenter.sh' && kind === 'NodeClaim' && (
+        <NodeClaimDetails cluster={cluster} object={object} />
+      )}
       {isCore && kind === 'Service' && <ServiceSection cluster={cluster} object={object} pods={pods} />}
       {kind === 'Ingress' && <IngressSection cluster={cluster} object={object} />}
       {isCore && kind === 'PersistentVolumeClaim' && (

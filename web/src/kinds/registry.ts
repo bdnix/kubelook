@@ -1,5 +1,6 @@
 import { formatAge } from '../lib/age';
 import { fluxDescriptors } from './flux';
+import { karpenterDescriptors } from './karpenter';
 import { getString } from '../lib/path';
 import * as access from './core/access';
 import * as cluster from './core/cluster';
@@ -16,6 +17,7 @@ const KINDS: KindDescriptor[] = [
   podsKind,
   ...[workloads, config, network, storage, cluster, access].flatMap((m) => Object.values(m).filter(isKind)),
   ...fluxDescriptors(),
+  ...karpenterDescriptors(),
 ];
 
 /** Whether the kind has a descriptor of its own (otherwise it is a custom resource or gets the plain columns). */
@@ -29,6 +31,11 @@ export function getKind(group: string, kind: string): KindDescriptor {
   const g = group === 'core' ? '' : group;
   const found = KINDS.find((k) => k.group === g && k.kind === kind);
   if (found) return found;
+  // the node classes of other Karpenter providers share one set of columns
+  if (g.startsWith('karpenter.') && kind.endsWith('NodeClass')) {
+    const like = KINDS.find((k) => k.kind === 'EC2NodeClass');
+    if (like) return { ...like, group: g, kind, resource: `${kind.toLowerCase()}es`, title: kind };
+  }
   return {
     group: g,
     kind,
