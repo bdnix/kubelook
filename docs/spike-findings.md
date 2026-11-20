@@ -57,3 +57,10 @@ Written answers to the spec's "To confirm in the spike" list. Each section has t
 - **How it was checked:** `hack/vault-setup.sh` (it runs on every `make it-up`) and `TestVault_Discovery_…`, `TestVault_Open_…`, `TestVault_ViewerRole_…` and `TestVault_Remint_…` in the `integration-tests` job.
 - **Date:** 2026-11-20
 - **Consequence for the plan:** none. Mounts need the `itops` namespace to exist in the cluster, or minting fails.
+
+## OCI install
+
+- **Result:** OCI install: unit-tested option mapping only.
+- **How it was checked:** unit tests of the option mapping in `internal/helm/helm4`. No registry container is started in the integration suite, so a pull from a real OCI registry is not exercised.
+- **Date:** 2026-11-20
+- **Consequence for the plan:** none; an install from an OCI reference is not proven on a real cluster.
