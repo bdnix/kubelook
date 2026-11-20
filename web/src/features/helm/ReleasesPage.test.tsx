@@ -27,23 +27,19 @@ describe('ReleasesPage', () => {
     mount();
     const table = await screen.findByRole('table', { name: 'Releases' });
     const row = within(table).getByRole('row', { name: /web/ });
-    for (const text of ['web', 'team-a', 'deployed', '1.1.0', '2.1', '2']) {
+    for (const text of ['web', 'team-a', 'deployed', 'web 1.1.0', '2.1', '2']) {
       expect(within(row).getAllByText(text).length).toBeGreaterThan(0);
     }
-    expect(within(table).getAllByRole('columnheader').map((h) => h.textContent)).toEqual([
-      'Name',
-      'Namespace',
-      'Status',
-      'Chart',
-      'App version',
-      'Revision',
-      'Updated',
-    ]);
+    expect(
+      within(table)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent),
+    ).toEqual(['Name', 'Namespace', 'Status', 'Chart', 'App version', 'Revision', 'Updated']);
   });
 
   it('says the console uses Helm 4 and manages releases made by Helm 3', async () => {
     mount();
-    expect(await screen.findByText(/Helm 4/)).toHaveTextContent(/releases made by Helm 3/);
+    expect(await screen.findByText(/Helm 4/)).toHaveTextContent(/Releases made by Helm 3/);
   });
 
   it('says there are no releases', async () => {
@@ -58,7 +54,8 @@ describe('ReleasesPage', () => {
     it('reads the releases again every 15 seconds', async () => {
       const api = mount();
       await screen.findByRole('table', { name: 'Releases' });
-      const reads = () => api.calls.filter((c) => c.method === 'GET' && c.path.endsWith('/helm/releases')).length;
+      const reads = () =>
+        api.calls.filter((c) => c.method === 'GET' && c.path.endsWith('/helm/releases')).length;
       expect(reads()).toBe(1);
       await act(() => vi.advanceTimersByTimeAsync(14_000));
       expect(reads()).toBe(1);

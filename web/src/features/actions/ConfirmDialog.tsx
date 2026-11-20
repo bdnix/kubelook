@@ -23,6 +23,8 @@ export interface ConfirmDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
   clipboard?: Clipboard;
+  /** The label of the copy button; kubectl by default. */
+  copyLabel?: string;
   children?: ReactNode;
 }
 
@@ -38,6 +40,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   clipboard = browserClipboard,
+  copyLabel = 'Copy as kubectl',
   children,
 }: ConfirmDialogProps) {
   const ref = useRef<HTMLDivElement>(null);
@@ -60,8 +63,7 @@ export function ConfirmDialog({
       <h2>{title}</h2>
       {children}
       <p>
-        <code>{kubectl}</code>{' '}
-        <Button onClick={() => void clipboard.writeText(kubectl)}>Copy as kubectl</Button>
+        <code>{kubectl}</code> <Button onClick={() => void clipboard.writeText(kubectl)}>{copyLabel}</Button>
       </p>
       <ErrorText message={error} />
       <Button onClick={onCancel}>Cancel</Button>

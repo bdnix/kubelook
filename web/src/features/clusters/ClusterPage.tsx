@@ -4,6 +4,7 @@ import { NoAccessPage } from '../shell/NoAccessPage';
 import { clusterPath } from '../../lib/paths';
 import { PodFilesPage } from '../files/PodFilesPage';
 import { WhoCanPage } from '../rbac/WhoCanPage';
+import { ReleasesPage } from '../helm/ReleasesPage';
 import { ModulePage } from '../modules/ModulePage';
 import { ResourceListPage } from '../resources/ResourceListPage';
 
@@ -26,6 +27,7 @@ export function ClusterPage() {
       <Route index element={<Navigate to={`${clusterPath(cluster)}/core/Pod`} replace />} />
       <Route path="pod-files" element={<PodFilesPage cluster={cluster} />} />
       <Route path="modules/:name" element={<ModulePage cluster={cluster} />} />
+      <Route path="helm" element={<ReleasesPage cluster={cluster} />} />
       <Route path="who-can" element={<WhoCanPage cluster={cluster} />} />
       <Route path=":group/:kind" element={<ListRoute cluster={cluster} />} />
       {/* The details drawer is its own route in the layout; the list stays behind it. */}

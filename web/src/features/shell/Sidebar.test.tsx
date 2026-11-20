@@ -43,6 +43,7 @@ describe('Sidebar', () => {
       'Storage',
       'Cluster',
       'Access Control',
+      'Helm',
       'Pod Files',
       'Events',
     ]);

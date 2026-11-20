@@ -12,7 +12,9 @@ vi.mock('../../adapters/monaco/YamlEditor', () => ({
 }));
 
 function mount(api = helmApi(), onClose = vi.fn()) {
-  renderApp(<ReleaseDetails cluster="c" namespace="team-a" name="web" onClose={onClose} />, { client: api.client });
+  renderApp(<ReleaseDetails cluster="c" namespace="team-a" name="web" onClose={onClose} />, {
+    client: api.client,
+  });
   return { api, onClose };
 }
 
@@ -33,12 +35,17 @@ describe('ReleaseDetails', () => {
 
   it('hides the values again when the details are closed and opened again', async () => {
     const api = helmApi();
-    const { unmount } = renderApp(<ReleaseDetails cluster="c" namespace="team-a" name="web" onClose={vi.fn()} />, { client: api.client });
+    const { unmount } = renderApp(
+      <ReleaseDetails cluster="c" namespace="team-a" name="web" onClose={vi.fn()} />,
+      { client: api.client },
+    );
     await userEvent.click(await tab('Values'));
     await userEvent.click(screen.getByRole('button', { name: 'Reveal values' }));
     await screen.findByText(/message: hello/);
     unmount();
-    renderApp(<ReleaseDetails cluster="c" namespace="team-a" name="web" onClose={vi.fn()} />, { client: api.client });
+    renderApp(<ReleaseDetails cluster="c" namespace="team-a" name="web" onClose={vi.fn()} />, {
+      client: api.client,
+    });
     await userEvent.click(await tab('Values'));
     expect(screen.queryByText(/message: hello/)).toBeNull();
   });
@@ -65,10 +72,26 @@ describe('ReleaseDetails', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Uninstall web' });
     expect(api.calls.some((c) => c.path.endsWith('/jobs'))).toBe(false);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Uninstall' }));
-    await waitFor(() => expect(api.calls.find((c) => c.path.endsWith('/jobs'))?.body).toEqual({ action: 'uninstall', namespace: 'team-a', name: 'web' }));
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.path.endsWith('/jobs'))?.body).toEqual({
+        action: 'uninstall',
+        namespace: 'team-a',
+        name: 'web',
+      }),
+    );
     await userEvent.click(screen.getByRole('button', { name: 'Test' }));
-    await userEvent.click(within(await screen.findByRole('dialog', { name: 'Test web' })).getByRole('button', { name: 'Run test' }));
-    await waitFor(() => expect(api.calls.filter((c) => c.path.endsWith('/jobs')).at(-1)?.body).toEqual({ action: 'test', namespace: 'team-a', name: 'web' }));
+    await userEvent.click(
+      within(await screen.findByRole('dialog', { name: 'Test web' })).getByRole('button', {
+        name: 'Run test',
+      }),
+    );
+    await waitFor(() =>
+      expect(api.calls.filter((c) => c.path.endsWith('/jobs')).at(-1)?.body).toEqual({
+        action: 'test',
+        namespace: 'team-a',
+        name: 'web',
+      }),
+    );
   });
 
   it('rollback picks a revision and starts a job', async () => {
@@ -79,7 +102,14 @@ describe('ReleaseDetails', () => {
     expect(within(dialog).getByRole('button', { name: 'Roll back' })).toBeDisabled();
     await userEvent.selectOptions(within(dialog).getByRole('combobox', { name: 'Revision' }), '1');
     await userEvent.click(within(dialog).getByRole('button', { name: 'Roll back' }));
-    await waitFor(() => expect(api.calls.find((c) => c.path.endsWith('/jobs'))?.body).toEqual({ action: 'rollback', namespace: 'team-a', name: 'web', revision: 1 }));
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.path.endsWith('/jobs'))?.body).toEqual({
+        action: 'rollback',
+        namespace: 'team-a',
+        name: 'web',
+        revision: 1,
+      }),
+    );
   });
 
   it('disables the actions, with the reason, when the user may not create Secrets in the namespace', async () => {

@@ -15,7 +15,9 @@ vi.mock('../../adapters/monaco/YamlEditor', () => ({
 describe('UpgradeDialog', () => {
   function mount(api = helmApi()) {
     const onClose = vi.fn();
-    renderApp(<UpgradeDialog cluster="c" release={detail() as never} onClose={onClose} />, { client: api.client });
+    renderApp(<UpgradeDialog cluster="c" release={detail() as never} onClose={onClose} />, {
+      client: api.client,
+    });
     return { api, onClose };
   }
 
@@ -26,6 +28,7 @@ describe('UpgradeDialog', () => {
     expect(api.calls.filter((c) => c.path.endsWith('/values/reveal'))).toHaveLength(1);
     expect(screen.getByRole('button', { name: 'Confirm upgrade' })).toBeDisabled();
 
+    await screen.findByRole('option', { name: 'charts' });
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Repository' }), 'charts');
     await userEvent.clear(screen.getByRole('textbox', { name: 'Chart version' }));
     await userEvent.type(screen.getByRole('textbox', { name: 'Chart version' }), '1.2.0');
@@ -46,13 +49,19 @@ describe('UpgradeDialog', () => {
     expect(screen.getByRole('button', { name: 'Confirm upgrade' })).toBeEnabled();
 
     await userEvent.click(screen.getByRole('button', { name: 'Confirm upgrade' }));
-    await waitFor(() => expect(api.calls.find((c) => c.path.endsWith('/jobs'))?.body).toMatchObject({ action: 'upgrade', values: { replicas: 5 } }));
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.path.endsWith('/jobs'))?.body).toMatchObject({
+        action: 'upgrade',
+        values: { replicas: 5 },
+      }),
+    );
   });
 
   it('turns Confirm off again when an input changes after the preview', async () => {
     mount();
     const editor = await screen.findByRole('textbox', { name: 'Values (YAML)' });
     await waitFor(() => expect(editor).toHaveValue('replicas: 3\n'));
+    await screen.findByRole('option', { name: 'charts' });
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Repository' }), 'charts');
     await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
     await screen.findByRole('region', { name: 'Values diff' });
@@ -65,6 +74,7 @@ describe('UpgradeDialog', () => {
     mount();
     const editor = await screen.findByRole('textbox', { name: 'Values (YAML)' });
     await waitFor(() => expect(editor).toHaveValue('replicas: 3\n'));
+    await screen.findByRole('option', { name: 'charts' });
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Repository' }), 'charts');
     await userEvent.clear(editor);
     await userEvent.click(editor);
@@ -76,8 +86,19 @@ describe('UpgradeDialog', () => {
   it('shows the error of a failed preview', async () => {
     const api = helmApi();
     api.fetch.mockImplementationOnce(api.fetch.getMockImplementation() as never);
-    mount(helmApi({ extra: { 'POST /clusters/c/helm/preview': () => new Response(JSON.stringify({ error: { code: 'not_found', message: 'The repository has no chart web.' } }), { status: 404, headers: { 'Content-Type': 'application/json' } }) } }));
-    await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Repository' }), 'charts');
+    mount(
+      helmApi({
+        extra: {
+          'POST /clusters/c/helm/preview': () =>
+            new Response(
+              JSON.stringify({ error: { code: 'not_found', message: 'The repository has no chart web.' } }),
+              { status: 404, headers: { 'Content-Type': 'application/json' } },
+            ),
+        },
+      }),
+    );
+    await screen.findByRole('option', { name: 'charts' });
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Repository' }), 'charts');
     await userEvent.click(screen.getByRole('button', { name: 'Preview' }));
     expect(await screen.findByText('The repository has no chart web.')).toBeInTheDocument();
   });
@@ -91,27 +112,40 @@ describe('InstallDialog', () => {
 
   it('installs from a repository chart', async () => {
     const api = mount();
-    await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Repository' }), 'charts');
+    await screen.findByRole('option', { name: 'charts' });
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Repository' }), 'charts');
     await userEvent.type(screen.getByRole('textbox', { name: 'Chart' }), 'web');
     await userEvent.type(screen.getByRole('textbox', { name: 'Chart version' }), '1.0.0');
     await userEvent.type(screen.getByRole('textbox', { name: 'Namespace' }), 'team-b');
     await userEvent.type(screen.getByRole('textbox', { name: 'Release name' }), 'api');
     await userEvent.click(screen.getByRole('button', { name: 'Install' }));
-    await waitFor(() => expect(api.calls.find((c) => c.path.endsWith('/jobs'))?.body).toEqual({
-      action: 'install', namespace: 'team-b', name: 'api', chart: { repo: 'charts', name: 'web', version: '1.0.0' }, values: {},
-    }));
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.path.endsWith('/jobs'))?.body).toEqual({
+        action: 'install',
+        namespace: 'team-b',
+        name: 'api',
+        chart: { repo: 'charts', name: 'web', version: '1.0.0' },
+        values: {},
+      }),
+    );
   });
 
   it('installs from an OCI reference', async () => {
     const api = mount();
-    await userEvent.selectOptions(await screen.findByRole('combobox', { name: 'Repository' }), 'oci');
-    await userEvent.type(screen.getByRole('textbox', { name: 'OCI reference' }), 'oci://registry.example.com/charts/web');
+    await screen.findByRole('option', { name: 'charts' });
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Repository' }), 'oci');
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'OCI reference' }),
+      'oci://registry.example.com/charts/web',
+    );
     await userEvent.type(screen.getByRole('textbox', { name: 'Namespace' }), 'team-b');
     await userEvent.type(screen.getByRole('textbox', { name: 'Release name' }), 'api');
     await userEvent.click(screen.getByRole('button', { name: 'Install' }));
-    await waitFor(() => expect(api.calls.find((c) => c.path.endsWith('/jobs'))?.body).toMatchObject({
-      chart: { oci: 'oci://registry.example.com/charts/web' },
-    }));
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.path.endsWith('/jobs'))?.body).toMatchObject({
+        chart: { oci: 'oci://registry.example.com/charts/web' },
+      }),
+    );
   });
 
   it('keeps Install off until the form is complete', async () => {

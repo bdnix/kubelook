@@ -22,7 +22,8 @@ describe('RepositoriesPanel', () => {
       },
     });
     renderApp(<RepositoriesPanel cluster="c" />, { client: api.client });
-    const list = await screen.findByRole('list', { name: 'Repositories' });
+    await screen.findByText('charts');
+    const list = screen.getByRole('list', { name: 'Repositories' });
     expect(within(list).getByText('charts')).toBeInTheDocument();
     expect(within(list).getByText(/organisation/)).toBeInTheDocument();
     expect(within(list).getAllByRole('button', { name: /Remove/ })).toHaveLength(1);
@@ -31,9 +32,20 @@ describe('RepositoriesPanel', () => {
     await userEvent.type(screen.getByRole('textbox', { name: 'URL' }), 'https://x.example.org');
     await userEvent.type(screen.getByLabelText('Password'), 'pw');
     await userEvent.click(screen.getByRole('button', { name: 'Add repository' }));
-    await waitFor(() => expect(api.calls.find((c) => c.method === 'POST' && c.path.endsWith('/repositories'))?.body).toEqual({ name: 'new', url: 'https://x.example.org', username: '', password: 'pw' }));
+    await waitFor(() =>
+      expect(api.calls.find((c) => c.method === 'POST' && c.path.endsWith('/repositories'))?.body).toEqual({
+        name: 'new',
+        url: 'https://x.example.org',
+        username: '',
+        password: 'pw',
+      }),
+    );
 
     await userEvent.click(within(list).getByRole('button', { name: 'Remove mine' }));
-    await waitFor(() => expect(api.calls.some((c) => c.method === 'DELETE' && c.path.endsWith('/repositories/mine'))).toBe(true));
+    await waitFor(() =>
+      expect(api.calls.some((c) => c.method === 'DELETE' && c.path.endsWith('/repositories/mine'))).toBe(
+        true,
+      ),
+    );
   });
 });
