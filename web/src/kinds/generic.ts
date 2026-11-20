@@ -15,7 +15,12 @@ export interface CrdLike {
     group?: string;
     names?: { kind?: string; plural?: string };
     scope?: string;
-    versions?: { name: string; served?: boolean; additionalPrinterColumns?: PrinterColumn[] }[];
+    versions?: {
+      name: string;
+      served?: boolean;
+      additionalPrinterColumns?: PrinterColumn[];
+      schema?: { openAPIV3Schema?: unknown };
+    }[];
   };
 }
 
@@ -83,4 +88,9 @@ export function crdDescriptor(
     section: 'Custom Resources',
     columns: [nameColumn, ...(id.namespaced ? [namespaceColumn] : []), ...columns, ageColumn],
   };
+}
+
+/** The OpenAPI schema of one version of a CRD, when the CRD has one. */
+export function crdSchema(crd: CrdLike | undefined, version: string): unknown {
+  return crd?.spec?.versions?.find((v) => v.name === version)?.schema?.openAPIV3Schema;
 }

@@ -81,12 +81,12 @@ describe('SchemaDetails', () => {
 });
 
 describe('CustomResourceOverview', () => {
-  const crd: CrdLike & { spec: { versions: unknown[] } } = {
+  const crd: CrdLike = {
     spec: {
       group: 'example.com',
       names: { kind: 'Widget', plural: 'widgets' },
       scope: 'Namespaced',
-      versions: [{ name: 'v1', served: true, schema: { openAPIV3Schema: schema } } as never],
+      versions: [{ name: 'v1', served: true, schema: { openAPIV3Schema: schema } }],
     },
   };
   const discovery = {
@@ -107,9 +107,7 @@ describe('CustomResourceOverview', () => {
 
   it('reads the CRD and shows the descriptions of the served version', async () => {
     const fetch = vi.fn((input: RequestInfo | URL) =>
-      Promise.resolve(
-        String(input).endsWith('/discovery') ? jsonResponse(discovery) : jsonResponse(crd),
-      ),
+      Promise.resolve(String(input).endsWith('/discovery') ? jsonResponse(discovery) : jsonResponse(crd)),
     );
     renderApp(<CustomResourceOverview cluster="c" group="example.com" kind="Widget" object={object} />, {
       client: createClient({ fetch }),
