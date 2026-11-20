@@ -43,7 +43,7 @@ func TestModules_ListsWhatTheClusterServes(t *testing.T) {
 
 func TestModules_HonoursTheConfiguration(t *testing.T) {
 	e := newKubeEnv(t)
-	e.deps.Config.Modules["keda"] = config.Module{Enabled: "false"}
+	e.deps.Config.Modules = map[string]config.Module{"keda": {Enabled: "false"}}
 	e.fakes.AddResources(&metav1.APIResourceList{
 		GroupVersion: "keda.sh/v1alpha1",
 		APIResources: []metav1.APIResource{{Name: "scaledobjects", Kind: "ScaledObject", Namespaced: true, Verbs: metav1.Verbs{"list"}}},
