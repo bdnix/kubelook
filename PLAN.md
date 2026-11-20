@@ -29,6 +29,7 @@ Decided by the repository owner after the review. They change what is still to b
 | M8 | **No final release before the human gates.** The pipeline publishes release candidates; the owner cuts `0.1.0` after Gate 1 with a real Vault and the external security review | A34, Step 8.4, §8, §9 |
 | M9 | **Dependency rule.** Advisory-driven bumps are allowed (rule 5 above) | rule 5 |
 | M10 | **Corrections to merged code**: paged first list in the watch hub, one upstream watch per user rather than per session, README status | Step R.3 |
+| M11 | **No schema-driven form for custom resources.** Freelens and Headlamp have none; custom resources are created and edited as YAML | Step 5.1 |
 
 ---
 
@@ -3648,7 +3649,7 @@ Outcome: the spec's "Phase 2. Platform": CRD browser, Helm (the Helm 4 SDK; rele
 
 | Step | UI test file | Journey |
 | --- | --- | --- |
-| 5.1 | `web/ui/crds.ui.ts` | A custom kind appears under Custom Resources; its list shows a printer column; Create opens the schema form, and the form and the YAML tab stay in sync |
+| 5.1 | `web/ui/crds.ui.ts` | A custom kind appears under Custom Resources; its list shows a printer column; Create from YAML opens the editor and a created object appears in the list |
 | 5.2 | `web/ui/modules.ui.ts` | An active module shows in the sidebar and its kinds are absent from Custom Resources; an inactive one is hidden |
 | 5.6 | `web/ui/helm.ui.ts` | Releases list; values hidden until Reveal; the upgrade dialog shows both diffs before Confirm is enabled; a submitted job shows its progress row |
 | 5.8 | `web/ui/flux.ui.ts` | Dashboard counts; Reconcile disabled on a suspended object with its reason; the graph renders nodes that open details |
@@ -3659,27 +3660,27 @@ Outcome: the spec's "Phase 2. Platform": CRD browser, Helm (the Helm 4 SDK; rele
 
 **Integration tests (amended, M1).** Step 7.8 (Helm, modules, Flux actions, CRD browser on the real clusters) is part of this pull request and runs after Step 5.15.
 
-### Step 5.1 — Custom resource browser and schema forms
+### Step 5.1 — Custom resource browser
 
-**Goal.** Generic list, details, edit, delete and create for every served CRD.
+**Goal.** Generic list, details, edit, delete and create (as YAML) for every served CRD. **(amended)** There is no schema-driven form: Freelens and Headlamp have none either (checked in their source on 2026-11-20), so custom resources are created and edited in the YAML editor, which already validates and completes from the cluster's OpenAPI schema.
 
-**Files.** Create `web/src/lib/jsonpath.ts`(+test), `web/src/features/crds/{CrdSidebarSection,CustomResourceList,SchemaDetails,SchemaForm,useCrd}.tsx` with tests, `web/src/kinds/generic.ts`(+test).
+**Files.** Create `web/src/lib/jsonpath.ts`(+test), `web/src/features/crds/{CrdSidebarSection,SchemaDetails,useCrd}.tsx` with tests, `web/src/kinds/generic.ts`(+test).
 
 **Red.** Cases:
 - `jsonpath.ts` evaluates the subset used by `additionalPrinterColumns`: `.a.b`, `.a[0]`, `.a[*].b`, `.a[?(@.type=="Ready")].status`, `.metadata.labels['x\.y']`; unsupported syntax → empty string, never a throw; arrays joined with `,`.
 - Sidebar section "Custom Resources": kinds from discovery whose group is not a built-in Kubernetes group and that no **active** module claims (Step 5.2), grouped by API group, sorted.
 - List: columns Name, Namespace (if namespaced), then the CRD version's `additionalPrinterColumns` (types `date` → age, `integer`/`number` → numeric sort), then Age; the CRD is read from `apiextensions.k8s.io/v1` `customresourcedefinitions/<plural>.<group>`; if the user cannot read CRDs the list falls back to Name/Namespace/Age.
 - Details: the standard drawer; the Overview tab renders `spec` and `status` as a field tree with descriptions from the CRD's `openAPIV3Schema`; conditions table when `status.conditions` exists.
-- Create: `SchemaForm` generates inputs from the schema for `string` (with `enum` → select), `integer`, `number`, `boolean`, `object` (nested group), `array` of scalars (add/remove rows); marks `required`; any schema node it cannot render (`oneOf`, `x-kubernetes-preserve-unknown-fields`, `additionalProperties`, arrays of objects deeper than 2 levels) becomes an embedded YAML field for that node; the form's value and the raw YAML tab stay in sync both ways; submit goes through the dry-run preview of Step 4.4.
-- Edit and delete use the standard editor and actions.
+- Create: the existing "Create from YAML" of Step 4.4 (dry-run preview, then create), opened with a template for the kind: `apiVersion`, `kind` and `metadata.name` filled in, plus `metadata.namespace` for namespaced kinds.
+- Edit and delete use the standard editor and actions; the editor validates and completes from the CRD's schema.
 
 Command: `make test-frontend`. Expected failure: unresolved imports.
 
-**Green / Refactor.** Implement; `schemaToFields(schema)` as a pure function with tests. Re-run.
+**Green / Refactor.** Implement. Re-run.
 
 **Acceptance.** `make test-frontend`, `make coverage-frontend` pass.
 
-**Pitfalls.** CRD schemas can be recursive or huge: cap rendering depth at 8 and fall back to YAML below that.
+**Pitfalls.** CRD schemas can be recursive or huge: cap the depth of the details field tree at 8 and show the rest as YAML below that.
 
 ### Step 5.2 — Module framework
 
