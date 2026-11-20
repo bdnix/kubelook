@@ -224,3 +224,41 @@ describe('ResourceSidebar', () => {
     await waitFor(() => expect(screen.queryByRole('link', { name: 'Alpha' })).toBeNull());
   });
 });
+
+describe('Sidebar and Flux', () => {
+  const fluxDiscovery: Discovery = {
+    serverVersion: 'v1.35.0',
+    resources: [res('kustomize.toolkit.fluxcd.io', 'Kustomization', 'kustomizations')],
+  };
+  const flux = (active: boolean) => ({
+    name: 'flux',
+    active,
+    kinds: active
+      ? [
+          {
+            group: 'kustomize.toolkit.fluxcd.io',
+            version: 'v1',
+            resource: 'kustomizations',
+            kind: 'Kustomization',
+            namespaced: true,
+          },
+        ]
+      : [],
+  });
+
+  it('shows the dashboard and the Flux kinds under FluxCD, and not under Custom Resources, when Flux is active', () => {
+    renderApp(<Sidebar cluster="c" discovery={fluxDiscovery} modules={[flux(true)]} canList={() => true} />);
+    const section = within(screen.getByRole('region', { name: 'FluxCD' }));
+    expect(section.getByRole('link', { name: 'Dashboard' })).toHaveAttribute('href', '/c/c/flux');
+    expect(section.getByRole('link', { name: 'Kustomization' })).toHaveAttribute(
+      'href',
+      '/c/c/kustomize.toolkit.fluxcd.io/Kustomization',
+    );
+    expect(screen.queryByRole('region', { name: 'Custom Resources' })).toBeNull();
+  });
+
+  it('has no dashboard where Flux is not active', () => {
+    renderApp(<Sidebar cluster="c" discovery={discovery} modules={[flux(false)]} canList={() => true} />);
+    expect(screen.queryByRole('link', { name: 'Dashboard' })).toBeNull();
+  });
+});

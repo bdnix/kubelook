@@ -11,11 +11,11 @@ describe('kind registry', () => {
     expect(knownKinds()).toContain(a);
   });
 
-  it('registers every core kind once, each in a known section', () => {
+  it('registers every core kind and every Flux kind once, each in a known section', () => {
     const kinds = knownKinds();
     const ids = kinds.map((k) => `${k.group}/${k.kind}`);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(kinds.length).toBe(35);
+    expect(kinds.length).toBe(35 + 19);
     for (const k of kinds) {
       expect(k.columns[0]?.id).toBe('name');
       expect(k.columns.at(-1)?.id).toBe('age');

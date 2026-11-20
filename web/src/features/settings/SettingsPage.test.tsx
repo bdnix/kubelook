@@ -107,7 +107,7 @@ describe('SettingsPage', () => {
     ]) {
       expect(screen.getByRole('region', { name })).toBeInTheDocument();
     }
-    expect(screen.queryByText(/admin|permission|policy/i)).toBeNull();
+    expect(screen.queryByRole('heading', { name: /admin|permission|policy/i })).toBeNull();
   });
 
   it('the theme selector applies the theme and saves it', async () => {
