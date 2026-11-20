@@ -7,7 +7,7 @@ installGuard();
 const items = (d: Record<string, unknown>) =>
   d.resource === 'pods' ? [pod('1', 'web-1', 'Running'), pod('2', 'web-2', 'Pending')] : [];
 
-test('opening a row sets the deep link and the drawer has its six tabs', async ({ page }) => {
+test('opening a row sets the deep link and the drawer has its seven tabs', async ({ page }) => {
   await setup(page, {}, { items });
   await page.goto(`/c/${cluster.path}/core/Pod`);
   await page.getByRole('grid', { name: 'Pods' }).getByText('web-1').dblclick();
@@ -22,6 +22,7 @@ test('opening a row sets the deep link and the drawer has its six tabs', async (
     'Logs',
     'Files',
     'Related',
+    'Resources',
   ]);
 });
 
