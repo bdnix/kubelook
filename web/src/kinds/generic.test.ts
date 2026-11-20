@@ -53,7 +53,11 @@ describe('crdDescriptor', () => {
 
   it('shows dates as ages and sorts integers and numbers numerically', () => {
     const cols = crdDescriptor(crd, 'v1').columns;
-    const byTitle = (t: string) => cols.find((c) => c.title === t)!;
+    const byTitle = (t: string) => {
+      const c = cols.find((x) => x.title === t);
+      if (!c) throw new Error(`no column ${t}`);
+      return c;
+    };
     expect(byTitle('State').value(widget, now)).toBe('Ready');
     expect(byTitle('Replicas').value(widget, now)).toBe(3);
     expect(byTitle('Replicas').sort).toBe('number');
@@ -65,8 +69,8 @@ describe('crdDescriptor', () => {
 
   it('gives a missing numeric value 0 and a missing text value an empty string', () => {
     const cols = crdDescriptor(crd, 'v1').columns;
-    expect(cols.find((c) => c.title === 'Replicas')!.value({ metadata: {} }, now)).toBe(0);
-    expect(cols.find((c) => c.title === 'State')!.value({ metadata: {} }, now)).toBe('');
+    expect(cols.find((c) => c.title === 'Replicas')?.value({ metadata: {} }, now)).toBe(0);
+    expect(cols.find((c) => c.title === 'State')?.value({ metadata: {} }, now)).toBe('');
   });
 
   it('omits Namespace for a cluster-scoped kind', () => {
