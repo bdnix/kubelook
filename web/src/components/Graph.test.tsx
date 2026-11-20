@@ -9,12 +9,16 @@ const nodes: GraphNode[] = [
 ];
 const edges: GraphEdge[] = [{ from: 'git', to: 'ks' }];
 
-const transform = () => document.querySelector('[data-testid="graph-content"]')?.getAttribute('transform') ?? '';
+const transform = () =>
+  document.querySelector('[data-testid="graph-content"]')?.getAttribute('transform') ?? '';
 
 describe('Graph', () => {
   it('draws every node as a focusable button named by kind, name and status', () => {
     render(<Graph label="Flux graph" nodes={nodes} edges={edges} onOpen={vi.fn()} />);
-    expect(screen.getByRole('button', { name: 'GitRepository repo, ready' })).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('button', { name: 'GitRepository repo, ready' })).toHaveAttribute(
+      'tabindex',
+      '0',
+    );
     expect(screen.getByRole('button', { name: 'Kustomization apps, failed' })).toBeInTheDocument();
     expect(document.querySelectorAll('line')).toHaveLength(1);
   });
@@ -38,7 +42,7 @@ describe('Graph', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('Ready=False: build failed');
     await userEvent.unhover(screen.getByRole('button', { name: /Kustomization apps/ }));
     expect(screen.queryByRole('tooltip')).toBeNull();
-    screen.getByRole('button', { name: /GitRepository repo/ }).focus();
+    fireEvent.focus(screen.getByRole('button', { name: /GitRepository repo/ }));
     expect(screen.getByRole('tooltip')).toHaveTextContent('Revision main@sha1:abc');
   });
 
@@ -86,7 +90,14 @@ describe('Graph', () => {
   });
 
   it('renders cluster-supplied names as text', () => {
-    render(<Graph label="g" nodes={[{ id: 'x', kind: 'Kustomization', name: '<img src=x onerror=alert(1)>', status: 'unknown' }]} edges={[]} onOpen={vi.fn()} />);
+    render(
+      <Graph
+        label="g"
+        nodes={[{ id: 'x', kind: 'Kustomization', name: '<img src=x onerror=alert(1)>', status: 'unknown' }]}
+        edges={[]}
+        onOpen={vi.fn()}
+      />,
+    );
     expect(screen.getByRole('button', { name: /<img src=x/ })).toBeInTheDocument();
     expect(document.querySelector('img')).toBeNull();
   });

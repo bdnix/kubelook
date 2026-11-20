@@ -29,8 +29,12 @@ describe('forceLayout', () => {
 
   it('keeps linked nodes closer than a node that is far down the chain', () => {
     const chain = Array.from({ length: 6 }, (_, i) => ({ id: `n${i}` }));
-    const out = forceLayout(chain, chain.slice(1).map((n, i) => ({ source: `n${i}`, target: n.id })));
-    const d = (a: string, b: string) => Math.hypot((out.get(a)?.x ?? 0) - (out.get(b)?.x ?? 0), (out.get(a)?.y ?? 0) - (out.get(b)?.y ?? 0));
+    const out = forceLayout(
+      chain,
+      chain.slice(1).map((n, i) => ({ source: `n${i}`, target: n.id })),
+    );
+    const d = (a: string, b: string) =>
+      Math.hypot((out.get(a)?.x ?? 0) - (out.get(b)?.x ?? 0), (out.get(a)?.y ?? 0) - (out.get(b)?.y ?? 0));
     expect(d('n0', 'n1')).toBeLessThan(d('n0', 'n5'));
   });
 
