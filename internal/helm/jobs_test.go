@@ -90,6 +90,9 @@ func (r *jobRig) audited() []string {
 			Resource      struct{ Kind, Name string }
 		}
 		_ = json.Unmarshal([]byte(l), &m)
+		if m.Outcome == "requested" {
+			continue // every action is recorded twice: when it is requested and when it ends
+		}
 		out = append(out, fmt.Sprintf("%s:%s %s", m.Verb, m.Outcome, m.Resource.Name))
 	}
 	return out
