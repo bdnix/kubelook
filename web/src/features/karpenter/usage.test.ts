@@ -8,10 +8,10 @@ const node = (name: string, labels: Record<string, string>, cpu = '4', memory = 
 
 describe('poolUsage', () => {
   it('sums the capacity of the nodes of the pool and compares it with the limits', () => {
-    const u = poolUsage(
-      { spec: { limits: { cpu: '100', memory: '400Gi' } } },
-      [node('a', {}), node('b', {}, '8', '32Gi')],
-    );
+    const u = poolUsage({ spec: { limits: { cpu: '100', memory: '400Gi' } } }, [
+      node('a', {}),
+      node('b', {}, '8', '32Gi'),
+    ]);
     expect(u.cpu).toEqual({ used: 12, limit: 100 });
     expect(u.memory.used).toBe(48 * 1024 ** 3);
     expect(u.memory.limit).toBe(400 * 1024 ** 3);
@@ -27,7 +27,9 @@ describe('poolUsage', () => {
 });
 
 describe('overlayMatches', () => {
-  const nodes = [node('a', { 'node.kubernetes.io/instance-type': 'm5.large', 'karpenter.sh/capacity-type': 'spot' })];
+  const nodes = [
+    node('a', { 'node.kubernetes.io/instance-type': 'm5.large', 'karpenter.sh/capacity-type': 'spot' }),
+  ];
   const overlay = (requirements: unknown[]) => ({ spec: { requirements } });
   it.each([
     [[{ key: 'node.kubernetes.io/instance-type', operator: 'In', values: ['m5.large', 'm5.xlarge'] }], true],
@@ -45,9 +47,21 @@ describe('overlayMatches', () => {
 
 describe('groupNodes and sizeOf', () => {
   const nodes = [
-    node('a', { 'karpenter.sh/nodepool': 'p1', 'topology.kubernetes.io/zone': 'z1', 'node.kubernetes.io/instance-type': 'm5.large' }),
-    node('b', { 'karpenter.sh/nodepool': 'p1', 'topology.kubernetes.io/zone': 'z2', 'node.kubernetes.io/instance-type': 'm5.large' }),
-    node('c', { 'karpenter.sh/nodepool': 'p2', 'topology.kubernetes.io/zone': 'z1', 'node.kubernetes.io/instance-type': 'c5.large' }),
+    node('a', {
+      'karpenter.sh/nodepool': 'p1',
+      'topology.kubernetes.io/zone': 'z1',
+      'node.kubernetes.io/instance-type': 'm5.large',
+    }),
+    node('b', {
+      'karpenter.sh/nodepool': 'p1',
+      'topology.kubernetes.io/zone': 'z2',
+      'node.kubernetes.io/instance-type': 'm5.large',
+    }),
+    node('c', {
+      'karpenter.sh/nodepool': 'p2',
+      'topology.kubernetes.io/zone': 'z1',
+      'node.kubernetes.io/instance-type': 'c5.large',
+    }),
   ];
   it('groups by pool, zone, instance type or node class', () => {
     expect([...groupNodes(nodes, 'pool').keys()]).toEqual(['p1', 'p2']);

@@ -47,13 +47,24 @@ describe('treemap', () => {
 
   it('is deterministic and does not depend on the input order of equal values', () => {
     expect(treemap(items, 600, 400)).toEqual(treemap(items, 600, 400));
-    expect(treemap([...items].reverse(), 600, 400).map((r) => r.id).sort()).toEqual(items.map((i) => i.id).sort());
+    expect(
+      treemap([...items].reverse(), 600, 400)
+        .map((r) => r.id)
+        .sort(),
+    ).toEqual(items.map((i) => i.id).sort());
   });
 
   it('handles nothing, one item, zero values and a box with no size', () => {
     expect(treemap([], 100, 100)).toEqual([]);
     expect(treemap([{ id: 'x', value: 5 }], 100, 50)).toEqual([{ id: 'x', x: 0, y: 0, w: 100, h: 50 }]);
-    const zero = treemap([{ id: 'a', value: 0 }, { id: 'b', value: 0 }], 100, 100);
+    const zero = treemap(
+      [
+        { id: 'a', value: 0 },
+        { id: 'b', value: 0 },
+      ],
+      100,
+      100,
+    );
     expect(zero.reduce((s, r) => s + area(r), 0)).toBeCloseTo(10000, 3);
     expect(zero.map((r) => r.id).sort()).toEqual(['a', 'b']);
     expect(treemap(items, 0, 100)).toEqual([]);
