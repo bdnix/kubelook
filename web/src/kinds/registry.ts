@@ -16,6 +16,12 @@ const KINDS: KindDescriptor[] = [
   ...[workloads, config, network, storage, cluster, access].flatMap((m) => Object.values(m).filter(isKind)),
 ];
 
+/** Whether the kind has a descriptor of its own (otherwise it is a custom resource or gets the plain columns). */
+export function isKnownKind(group: string, kind: string): boolean {
+  const g = group === 'core' ? '' : group;
+  return KINDS.some((k) => k.group === g && k.kind === kind);
+}
+
 /** The descriptor of a kind; kinds without one get Name, Namespace and Age. */
 export function getKind(group: string, kind: string): KindDescriptor {
   const g = group === 'core' ? '' : group;

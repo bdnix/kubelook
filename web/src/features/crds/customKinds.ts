@@ -29,6 +29,8 @@ const BUILT_IN_GROUPS = new Set([
   'external.metrics.k8s.io',
 ]);
 
+export const isBuiltInGroup = (group: string): boolean => BUILT_IN_GROUPS.has(group === 'core' ? '' : group);
+
 /**
  * The kinds the Custom Resources section lists: served, listable, not built into Kubernetes and not claimed by
  * an active module (Step 5.2), sorted by group and kind.
@@ -39,8 +41,7 @@ export function customKinds(
 ): DiscoveryResource[] {
   return discovery.resources
     .filter(
-      (r) =>
-        r.preferred && r.verbs.includes('list') && !BUILT_IN_GROUPS.has(r.group) && !claimed(r.group, r.kind),
+      (r) => r.preferred && r.verbs.includes('list') && !isBuiltInGroup(r.group) && !claimed(r.group, r.kind),
     )
     .sort((a, b) => a.group.localeCompare(b.group) || a.kind.localeCompare(b.kind));
 }

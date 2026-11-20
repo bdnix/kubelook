@@ -10,6 +10,9 @@ import { podsForService, podsMountingClaim, servicesOfIngress } from '../../lib/
 import type { K8sObject } from '../../state/live';
 import { CertificateDetails, mayHoldCertificates } from '../secrets/CertificateDetails';
 import { SecretData } from '../secrets/SecretData';
+import { CustomResourceOverview } from '../crds/CustomResourceOverview';
+import { isBuiltInGroup } from '../crds/customKinds';
+import { isKnownKind } from '../../kinds/registry';
 import { Conditions } from './Conditions';
 import { ContainerList } from './ContainerList';
 import { OwnerChain } from './OwnerChain';
@@ -259,6 +262,9 @@ export function OverviewTab({ cluster, group, kind, object, now, chain, pods }: 
       <Pairs title="Labels" pairs={stringMap(get(object, 'metadata.labels'))} />
       <Pairs title="Annotations" pairs={stringMap(get(object, 'metadata.annotations'))} />
       <Conditions conditions={getArray(object, 'status.conditions')} now={now} />
+      {!isBuiltInGroup(group) && !isKnownKind(group, kind) && (
+        <CustomResourceOverview cluster={cluster} group={group} kind={kind} object={object} />
+      )}
       {isCore && kind === 'Pod' && <ContainerList pod={object} />}
       {WORKLOADS.includes(kind) && groupOf(getString(object, 'apiVersion')) === 'apps' && (
         <WorkloadSection object={object} />

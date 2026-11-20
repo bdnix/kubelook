@@ -24,9 +24,15 @@ const TEMPLATE =
  * Creates objects from YAML (several documents allowed). A dry run goes first; only when every document passes
  * is the real request sent. The result of each document is listed.
  */
-export function CreateFromYaml({ cluster }: { cluster: string }) {
+export function CreateFromYaml({
+  cluster,
+  initialText = TEMPLATE,
+}: {
+  cluster: string;
+  initialText?: string;
+}) {
   const api = useApi();
-  const [text, setText] = useState(TEMPLATE);
+  const [text, setText] = useState(initialText);
   const [phase, setPhase] = useState<Phase>('idle');
   const [results, setResults] = useState<ApplyResult[]>([]);
   const [dryRun, setDryRun] = useState(false);

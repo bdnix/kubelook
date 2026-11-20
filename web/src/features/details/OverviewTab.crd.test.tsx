@@ -15,7 +15,15 @@ describe('OverviewTab for custom resources', () => {
   it('shows spec and the conditions table', () => {
     const fetch = vi.fn(() => Promise.resolve(jsonResponse({}, 404)));
     renderApp(
-      <OverviewTab cluster="c" group="example.com" kind="Widget" object={widget} now={0} chain={[]} pods={[]} />,
+      <OverviewTab
+        cluster="c"
+        group="example.com"
+        kind="Widget"
+        object={widget}
+        now={0}
+        chain={[]}
+        pods={[]}
+      />,
       { client: createClient({ fetch }) },
     );
     expect(screen.getByRole('region', { name: 'Spec' })).toBeInTheDocument();
@@ -25,7 +33,15 @@ describe('OverviewTab for custom resources', () => {
   it('does not add a spec tree to built-in kinds', () => {
     render(
       <MemoryRouter>
-        <OverviewTab cluster="c" group="apps" kind="Deployment" object={widget} now={0} chain={[]} pods={[]} />
+        <OverviewTab
+          cluster="c"
+          group="apps"
+          kind="Deployment"
+          object={widget}
+          now={0}
+          chain={[]}
+          pods={[]}
+        />
       </MemoryRouter>,
     );
     expect(screen.queryByRole('region', { name: 'Spec' })).toBeNull();

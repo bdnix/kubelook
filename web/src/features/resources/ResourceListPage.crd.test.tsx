@@ -88,9 +88,16 @@ describe('ResourceListPage for a custom kind', () => {
   it('shows the printer columns of the CRD', async () => {
     mount(() => jsonResponse(crd));
     const grid = await withWidgets();
-    await waitFor(() => expect(within(grid).getByRole('columnheader', { name: /State/ })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(grid).getByRole('columnheader', { name: /State/ })).toBeInTheDocument(),
+    );
     expect(within(grid).getByText('Ready')).toBeInTheDocument();
-    expect(within(grid).getAllByRole('columnheader').map((h) => h.textContent?.replace(/\W+$/, ''))).toEqual([
+    expect(
+      within(grid)
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent?.replace(/\W+$/, '')),
+    ).toEqual([
+      '',
       expect.stringContaining('Name'),
       expect.stringContaining('Namespace'),
       expect.stringContaining('State'),
