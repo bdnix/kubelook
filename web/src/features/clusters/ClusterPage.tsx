@@ -1,9 +1,12 @@
-import { Navigate, Route, Routes, useParams } from 'react-router';
+import { Route, Routes, useParams } from 'react-router';
+import { ApiError } from '../../api/client';
+import { useOpenCluster } from '../../api/open';
+import { Banner } from '../../components/Banner';
 import { useClusters } from './useClusters';
 import { NoAccessPage } from '../shell/NoAccessPage';
-import { clusterPath } from '../../lib/paths';
 import { PodFilesPage } from '../files/PodFilesPage';
 import { WhoCanPage } from '../rbac/WhoCanPage';
+import { OverviewPage } from '../overview/OverviewPage';
 import { FluxPage } from '../flux/FluxPage';
 import { ResourceMapPage } from '../resourcemap/ResourceMapPage';
 import { ReleasesPage } from '../helm/ReleasesPage';
@@ -19,14 +22,23 @@ function ListRoute({ cluster }: { cluster: string }) {
 export function ClusterPage() {
   const { cluster = '' } = useParams();
   const clusters = useClusters();
+  const known = !clusters.data || clusters.data.some((s) => s.clusters.some((c) => c.id === cluster));
+  // Every page of the cluster needs it open: this is the one place that opens it.
+  const opened = useOpenCluster(cluster, known);
   // A link to a cluster that is not in the session (a kubeconfig that was never uploaded, or one that is gone).
   if (clusters.data && !clusters.data.some((s) => s.clusters.some((c) => c.id === cluster))) {
     return <NoAccessPage reason="unknown" />;
   }
+  if (opened.status === 'error') {
+    if (opened.error instanceof ApiError && opened.error.code === 'forbidden')
+      return <NoAccessPage reason="forbidden" />;
+    return <Banner kind="error">{opened.error.message}</Banner>;
+  }
+  if (opened.status === 'opening') return <p role="status">Opening the cluster…</p>;
   return (
     <Routes>
       {/* Absolute: a relative link would encode the already encoded ID a second time. */}
-      <Route index element={<Navigate to={`${clusterPath(cluster)}/core/Pod`} replace />} />
+      <Route index element={<OverviewPage cluster={cluster} />} />
       <Route path="pod-files" element={<PodFilesPage cluster={cluster} />} />
       <Route path="modules/:name" element={<ModulePage cluster={cluster} />} />
       <Route path="resource-map" element={<ResourceMapPage cluster={cluster} />} />

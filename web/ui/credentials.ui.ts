@@ -26,6 +26,7 @@ test('adding a kubeconfig shows its clusters, saves a copy in this browser and r
       added = true;
       return r.fulfill(json({ sealed: 'v1.k.sealed.copy', label: 'work', clusters: [] }));
     },
+    'POST /clusters/k%3Awork%2Fprod/open': (r) => r.fulfill(json({ state: 'open' })),
     'POST /credentials/restore': (r) => {
       restoreBodies.push(r.request().postDataJSON());
       return r.fulfill(json({ results: [{ status: 'ok', kind: 'kubeconfig', label: 'work' }] }));
@@ -45,7 +46,7 @@ test('adding a kubeconfig shows its clusters, saves a copy in this browser and r
   await expect(page.getByRole('heading', { name: 'Choose a cluster' })).toBeVisible();
 
   await rail.getByRole('link', { name: 'prod' }).click();
-  await expect(page).toHaveURL(/\/c\/k(:|%3A)work%2Fprod\/core\/Pod$/);
+  await expect(page).toHaveURL(/\/c\/k(:|%3A)work%2Fprod$/);
 
   await page.goto('/settings');
   await expect(page.getByRole('heading', { name: 'Saved credentials' })).toBeVisible();

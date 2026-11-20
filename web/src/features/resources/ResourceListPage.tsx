@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { findResource, useDiscovery } from '../../api/discovery';
 import type { K8sObject } from '../../state/live';
 import { useOpenCluster } from '../../api/open';
@@ -86,7 +86,9 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
     withUsage,
     settings?.columnPresets[presetKey(descriptor.group, descriptor.kind)],
   );
-  const [query, setQuery] = useState('');
+  const [params] = useSearchParams();
+  // a link from the overview can open the list with a filter
+  const [query, setQuery] = useState(params.get('filter') ?? '');
   const [shown, setShown] = useState<K8sObject[]>([]);
   const filtered = useFilter(items, query, { group: descriptor.group, kind: descriptor.kind }, now);
 

@@ -34,6 +34,7 @@ interface Item {
 
 /** Pages that are not Kubernetes kinds. Later pull requests add Overview, Helm, FluxCD and the others here. */
 const PAGES: { section: string; title: string; path: string; module?: string }[] = [
+  { section: 'Overview', title: 'Overview', path: '' },
   { section: 'FluxCD', title: 'Dashboard', path: 'flux', module: 'flux' },
   { section: 'Access Control', title: 'Who can…', path: 'who-can' },
   { section: 'Helm', title: 'Releases', path: 'helm' },
@@ -100,7 +101,11 @@ export function Sidebar({ cluster, discovery, modules, canList }: SidebarProps) 
   for (const p of PAGES) {
     if (p.module && !modules?.some((m) => m.name === p.module && m.active)) continue;
     const items = bySection.get(p.section) ?? [];
-    items.push({ key: p.path, title: p.title, to: `${clusterPath(cluster)}/${p.path}` });
+    items.push({
+      key: p.path || 'overview',
+      title: p.title,
+      to: p.path ? `${clusterPath(cluster)}/${p.path}` : clusterPath(cluster),
+    });
     bySection.set(p.section, items);
   }
   const has = (section: string) =>

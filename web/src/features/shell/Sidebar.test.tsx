@@ -37,6 +37,7 @@ describe('Sidebar', () => {
     renderApp(<Sidebar cluster="v:prod" discovery={discovery} canList={all} />);
     const headings = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
     expect(headings).toEqual([
+      'Overview',
       'Workloads',
       'Config',
       'Network',
