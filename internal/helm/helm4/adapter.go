@@ -25,10 +25,22 @@ import (
 type ConfigFunc func(namespace string) (*action.Configuration, error)
 
 // Adapter is the Helm 4 implementation of helm.Driver.
-type Adapter struct{ open ConfigFunc }
+type Adapter struct {
+	open    ConfigFunc
+	workDir string
+}
 
 // New returns an adapter over the configurations `open` produces.
 func New(open ConfigFunc) *Adapter { return &Adapter{open: open} }
+
+// WithWorkDir sets the directory the adapter may write to (chart downloads, registry and repository files).
+func (a *Adapter) WithWorkDir(dir string) *Adapter {
+	a.workDir = dir
+	return a
+}
+
+// WorkDir is the directory set by WithWorkDir.
+func (a *Adapter) WorkDir() string { return a.workDir }
 
 const (
 	applyClientSide = "csa"

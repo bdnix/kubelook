@@ -3,6 +3,7 @@ package helm4_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"helm.sh/helm/v4/pkg/action"
+	kubefake "helm.sh/helm/v4/pkg/kube/fake"
 	"helm.sh/helm/v4/pkg/storage"
 	"helm.sh/helm/v4/pkg/storage/driver"
 	corev1 "k8s.io/api/core/v1"
@@ -36,6 +38,7 @@ func helm3Adapter(t *testing.T) *helm4.Adapter {
 	}
 	return helm4.New(func(ns string) (*action.Configuration, error) {
 		cfg := action.NewConfiguration()
+		cfg.KubeClient = &kubefake.PrintingKubeClient{Out: io.Discard}
 		cfg.Releases = storage.Init(driver.NewSecrets(client.CoreV1().Secrets(ns)))
 		return cfg, nil
 	})

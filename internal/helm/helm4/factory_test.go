@@ -23,6 +23,10 @@ func secretsServer(t *testing.T, paths *[]string) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/version" {
+			_ = json.NewEncoder(w).Encode(map[string]any{"major": "1", "minor": "35", "gitVersion": "v1.35.0"})
+			return
+		}
 		if strings.HasSuffix(r.URL.Path, "/secrets") {
 			*paths = append(*paths, r.URL.Path)
 			_ = json.NewEncoder(w).Encode(map[string]any{"kind": "SecretList", "apiVersion": "v1", "items": []any{}})
