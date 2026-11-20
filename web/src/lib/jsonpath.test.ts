@@ -23,7 +23,7 @@ describe('evaluateJsonPath', () => {
     ['.status.conditions[?(@.type=="Ready")].status', 'True'],
     ["status.conditions[?(@.type=='Initialized')].status", 'False'],
     ['.status.conditions[?(@.type=="Missing")].status', ''],
-    ['.metadata.labels[\'x\\.y\']', 'dotted'],
+    [".metadata.labels['x\\.y']", 'dotted'],
     ['.metadata.labels.plain', 'p'],
     ['.spec.n', '4'],
     ['.spec.ok', 'true'],
@@ -36,10 +36,16 @@ describe('evaluateJsonPath', () => {
     expect(evaluateJsonPath(obj, '.spec.items[0]')).toBe('{"b":1}');
   });
 
-  it.each(['', '.spec[', '.spec.items[?(@.b>1)].b', '..spec', '.spec.items[1:2]', '{.spec}', '.a[?(', "['unterminated"])(
-    'unsupported syntax %j gives an empty string instead of throwing',
-    (path) => {
-      expect(evaluateJsonPath(obj, path)).toBe('');
-    },
-  );
+  it.each([
+    '',
+    '.spec[',
+    '.spec.items[?(@.b>1)].b',
+    '..spec',
+    '.spec.items[1:2]',
+    '{.spec}',
+    '.a[?(',
+    "['unterminated",
+  ])('unsupported syntax %j gives an empty string instead of throwing', (path) => {
+    expect(evaluateJsonPath(obj, path)).toBe('');
+  });
 });

@@ -45,7 +45,12 @@ function printerColumn(c: PrinterColumn & { jsonPath: string }): Column {
     };
   }
   if (c.type === 'date') {
-    return { id: c.name, title: c.name, value: (o, now) => formatAge(evaluateJsonPath(o, path), now), sort: 'age' };
+    return {
+      id: c.name,
+      title: c.name,
+      value: (o, now) => formatAge(evaluateJsonPath(o, path), now),
+      sort: 'age',
+    };
   }
   return { id: c.name, title: c.name, value: (o) => evaluateJsonPath(o, path) };
 }
@@ -54,7 +59,11 @@ function printerColumn(c: PrinterColumn & { jsonPath: string }): Column {
  * The descriptor of a custom kind: Name, Namespace (when namespaced), the `additionalPrinterColumns` of the served
  * version, then Age. Without the CRD (the user may not read CRDs) only Name, Namespace and Age remain.
  */
-export function crdDescriptor(crd: CrdLike | undefined, version: string, identity?: KindIdentity): KindDescriptor {
+export function crdDescriptor(
+  crd: CrdLike | undefined,
+  version: string,
+  identity?: KindIdentity,
+): KindDescriptor {
   const spec = crd?.spec;
   const id: KindIdentity = {
     group: spec?.group ?? identity?.group ?? '',
@@ -64,7 +73,9 @@ export function crdDescriptor(crd: CrdLike | undefined, version: string, identit
   };
   const printer = spec?.versions?.find((v) => v.name === version)?.additionalPrinterColumns ?? [];
   const columns = printer
-    .filter((c): c is PrinterColumn & { jsonPath: string } => typeof c.jsonPath === 'string' && c.jsonPath !== '')
+    .filter(
+      (c): c is PrinterColumn & { jsonPath: string } => typeof c.jsonPath === 'string' && c.jsonPath !== '',
+    )
     .map(printerColumn);
   return {
     ...id,

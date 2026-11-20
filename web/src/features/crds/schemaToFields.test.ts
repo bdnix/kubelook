@@ -22,7 +22,10 @@ describe('schemaToFields', () => {
   });
 
   it('turns a string with an enum into a select', () => {
-    const [f] = schemaToFields({ type: 'object', properties: { mode: { type: 'string', enum: ['a', 'b'] } } });
+    const [f] = schemaToFields({
+      type: 'object',
+      properties: { mode: { type: 'string', enum: ['a', 'b'] } },
+    });
     expect(f).toMatchObject({ kind: 'enum', options: ['a', 'b'] });
   });
 

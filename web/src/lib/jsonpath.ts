@@ -12,7 +12,8 @@ type Step =
 const NAME = /[A-Za-z0-9_$-]+/y;
 const INDEX = /\[(\d+)\]/y;
 const ALL = /\[\*\]/y;
-const FILTER = /\[\?\(@((?:\.[A-Za-z0-9_$-]+)+)\s*==\s*(?:"([^"]*)"|'([^']*)'|(-?\d+(?:\.\d+)?|true|false))\)\]/y;
+const FILTER =
+  /\[\?\(@((?:\.[A-Za-z0-9_$-]+)+)\s*==\s*(?:"([^"]*)"|'([^']*)'|(-?\d+(?:\.\d+)?|true|false))\)\]/y;
 
 function match(re: RegExp, s: string, at: number): RegExpExecArray | null {
   re.lastIndex = at;
@@ -82,7 +83,9 @@ function parse(path: string): Step[] | undefined {
 }
 
 function child(v: unknown, key: string): unknown {
-  return v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>)[key] : undefined;
+  return v !== null && typeof v === 'object' && !Array.isArray(v)
+    ? (v as Record<string, unknown>)[key]
+    : undefined;
 }
 
 function at(v: unknown, path: string[]): unknown {

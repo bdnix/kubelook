@@ -36,7 +36,15 @@ describe('crdName', () => {
 describe('crdDescriptor', () => {
   it('has Name, Namespace, the printer columns of the version, then Age', () => {
     const d = crdDescriptor(crd, 'v1');
-    expect(d.columns.map((c) => c.title)).toEqual(['Name', 'Namespace', 'State', 'Replicas', 'Since', 'Ratio', 'Age']);
+    expect(d.columns.map((c) => c.title)).toEqual([
+      'Name',
+      'Namespace',
+      'State',
+      'Replicas',
+      'Since',
+      'Ratio',
+      'Age',
+    ]);
     expect(d.group).toBe('example.com');
     expect(d.kind).toBe('Widget');
     expect(d.resource).toBe('widgets');
@@ -74,14 +82,24 @@ describe('crdDescriptor', () => {
 
   it('skips a printer column that has no path', () => {
     const d = crdDescriptor(
-      { spec: { ...crd.spec, versions: [{ name: 'v1', additionalPrinterColumns: [{ name: 'Bad', type: 'string' }] }] } },
+      {
+        spec: {
+          ...crd.spec,
+          versions: [{ name: 'v1', additionalPrinterColumns: [{ name: 'Bad', type: 'string' }] }],
+        },
+      },
       'v1',
     );
     expect(d.columns.map((c) => c.title)).toEqual(['Name', 'Namespace', 'Age']);
   });
 
   it('without a CRD the descriptor is Name, Namespace, Age', () => {
-    const d = crdDescriptor(undefined, 'v1', { group: 'example.com', kind: 'Widget', resource: 'widgets', namespaced: true });
+    const d = crdDescriptor(undefined, 'v1', {
+      group: 'example.com',
+      kind: 'Widget',
+      resource: 'widgets',
+      namespaced: true,
+    });
     expect(d.columns.map((c) => c.title)).toEqual(['Name', 'Namespace', 'Age']);
     expect(d.title).toBe('Widget');
   });
