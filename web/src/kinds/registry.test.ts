@@ -15,7 +15,7 @@ describe('kind registry', () => {
     const kinds = knownKinds();
     const ids = kinds.map((k) => `${k.group}/${k.kind}`);
     expect(new Set(ids).size).toBe(ids.length);
-    expect(kinds.length).toBe(35 + 19 + 6);
+    expect(kinds.length).toBe(35 + 19 + 6 + 1 + 3 + 4 + 5);
     for (const k of kinds) {
       expect(k.columns[0]?.id).toBe('name');
       // the module kinds keep the column order of `kubectl get -o wide`, which has Age in the middle

@@ -1,6 +1,10 @@
 import { formatAge } from '../lib/age';
 import { fluxDescriptors } from './flux';
+import { certManagerDescriptors } from './certmanager';
+import { externalSecretsDescriptors } from './externalsecrets';
+import { gatewayDescriptors } from './gatewayapi';
 import { karpenterDescriptors } from './karpenter';
+import { kedaDescriptors } from './keda';
 import { getString } from '../lib/path';
 import * as access from './core/access';
 import * as cluster from './core/cluster';
@@ -18,6 +22,10 @@ const KINDS: KindDescriptor[] = [
   ...[workloads, config, network, storage, cluster, access].flatMap((m) => Object.values(m).filter(isKind)),
   ...fluxDescriptors(),
   ...karpenterDescriptors(),
+  ...kedaDescriptors(),
+  ...externalSecretsDescriptors(),
+  ...certManagerDescriptors(),
+  ...gatewayDescriptors(),
 ];
 
 /** Whether the kind has a descriptor of its own (otherwise it is a custom resource or gets the plain columns). */

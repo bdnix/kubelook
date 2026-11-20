@@ -1,4 +1,5 @@
 import { Link, useParams } from 'react-router';
+import { GatewayPage } from '../gateway/GatewayPage';
 import { KarpenterPage } from '../karpenter/KarpenterPage';
 import { clusterPath } from '../../lib/paths';
 import { ModuleGate } from './ModuleGate';
@@ -19,6 +20,7 @@ export function ModulePage({ cluster }: { cluster: string }) {
     >
       <h1>{entry?.title}</h1>
       {name === 'karpenter' && <KarpenterPage cluster={cluster} />}
+      {name === 'gatewayApi' && <GatewayPage cluster={cluster} kinds={kinds} />}
       <ul>
         {kinds.map((k) => (
           <li key={`${k.group}/${k.kind}`}>

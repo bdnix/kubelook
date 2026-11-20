@@ -77,6 +77,9 @@ export const ACTIONS: Record<string, ActionDef> = {
     destructive: true,
     access: (t) => ({ verb: 'create', group: '', resource: 'pods', subresource: 'eviction', name: t.name }),
   },
+  kedaPause: { id: 'kedaPause', label: 'Pause', destructive: false, access: patch },
+  kedaResume: { id: 'kedaResume', label: 'Resume', destructive: false, access: patch },
+  esoForceSync: { id: 'esoForceSync', label: 'Force sync', destructive: false, access: patch },
   delete: { id: 'delete', label: 'Delete', destructive: true, access: onObject('delete') },
 };
 
