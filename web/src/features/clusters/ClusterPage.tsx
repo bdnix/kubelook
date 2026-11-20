@@ -5,6 +5,7 @@ import { clusterPath } from '../../lib/paths';
 import { PodFilesPage } from '../files/PodFilesPage';
 import { WhoCanPage } from '../rbac/WhoCanPage';
 import { FluxPage } from '../flux/FluxPage';
+import { ResourceMapPage } from '../resourcemap/ResourceMapPage';
 import { ReleasesPage } from '../helm/ReleasesPage';
 import { ModulePage } from '../modules/ModulePage';
 import { ResourceListPage } from '../resources/ResourceListPage';
@@ -28,6 +29,7 @@ export function ClusterPage() {
       <Route index element={<Navigate to={`${clusterPath(cluster)}/core/Pod`} replace />} />
       <Route path="pod-files" element={<PodFilesPage cluster={cluster} />} />
       <Route path="modules/:name" element={<ModulePage cluster={cluster} />} />
+      <Route path="resource-map" element={<ResourceMapPage cluster={cluster} />} />
       <Route path="flux" element={<FluxPage cluster={cluster} />} />
       <Route path="helm" element={<ReleasesPage cluster={cluster} />} />
       <Route path="who-can" element={<WhoCanPage cluster={cluster} />} />

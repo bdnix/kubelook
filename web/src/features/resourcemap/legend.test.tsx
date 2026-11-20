@@ -2,7 +2,14 @@ import { render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { Legend, mapNodes, nodeStyle, type MapNode } from './legend';
 
-const node = (over: Partial<MapNode>): MapNode => ({ id: 'x', group: '', kind: 'Pod', namespace: 'ns', name: 'p', ...over });
+const node = (over: Partial<MapNode>): MapNode => ({
+  id: 'x',
+  group: '',
+  kind: 'Pod',
+  namespace: 'ns',
+  name: 'p',
+  ...over,
+});
 
 describe('nodeStyle', () => {
   it('colours pods by phase, and marks a failed pod with a warning icon and a label', () => {
@@ -19,7 +26,19 @@ describe('nodeStyle', () => {
   });
 
   it('gives every other kind its own colour and icon, and no status', () => {
-    const kinds = ['Deployment', 'StatefulSet', 'DaemonSet', 'Service', 'Ingress', 'HTTPRoute', 'GRPCRoute', 'ConfigMap', 'Secret', 'PersistentVolumeClaim', 'HelmRelease'];
+    const kinds = [
+      'Deployment',
+      'StatefulSet',
+      'DaemonSet',
+      'Service',
+      'Ingress',
+      'HTTPRoute',
+      'GRPCRoute',
+      'ConfigMap',
+      'Secret',
+      'PersistentVolumeClaim',
+      'HelmRelease',
+    ];
     const styles = kinds.map((k) => nodeStyle(node({ kind: k, status: undefined })));
     expect(new Set(styles.map((s) => s.color)).size).toBe(kinds.length);
     expect(new Set(styles.map((s) => s.icon)).size).toBe(kinds.length);
@@ -44,7 +63,15 @@ describe('Legend', () => {
   it('names every kind and the pod colours, and says failed pods are marked', () => {
     render(<Legend />);
     const legend = screen.getByRole('region', { name: 'Legend' });
-    for (const kind of ['Deployment', 'Service', 'Ingress', 'ConfigMap', 'Secret', 'PersistentVolumeClaim', 'HelmRelease']) {
+    for (const kind of [
+      'Deployment',
+      'Service',
+      'Ingress',
+      'ConfigMap',
+      'Secret',
+      'PersistentVolumeClaim',
+      'HelmRelease',
+    ]) {
       expect(within(legend).getByText(kind)).toBeInTheDocument();
     }
     for (const phase of ['Running', 'Pending', 'Failed']) {

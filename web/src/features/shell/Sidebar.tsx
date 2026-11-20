@@ -37,6 +37,7 @@ const PAGES: { section: string; title: string; path: string; module?: string }[]
   { section: 'FluxCD', title: 'Dashboard', path: 'flux', module: 'flux' },
   { section: 'Access Control', title: 'Who can…', path: 'who-can' },
   { section: 'Helm', title: 'Releases', path: 'helm' },
+  { section: 'Resource Map', title: 'Resource Map', path: 'resource-map' },
   { section: 'Pod Files', title: 'Pod Files', path: 'pod-files' },
 ];
 

@@ -10,6 +10,11 @@ export interface GraphNode {
   status: GraphStatus;
   /** Lines shown while the node is hovered or focused. */
   facts?: string[];
+  /** Replaces the status in the accessible name; empty leaves the status out. */
+  statusText?: string;
+  /** The fill of the node and an icon in front of its kind. */
+  color?: string;
+  icon?: string;
 }
 
 export interface GraphEdge {
@@ -23,6 +28,11 @@ const STATUS_TEXT: Record<GraphStatus, string> = {
   error: 'failed',
   unknown: 'unknown',
 };
+function nodeLabel(n: GraphNode): string {
+  const status = n.statusText ?? STATUS_TEXT[n.status];
+  return status === '' ? `${n.kind} ${n.name}` : `${n.kind} ${n.name}, ${status}`;
+}
+
 const MIN_ZOOM = 0.2;
 const MAX_ZOOM = 4;
 const ZOOM_STEP = 1.1;
@@ -150,7 +160,7 @@ export function Graph({ label, nodes, edges, onOpen }: GraphProps) {
                 key={n.id}
                 role="button"
                 tabIndex={0}
-                aria-label={`${n.kind} ${n.name}, ${STATUS_TEXT[n.status]}`}
+                aria-label={nodeLabel(n)}
                 transform={`translate(${p.x} ${p.y})`}
                 className={`graph-node graph-${n.status}`}
                 onPointerDown={(e) => onPointerDown(e, n.id)}
@@ -161,7 +171,14 @@ export function Graph({ label, nodes, edges, onOpen }: GraphProps) {
                 onFocus={() => setHover(n.id)}
                 onBlur={() => setHover(undefined)}
               >
-                <rect x={-NODE_W / 2} y={-NODE_H / 2} width={NODE_W} height={NODE_H} rx={6} />
+                <rect
+                  x={-NODE_W / 2}
+                  y={-NODE_H / 2}
+                  width={NODE_W}
+                  height={NODE_H}
+                  rx={6}
+                  {...(n.color && { fill: n.color })}
+                />
                 <text textAnchor="middle" y={-2} fontSize={10}>
                   {n.kind}
                 </text>

@@ -21,9 +21,10 @@ import { EventsTab } from './EventsTab';
 import { MetricsPanel } from '../metrics/MetricsPanel';
 import { OverviewTab } from './OverviewTab';
 import { RelatedTab } from './RelatedTab';
+import { RelatedMap } from '../resourcemap/RelatedMap';
 import { useFocusReturn, useKindItems, useObject, useOwnerChain, useResourceInfo } from './useDetails';
 
-export type TabId = 'overview' | 'yaml' | 'events' | 'logs' | 'files' | 'related';
+export type TabId = 'overview' | 'yaml' | 'events' | 'logs' | 'files' | 'related' | 'resources';
 
 const MINUTE = 60_000;
 const WORKLOADS = ['Deployment', 'StatefulSet', 'DaemonSet', 'ReplicaSet', 'Job'];
@@ -39,6 +40,14 @@ export interface DrawerProps {
   onClose: () => void;
 }
 
+/** The kinds whose details have a map of the objects linked to them. */
+const MAP_KINDS = ['Deployment', 'DaemonSet', 'StatefulSet', 'Pod', 'Service', 'Ingress'];
+function hasMap(group: string, kind: string): boolean {
+  const core = group === '' || group === 'core';
+  if (kind === 'Pod' || kind === 'Service') return core;
+  return MAP_KINDS.includes(kind) && !core;
+}
+
 function tabsFor(group: string, kind: string): { id: TabId; title: string }[] {
   const core = group === '' || group === 'core';
   const tabs: { id: TabId; title: string }[] = [
@@ -49,6 +58,7 @@ function tabsFor(group: string, kind: string): { id: TabId; title: string }[] {
   if ((core && kind === 'Pod') || WORKLOADS.includes(kind)) tabs.push({ id: 'logs', title: 'Logs' });
   if (core && kind === 'Pod') tabs.push({ id: 'files', title: 'Files' });
   tabs.push({ id: 'related', title: 'Related' });
+  if (hasMap(group, kind)) tabs.push({ id: 'resources', title: 'Resources' });
   return tabs;
 }
 
@@ -251,6 +261,9 @@ export function DetailsDrawer({ cluster, group, kind, namespace, name, onClose }
             {tab === 'events' && <EventsTab events={eventsFor(uid, events)} now={now} />}
             {tab === 'logs' && <LogsTab cluster={cluster} kind={kind} object={object} pods={pods} />}
             {tab === 'files' && <PodFiles cluster={cluster} pod={object} />}
+            {tab === 'resources' && (
+              <RelatedMap cluster={cluster} group={group} kind={kind} namespace={namespace} name={name} />
+            )}
             {tab === 'related' && (
               <RelatedTab
                 cluster={cluster}

@@ -14,11 +14,18 @@ function setup(target: MapTarget | undefined) {
     timers: { setTimeout: () => 0, clearTimeout: () => undefined },
     visibility: { isHidden: () => false, subscribe: () => () => undefined },
   });
-  const wrapper = ({ children }: { children: ReactNode }) => <SocketContext.Provider value={socket}>{children}</SocketContext.Provider>;
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <SocketContext.Provider value={socket}>{children}</SocketContext.Provider>
+  );
   return renderHook(({ t }) => useResourceMap(t), { wrapper, initialProps: { t: target } });
 }
 
-const graph = { nodes: [{ id: 'Pod/ns/a', group: '', kind: 'Pod', namespace: 'ns', name: 'a', status: 'Running' }], edges: [], omittedKinds: ['Secret'], leftOutNamespaces: ['z'] };
+const graph = {
+  nodes: [{ id: 'Pod/ns/a', group: '', kind: 'Pod', namespace: 'ns', name: 'a', status: 'Running' }],
+  edges: [],
+  omittedKinds: ['Secret'],
+  leftOutNamespaces: ['z'],
+};
 
 beforeEach(() => FakeWebSocket.reset());
 
@@ -27,7 +34,11 @@ describe('useResourceMap', () => {
     const focus = { group: 'apps', kind: 'Deployment', namespace: 'ns', name: 'web' };
     const { result } = setup({ cluster: 'v:prod', namespaces: ['ns'], focus });
     act(() => FakeWebSocket.last.serverOpen());
-    expect(FakeWebSocket.last.frames.find((f) => f.op === 'map.open')).toEqual({ op: 'map.open', ch: 1, d: { cluster: 'v:prod', namespaces: ['ns'], focus } });
+    expect(FakeWebSocket.last.frames.find((f) => f.op === 'map.open')).toEqual({
+      op: 'map.open',
+      ch: 1,
+      d: { cluster: 'v:prod', namespaces: ['ns'], focus },
+    });
     expect(result.current.status).toBe('loading');
   });
 
@@ -46,7 +57,9 @@ describe('useResourceMap', () => {
   it('reports an error frame', () => {
     const { result } = setup({ cluster: 'c', namespaces: [] });
     act(() => FakeWebSocket.last.serverOpen());
-    act(() => FakeWebSocket.last.serverSend({ ch: 1, t: 'error', d: { code: 'forbidden', message: 'No access.' } }));
+    act(() =>
+      FakeWebSocket.last.serverSend({ ch: 1, t: 'error', d: { code: 'forbidden', message: 'No access.' } }),
+    );
     expect(result.current.status).toBe('error');
     expect(result.current.error).toBe('No access.');
   });
