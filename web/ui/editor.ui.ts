@@ -1,15 +1,9 @@
 import { expect, test } from '@playwright/test';
 import { appsOpenApi, cluster, deployment, secret, setup } from './fixtures';
-import { editorText, json } from './helpers';
+import { editorErrors, editorText, json } from './helpers';
 import { installGuard } from './guard';
 
 installGuard();
-
-// Step R.2 is waiting for the owner's decision on the monaco-editor version (monaco-yaml 5.5.1 does not work with
-// 0.57.0: the YAML worker is never created). Until then the page-error guard fails these tests; remove this with R.2.
-test.beforeEach(() => {
-  test.fail(true, 'Step R.2: YAML worker error');
-});
 
 const dep = `/c/${cluster.path}/ns/shop/apps/Deployment/web`;
 const base = `PUT /clusters/${cluster.path}/resources/apps/v1/deployments/web`;
@@ -113,5 +107,16 @@ test('a Secret shows masked values in the editor', async ({ page }) => {
     { items: deploymentItems },
   );
   await openYamlTab(page, `/c/${cluster.path}/ns/shop/core/Secret/credentials`);
-  await expect.poll(() => editorText(page)).toContain('password: ********');
+  await expect.poll(() => editorText(page)).toContain('password: "********"');
+});
+
+test('a value of the wrong type shows a validation marker from the schema', async ({ page }) => {
+  await setup(
+    page,
+    { [`GET /clusters/${cluster.path}/openapi/apps/v1`]: (r) => r.fulfill(json(appsOpenApi)) },
+    { items: (d) => (d.resource === 'deployments' ? [deployment('web', 'three' as unknown as number)] : []) },
+  );
+  await openYamlTab(page);
+  await expect.poll(() => editorText(page)).toContain('replicas: three');
+  await expect(editorErrors(page).first()).toBeVisible();
 });

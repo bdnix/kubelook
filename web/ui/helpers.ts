@@ -59,7 +59,7 @@ export async function editorText(page: Page): Promise<string> {
   return lines.join('\n').replaceAll(' ', ' ');
 }
 
-/** The number of validation markers (red squiggles) Monaco draws. */
+/** The validation markers Monaco draws; monaco-yaml reports a schema mismatch as a warning, a syntax error as an error. */
 export function editorErrors(page: Page) {
-  return page.locator('.monaco-editor .squiggly-error');
+  return page.locator('.monaco-editor .squiggly-error, .monaco-editor .squiggly-warning');
 }
