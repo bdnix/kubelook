@@ -51,6 +51,7 @@ type idp struct {
 	clock    clock.Clock
 	external string // scheme and host the clients use, e.g. http://kubelook-it-fakeidp:8300
 	key      *rsa.PrivateKey
+	charts   string // directory served under /charts (the Helm chart repository of the tests)
 
 	mu     sync.Mutex
 	next   account
@@ -67,6 +68,7 @@ func newIDP(external string, clk clock.Clock) *idp {
 		clock:    clk,
 		external: strings.TrimRight(external, "/"),
 		key:      key,
+		charts:   "/charts",
 		codes:    map[string]grant{},
 		tokens:   map[string]account{},
 	}
@@ -78,6 +80,7 @@ func (p *idp) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 	mux.HandleFunc("POST /admin/next", p.adminNext)
+	mux.Handle("GET /charts/", http.StripPrefix("/charts/", http.FileServer(http.Dir(p.charts))))
 	mux.HandleFunc("GET /oidc/.well-known/openid-configuration", p.discovery)
 	mux.HandleFunc("GET /oidc/keys", p.keys)
 	mux.HandleFunc("GET /oidc/authorize", p.authorize)

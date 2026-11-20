@@ -6,10 +6,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -271,4 +274,26 @@ func TestGitHub_UnknownToken_Is401(t *testing.T) {
 	s := newServer(t)
 	status, _ := githubGet(t, s, "/github/api/user", "nope")
 	assert.Equal(t, http.StatusUnauthorized, status)
+}
+
+func TestCharts_ServesFilesOfTheChartsDirectory(t *testing.T) {
+	dir := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "index.yaml"), []byte("apiVersion: v1\n"), 0o600))
+	p := newIDP("http://kubelook-it-fakeidp:8300", clock.Real())
+	p.charts = dir
+	s := httptest.NewServer(p.handler())
+	t.Cleanup(s.Close)
+
+	resp, err := http.Get(s.URL + "/charts/index.yaml")
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "apiVersion: v1\n", string(body))
+
+	missing, err := http.Get(s.URL + "/charts/none.tgz")
+	require.NoError(t, err)
+	defer func() { _ = missing.Body.Close() }()
+	assert.Equal(t, http.StatusNotFound, missing.StatusCode)
 }

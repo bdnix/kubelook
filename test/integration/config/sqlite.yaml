@@ -13,3 +13,4 @@ debug: { image: "busybox:1.37", shell: /bin/sh }
 fileBrowser: { maxTransferBytes: 1048576 }
 audit: { retentionDays: 1 }
 maintenance: { banner: "integration test banner" }
+helm: { maxChartBytes: 1048576 }
