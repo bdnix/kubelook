@@ -49,3 +49,17 @@ export async function mockApi(page: Page, routes: Record<string, Handler>): Prom
   });
   return unhandled;
 }
+
+/**
+ * The text of the Monaco editor on the page. Monaco draws text in `.view-line` elements, which have no
+ * role to find them by: reading through that class is the one place the tests depend on its markup.
+ */
+export async function editorText(page: Page): Promise<string> {
+  const lines = await page.locator('.monaco-editor .view-line').allInnerTexts();
+  return lines.join('\n').replaceAll(' ', ' ');
+}
+
+/** The number of validation markers (red squiggles) Monaco draws. */
+export function editorErrors(page: Page) {
+  return page.locator('.monaco-editor .squiggly-error');
+}

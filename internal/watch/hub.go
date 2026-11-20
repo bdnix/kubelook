@@ -4,6 +4,8 @@ package watch
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -84,6 +86,7 @@ type Hub struct {
 	mu       sync.Mutex
 	ups      map[ukey]*upstream
 	order    []*upstream       // creation order, for evicting the oldest
+	fpKey    []byte            // random key of the credential fingerprints; never leaves memory
 	sessions map[string]string // session hash → user ID, for the sessions whose end the hub listens to
 	closed   bool
 }
@@ -94,7 +97,9 @@ func NewHub(d Deps) *Hub {
 		d.MaxPerUser = DefaultMaxPerUser
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Hub{d: d, ctx: ctx, cancel: cancel, ups: map[ukey]*upstream{}, sessions: map[string]string{}}
+	key := make([]byte, 32)
+	_, _ = rand.Read(key)
+	return &Hub{d: d, fpKey: key, ctx: ctx, cancel: cancel, ups: map[ukey]*upstream{}, sessions: map[string]string{}}
 }
 
 var errTooManyWatches = &apperr.APIError{Status: http.StatusTooManyRequests, Code: "too_many_watches",
@@ -130,13 +135,13 @@ func (h *Hub) ukeyFor(ctx context.Context, sess session.Session, k Key) (ukey, e
 	if err != nil {
 		return ukey{}, kube.MapError(err)
 	}
-	return ukey{Key: k, credential: fingerprint(cfg)}, nil
+	return ukey{Key: k, credential: h.fingerprint(cfg)}, nil
 }
 
-// fingerprint is a SHA-256 over the server and every credential field of a REST config. It stays in
+// fingerprint is an HMAC-SHA-256, keyed with a random per-hub key, over the server and every credential field of a REST config. It stays in
 // memory and is only compared, never shown or stored.
-func fingerprint(cfg *rest.Config) string {
-	sum := sha256.New()
+func (h *Hub) fingerprint(cfg *rest.Config) string {
+	sum := hmac.New(sha256.New, h.fpKey)
 	for _, part := range [][]byte{
 		[]byte(cfg.Host), []byte(cfg.BearerToken), []byte(cfg.Username), []byte(cfg.Password),
 		cfg.CertData, cfg.KeyData, cfg.CAData,

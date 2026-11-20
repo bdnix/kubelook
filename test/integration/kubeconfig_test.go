@@ -87,7 +87,7 @@ func TestKubeconfig_BearerTokenOfAViewer_ReadsButCannotWrite(t *testing.T) {
 	assert.NotEmpty(t, items)
 
 	pod := podOf(t, "alpha", "web")
-	status, _ = c.Do(http.MethodDelete, "/api/v1/clusters/"+id+"/resources/core/v1/pods/"+pod+"?namespace=demo", nil, nil)
+	status, _ = c.Do(http.MethodDelete, "/api/v1/clusters/"+it.ClusterPath(id)+"/resources/core/v1/pods/"+pod+"?namespace=demo", nil, nil)
 	assert.Equal(t, http.StatusForbidden, status, "view cannot delete pods")
 }
 
@@ -137,7 +137,7 @@ func TestKubeconfig_KeepsWorkingWhileVaultIsDown_AndRestoresFromTheSealedCopy(t 
 	require.Equal(t, http.StatusOK, status)
 
 	it.Docker(t, "pause", "kubelook-it-vault")
-	t.Cleanup(func() { it.Docker(t, "unpause", "kubelook-it-vault") })
+	t.Cleanup(func() { it.TryDocker("unpause", "kubelook-it-vault") })
 	status, items := listItems(t, c, alphaKCCluster, "core", "v1", "pods", "demo")
 	assert.Equal(t, http.StatusOK, status, "a kubeconfig cluster does not need Vault")
 	assert.NotEmpty(t, items)

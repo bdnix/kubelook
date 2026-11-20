@@ -141,7 +141,7 @@ func (p *idp) keys(w http.ResponseWriter, _ *http.Request) {
 func (p *idp) authorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	redirect, err := url.Parse(q.Get("redirect_uri"))
-	if err != nil || redirect.Scheme == "" || redirect.Host == "" {
+	if err != nil || !allowedRedirect(redirect) {
 		http.Error(w, "bad redirect_uri", http.StatusBadRequest)
 		return
 	}
@@ -153,8 +153,20 @@ func (p *idp) authorize(w http.ResponseWriter, r *http.Request) {
 	rq.Set("code", code)
 	rq.Set("state", q.Get("state"))
 	redirect.RawQuery = rq.Encode()
-	//nolint:gosec // G710: the stand-in redirects wherever the test client asked, by design
+	//nolint:gosec // G710: redirect_uri passed allowedRedirect above
 	http.Redirect(w, r, redirect.String(), http.StatusFound)
+}
+
+// allowedRedirect accepts only the addresses a test Kubelook is reached at.
+func allowedRedirect(u *url.URL) bool {
+	if u.Scheme != "http" {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "kubelook-it-app", "kubelook-it-pg-1", "kubelook-it-pg-2":
+		return true
+	}
+	return false
 }
 
 // redeem checks the client and the PKCE verifier and consumes the code.

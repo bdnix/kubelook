@@ -7,6 +7,7 @@ package it
 import (
 	"bufio"
 	"context"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -96,3 +97,12 @@ func Docker(t testing.TB, args ...string) string {
 	t.Helper()
 	return run(t, "docker", args...)
 }
+
+// TryDocker runs the docker CLI and ignores a failure (cleanups that may already have happened).
+func TryDocker(args ...string) {
+	cmd := exec.CommandContext(context.Background(), "docker", args...) //nolint:gosec // G204: test helper
+	_ = cmd.Run()
+}
+
+// ClusterPath is the percent-encoded cluster ID for a URL path ("k:a/b" contains a slash).
+func ClusterPath(id string) string { return url.PathEscape(id) }

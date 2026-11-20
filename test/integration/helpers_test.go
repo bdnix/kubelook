@@ -76,7 +76,7 @@ func open(t *testing.T, c *it.Client, id, role string) (int, openState, it.APIEr
 	if role != "" {
 		in = map[string]string{"role": role}
 	}
-	status, data := c.Do(http.MethodPost, "/api/v1/clusters/"+id+"/open", mustJSON(t, in), nil)
+	status, data := c.Do(http.MethodPost, "/api/v1/clusters/"+it.ClusterPath(id)+"/open", mustJSON(t, in), nil)
 	unmarshal(data, &st)
 	unmarshal(data, &apiErr)
 	return status, st, apiErr
@@ -85,7 +85,7 @@ func open(t *testing.T, c *it.Client, id, role string) (int, openState, it.APIEr
 // listItems lists a resource kind and returns the objects.
 func listItems(t *testing.T, c *it.Client, id, group, version, resource, namespace string) (int, []map[string]any) {
 	t.Helper()
-	path := "/api/v1/clusters/" + id + "/resources/" + group + "/" + version + "/" + resource
+	path := "/api/v1/clusters/" + it.ClusterPath(id) + "/resources/" + group + "/" + version + "/" + resource
 	if namespace != "" {
 		path += "?namespace=" + namespace
 	}

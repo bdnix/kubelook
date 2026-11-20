@@ -241,7 +241,7 @@ func TestVault_Outage_OpenClustersKeepWorkingAndNewOnesReportVaultUnreachable(t 
 	require.Equal(t, http.StatusOK, status, "%+v", apiErr)
 
 	it.Docker(t, "pause", "kubelook-it-vault")
-	t.Cleanup(func() { it.Docker(t, "unpause", "kubelook-it-vault") })
+	t.Cleanup(func() { it.TryDocker("unpause", "kubelook-it-vault") })
 
 	type vaultStatus struct {
 		Vault struct{ Reachable bool } `json:"vault"`
