@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -48,6 +49,7 @@ type Deps struct {
 	KeepAlive   func(ctx context.Context, sessionHash string) // counts an open shell as activity; nil → none
 	Guard       Guard                                         // nil → never refuses
 	NodeShell   bool                                          // allow {nodeShell: true} opens
+	Log         *slog.Logger                                  // nil → the unexpected end of a shell is not logged
 }
 
 type openRequest struct {
@@ -346,6 +348,11 @@ func (s *shell) finish(ctx context.Context, err error) string {
 	case errors.Is(err, apperr.ErrNotRecorded):
 		_ = s.sink.Send(s.ch, "error", map[string]string{"code": "internal", "message": apperr.ErrNotRecorded.Message})
 		return "refused"
+	}
+	if s.d.Log != nil {
+		// The user sees general words; the operator needs the cause. The error text holds no shell input or output.
+		s.d.Log.Warn("shell ended unexpectedly", "cluster", s.req.Cluster, "namespace", s.req.Namespace, "pod", s.req.Pod,
+			"container", s.req.Container, "error", err.Error())
 	}
 	_ = s.sink.Send(s.ch, "error", map[string]string{"code": "internal", "message": "The shell ended unexpectedly."})
 	return "error"
