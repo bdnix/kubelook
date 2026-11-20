@@ -69,7 +69,7 @@ test('an active module shows in the sidebar and its kinds are absent from Custom
   await expect(custom.getByRole('link', { name: 'ScaledObject' })).toHaveCount(0);
 
   await modules.getByRole('link', { name: 'KEDA' }).click();
-  await expect(page.getByRole('heading', { name: 'KEDA' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'KEDA', exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: 'ScaledObject' })).toBeVisible();
 });
 
