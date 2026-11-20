@@ -246,6 +246,26 @@ func TestToken_VaultDownWhileCredentialValid_KeepsWorkingThenFails(t *testing.T)
 	assert.Equal(t, "vault_unreachable", apiErr(t, err).Code)
 }
 
+func TestToken_VaultDown_AFailedRemintIsNotRetriedOnEveryCall(t *testing.T) {
+	e := newOpenerEnv(t)
+	_, err := e.op.Open(t.Context(), e.sess, "v:prod", "")
+	require.NoError(t, err)
+	e.vault.HangUp(true)
+	e.clock.Advance(26 * time.Minute) // due for a re-mint, still valid
+	before := e.vault.Calls("hung-up")
+	for range 5 {
+		tok, err := e.op.Token(t.Context(), e.sess.Hash, "v:prod")
+		require.NoError(t, err)
+		assert.Equal(t, "sa-token-A", tok)
+	}
+	assert.Equal(t, before+1, e.vault.Calls("hung-up"), "one attempt, then the still-valid credential is used without asking Vault again")
+
+	e.clock.Advance(time.Minute) // after the pause the next call tries again
+	_, err = e.op.Token(t.Context(), e.sess.Hash, "v:prod")
+	require.NoError(t, err)
+	assert.Equal(t, before+2, e.vault.Calls("hung-up"))
+}
+
 func TestToken_VaultTokenGone_Disconnected(t *testing.T) {
 	e := newOpenerEnv(t)
 	_, err := e.op.Open(t.Context(), e.sess, "v:prod", "")
