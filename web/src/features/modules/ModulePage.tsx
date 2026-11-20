@@ -1,5 +1,6 @@
 import { Link, useParams } from 'react-router';
 import { GatewayPage } from '../gateway/GatewayPage';
+import { PermissionsPage } from '../permissions/PermissionsPage';
 import { TrivyPage } from '../trivy/TrivyPage';
 import { KarpenterPage } from '../karpenter/KarpenterPage';
 import { clusterPath } from '../../lib/paths';
@@ -21,6 +22,7 @@ export function ModulePage({ cluster }: { cluster: string }) {
     >
       <h1>{entry?.title}</h1>
       {name === 'karpenter' && <KarpenterPage cluster={cluster} />}
+      {name === 'permissions' && <PermissionsPage cluster={cluster} kinds={kinds} />}
       {name === 'trivy' && <TrivyPage cluster={cluster} kinds={kinds} />}
       {name === 'gatewayApi' && <GatewayPage cluster={cluster} kinds={kinds} />}
       <ul>
