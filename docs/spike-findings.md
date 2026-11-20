@@ -25,10 +25,10 @@ Written answers to the spec's "To confirm in the spike" list. Each section has t
 
 ## Trivy rescans after report deletion
 
-- **Result:** unconfirmed (A24).
-- **How it was checked:** not checkable.
-- **Date:** 2026-11-11
-- **Consequence for the plan:** stays unconfirmed; the UI text already says so.
+- **Result:** confirmed in the source of the Trivy Operator (`main` branch, not a pinned release) for eight kinds: `VulnerabilityReport` and `ExposedSecretReport` (the workload controller owns them, checks for reports of the current pod-spec hash and images, and submits a scan job when they are missing and no scan job is active; the exposed-secret check runs only when the secret scanner is enabled), and `ConfigAuditReport`, `RbacAssessmentReport`, `InfraAssessmentReport`, `ClusterConfigAuditReport`, `ClusterRbacAssessmentReport` and `ClusterInfraAssessmentReport` (the resource and node controllers own them and check for a report before scanning). Not confirmed: `SbomReport`, `ClusterSbomReport`, `ClusterVulnerabilityReport` and `ClusterComplianceReport`, whose controllers were not read. `ClusterExposedSecretReport` is not a kind of the operator (not in its registered types, no CRD), so it is not offered.
+- **How it was checked:** read from `aquasecurity/trivy-operator` (`pkg/vulnerabilityreport/controller/workload.go`, `pkg/configauditreport/controller/{resource,node}.go`, the registered types and the CRDs). Not run against a cluster.
+- **Date:** 2026-11-20
+- **Consequence for the plan:** the Rescan action works for every report kind; the dialog says "read in the operator source" for the eight kinds and "Not confirmed for this kind" for the other four.
 
 ## Where Kyverno reports violations
 

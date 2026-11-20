@@ -8,6 +8,7 @@ import { ConfirmDialog } from '../actions/ConfirmDialog';
 import { useAction } from '../actions/useAction';
 import { exportFindings } from './exportFindings';
 import { findingsOf } from './findings';
+import { rescanConfirmed } from '../../kinds/trivy';
 
 export interface ReportDetailsProps {
   cluster: string;
@@ -84,8 +85,9 @@ export function ReportDetails({
           }
         >
           <p>
-            The operator should scan again after the report is deleted (not confirmed for every operator
-            version).
+            {rescanConfirmed(kind)
+              ? 'The operator scans again after the report is deleted (read in the operator source).'
+              : 'Not confirmed for this kind: the operator may not create the report again.'}
           </p>
         </ConfirmDialog>
       )}

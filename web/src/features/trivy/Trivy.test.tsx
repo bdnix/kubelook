@@ -60,6 +60,24 @@ describe('ReportDetails', () => {
     expect(within(table).getAllByRole('row')).toHaveLength(3);
   });
 
+  it('says a rescan is not confirmed for a kind whose controller was not read', async () => {
+    renderApp(
+      <ReportDetails
+        cluster="c"
+        kind="ClusterComplianceReport"
+        group="aquasecurity.github.io"
+        version="v1alpha1"
+        resource="clustercompliancereports"
+        object={{ metadata: { name: 'nsa' }, report: {} }}
+      />,
+      { client: createClient({ fetch: vi.fn() }) },
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Rescan' }));
+    expect(await screen.findByRole('dialog', { name: 'Rescan nsa' })).toHaveTextContent(
+      'Not confirmed for this kind: the operator may not create the report again.',
+    );
+  });
+
   it('asks before it deletes the report so the operator scans again, and then does', async () => {
     const posted: unknown[] = [];
     const fetch = vi.fn((_u: RequestInfo | URL, init?: RequestInit) => {
@@ -80,7 +98,7 @@ describe('ReportDetails', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Rescan' }));
     const dialog = await screen.findByRole('dialog', { name: 'Rescan r1' });
     expect(dialog).toHaveTextContent(
-      'The operator should scan again after the report is deleted (not confirmed for every operator version).',
+      'The operator scans again after the report is deleted (read in the operator source).',
     );
     expect(posted).toHaveLength(0);
     await userEvent.click(within(dialog).getByRole('button', { name: 'Delete the report' }));

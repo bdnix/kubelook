@@ -15,9 +15,26 @@ const KINDS: [kind: string, resource: string][] = [
   ['ClusterRbacAssessmentReport', 'clusterrbacassessmentreports'],
   ['ClusterInfraAssessmentReport', 'clusterinfraassessmentreports'],
   ['ClusterSbomReport', 'clustersbomreports'],
-  ['ClusterExposedSecretReport', 'clusterexposedsecretreports'],
   ['ClusterComplianceReport', 'clustercompliancereports'],
 ];
+
+/**
+ * Kinds whose controller in the Trivy Operator source (main branch) creates a report again when it is missing:
+ * the workload controller (vulnerability and exposed-secret reports) and the resource and node controllers
+ * (config audit, RBAC and infra reports, namespaced and cluster-wide). The controllers of the other kinds were not read.
+ */
+const RESCAN_CONFIRMED = new Set([
+  'VulnerabilityReport',
+  'ExposedSecretReport',
+  'ConfigAuditReport',
+  'RbacAssessmentReport',
+  'InfraAssessmentReport',
+  'ClusterConfigAuditReport',
+  'ClusterRbacAssessmentReport',
+  'ClusterInfraAssessmentReport',
+]);
+
+export const rescanConfirmed = (kind: string) => RESCAN_CONFIRMED.has(kind);
 
 const label = (o: K8sObject, key: string) =>
   ((o.metadata as { labels?: Record<string, string> } | undefined)?.labels ?? {})[key] ?? '';

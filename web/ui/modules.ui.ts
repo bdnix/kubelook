@@ -284,7 +284,7 @@ test('a Trivy rescan asks first, and never shows matched secret text', async ({ 
   await expect(drawer.getByRole('table', { name: 'Findings' })).toContainText('CVE-9');
   await drawer.getByRole('button', { name: 'Rescan' }).click();
   const dialog = page.getByRole('dialog', { name: 'Rescan web-report' });
-  await expect(dialog).toContainText('The operator should scan again after the report is deleted');
+  await expect(dialog).toContainText('The operator scans again after the report is deleted');
   expect(actions).toHaveLength(0);
   await dialog.getByRole('button', { name: 'Delete the report' }).click();
   await expect.poll(() => actions.length).toBe(1);

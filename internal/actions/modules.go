@@ -27,7 +27,7 @@ var trivyReports = func() []schema.GroupKind {
 	names := []string{
 		"VulnerabilityReport", "ConfigAuditReport", "ExposedSecretReport", "RbacAssessmentReport", "InfraAssessmentReport",
 		"SbomReport", "ClusterVulnerabilityReport", "ClusterConfigAuditReport", "ClusterRbacAssessmentReport",
-		"ClusterInfraAssessmentReport", "ClusterSbomReport", "ClusterExposedSecretReport", "ClusterComplianceReport",
+		"ClusterInfraAssessmentReport", "ClusterSbomReport", "ClusterComplianceReport",
 	}
 	out := make([]schema.GroupKind, len(names))
 	for i, n := range names {
@@ -51,7 +51,7 @@ func registerModules(h map[string]handler) {
 	h["kedaResume"] = handler{kinds: scaledObjects, verb: audit.VerbModuleAction, run: func(c *call) error {
 		return c.patch(types.MergePatchType, annotationPatch(kedaPausedAnnotation, nil))
 	}}
-	// the operator scans again when a report is gone; this is not confirmed for every operator version
+	// the operator creates the report again for the kinds whose controller was read (see web/src/kinds/trivy.ts)
 	h["trivyRescan"] = handler{kinds: trivyReports, verb: audit.VerbModuleAction, run: func(c *call) error {
 		err := c.dyn.Resource(c.gvr).Namespace(c.t.Namespace).Delete(c.ctx, c.t.Name, metav1.DeleteOptions{})
 		return kube.MapError(err)
