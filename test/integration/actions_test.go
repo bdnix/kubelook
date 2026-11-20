@@ -50,14 +50,14 @@ func TestActions_ScaleRestartAndRollback(t *testing.T) {
 	annotation := it.Kubectl(t, "alpha", "-n", ns, "get", "deployment", "app", "-o", `jsonpath={.spec.template.metadata.annotations}`)
 	assert.Contains(t, annotation, "restartedAt")
 
-	// change the image (revision 2 or later), then roll back to revision 1
-	it.Kubectl(t, "alpha", "-n", ns, "set", "image", "deployment/app", "pause=busybox:1.37")
+	// a new revision (an environment variable changes the pod template), then roll back to revision 1
+	it.Kubectl(t, "alpha", "-n", ns, "set", "env", "deployment/app", "IT_MARKER=two")
 	it.Kubectl(t, "alpha", "-n", ns, "rollout", "status", "deployment/app", "--timeout=120s")
 	status, apiErr = doAction(t, c, "rollback", dep, map[string]int{"revision": 1})
 	require.Equal(t, http.StatusOK, status, "%+v", apiErr)
 	it.Eventually(t, 60*time.Second, func() bool {
-		return strings.Contains(it.Kubectl(t, "alpha", "-n", ns, "get", "deployment", "app", "-o", "jsonpath={.spec.template.spec.containers[0].image}"), "pause")
-	}, "the image is back to the first revision's")
+		return !strings.Contains(it.Kubectl(t, "alpha", "-n", ns, "get", "deployment", "app", "-o", "jsonpath={.spec.template.spec.containers[0].env}"), "IT_MARKER")
+	}, "the pod template is back to the first revision's, without the marker")
 }
 
 func TestActions_EvictingAPodProtectedByAZeroBudget_IsAConflictWithThePDBMessage(t *testing.T) {
@@ -65,5 +65,5 @@ func TestActions_EvictingAPodProtectedByAZeroBudget_IsAConflictWithThePDBMessage
 	pod := podOf(t, "alpha", "web")
 	status, apiErr := doAction(t, c, "evict", target("pods", "", "demo", pod), nil)
 	assert.Equal(t, http.StatusConflict, status, "%+v", apiErr)
-	assert.Contains(t, strings.ToLower(apiErr.Error.Message), "disruption budget")
+	assert.Contains(t, strings.ToLower(apiErr.Error.Message), "poddisruptionbudget")
 }

@@ -39,8 +39,11 @@ func TestWatch_ConfigMaps_SnapshotThenAddedModifiedDeleted_OnBothKubernetesVersi
 			second := w.Open("watch.open", watchConfigMaps("v:"+cl, ns))
 			var snap2 snapshotFrame
 			require.NoError(t, json.Unmarshal(second.Next("snapshot", 30*time.Second), &snap2))
-			require.Len(t, snap2.Items, 1)
-			assert.Equal(t, "w1", objName(snap2.Items[0]))
+			var got []string
+			for _, o := range snap2.Items {
+				got = append(got, objName(o)) // every namespace also has the cluster's kube-root-ca.crt
+			}
+			assert.Contains(t, got, "w1")
 
 			it.Kubectl(t, cl, "-n", ns, "delete", "configmap", "w1")
 			waitEvent(t, ch, "DELETED", "w1", 10*time.Second)

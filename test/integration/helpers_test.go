@@ -114,6 +114,7 @@ func names(items []map[string]any) []string {
 func devopsClient(t *testing.T, sub string) *it.Client {
 	t.Helper()
 	c := signedIn(t, sub)
+	it.DumpLogOnFailure(t, "kubelook-it-app")
 	addToken(t, c, "BOB_TOKEN")
 	for _, id := range []string{"v:alpha", "v:beta"} {
 		status, _, apiErr := open(t, c, id, "devops-role")

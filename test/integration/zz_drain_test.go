@@ -21,7 +21,10 @@ func TestDrain_TheSingleNodeOfBeta_IsCordonedAndItsPodsAreEvicted(t *testing.T) 
 	it.Kubectl(t, "beta", "-n", ns, "rollout", "status", "deployment/victim", "--timeout=120s")
 	before := it.Kubectl(t, "beta", "-n", ns, "get", "pods", "-l", "app=victim", "-o", "jsonpath={.items[0].metadata.uid}")
 	node := it.Kubectl(t, "beta", "get", "nodes", "-o", "jsonpath={.items[0].metadata.name}")
+	// the fixture budget of "web" allows no disruption at all and would block the drain for good
+	it.Kubectl(t, "beta", "-n", "demo", "delete", "pdb", "web", "--ignore-not-found")
 	t.Cleanup(func() {
+		it.Kubectl(t, "beta", "apply", "-f", "test/integration/testdata/manifests/pdb.yaml")
 		it.Kubectl(t, "beta", "uncordon", node)
 		it.Kubectl(t, "beta", "-n", "demo", "rollout", "status", "deployment/shell", "--timeout=180s")
 	})

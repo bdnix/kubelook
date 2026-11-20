@@ -25,9 +25,12 @@ func readUntil(t *testing.T, ch *it.Channel, want string, within time.Duration) 
 	var got strings.Builder
 	deadline := time.Now().Add(within)
 	for time.Now().Before(deadline) {
-		kind, raw := ch.NextOf(time.Until(deadline), "out")
+		kind, raw := ch.NextOf(time.Until(deadline), "out", "error", "exit")
 		if kind == "" {
 			break
+		}
+		if kind != "out" {
+			t.Fatalf("the shell sent %s instead of output: %s", kind, raw)
 		}
 		var o struct{ Data string }
 		require.NoError(t, json.Unmarshal(raw, &o))
@@ -51,7 +54,9 @@ func TestExec_Shell_FallsBackToShAndEchoes_OnBothKubernetesVersions(t *testing.T
 			// the mux's "opened" was consumed by Open; the shell's own "opened" names the shell it found
 			var opened struct{ Shell string }
 			ch.Send("exec.stdin", stdin("\n"))
-			require.NoError(t, json.Unmarshal(ch.Next("opened", 30*time.Second), &opened))
+			kind, raw := ch.NextOf(30*time.Second, "opened", "error", "exit")
+			require.Equal(t, "opened", kind, "the shell did not start: %s", raw)
+			require.NoError(t, json.Unmarshal(raw, &opened))
 			assert.Equal(t, "/bin/sh", opened.Shell, "busybox has no bash, so the fallback to sh is used")
 			ch.Send("exec.stdin", stdin("echo kubelook-$((6*7))\n"))
 			readUntil(t, ch, "kubelook-42", 30*time.Second)

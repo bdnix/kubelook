@@ -72,7 +72,8 @@ func TestFiles_ListSaveReadAndAStaleSaveConflicts(t *testing.T) {
 
 	// the file is changed behind the editor's back, then saved with the old stat
 	stale := out["stat"]
-	_, _ = f.call("file.save", map[string]any{"path": "/tmp/a.txt", "data": b64("changed elsewhere!")})
+	kind, out = f.call("file.save", map[string]any{"path": "/tmp/a.txt", "data": b64("changed elsewhere!"), "expect": stale})
+	require.Equal(t, "saved", kind, "%v", out)
 	kind, out = f.call("file.save", map[string]any{"path": "/tmp/a.txt", "data": b64("mine"), "expect": stale})
 	assert.Equal(t, "error", kind)
 	assert.Equal(t, "conflict", out["code"])
@@ -103,10 +104,8 @@ func tarOf(t *testing.T, files map[string]string) []byte {
 
 func TestFiles_UploadATarAndDownloadTheDirectoryAsATar(t *testing.T) {
 	f := openFiles(t, "files-transfer")
-	_, _ = f.call("file.save", map[string]any{"path": "/tmp/up/.keep", "data": b64("")}) // makes /tmp/up
-
-	f.ch.Send("file.upload.begin", map[string]any{"dir": "/tmp/up", "tar": true})
-	f.ch.Send("file.upload.chunk", map[string]any{"seq": 0, "data": base64.StdEncoding.EncodeToString(tarOf(t, map[string]string{"one.txt": "1", "two.txt": "2"}))})
+	f.ch.Send("file.upload.begin", map[string]any{"dir": "/tmp", "tar": true})
+	f.ch.Send("file.upload.chunk", map[string]any{"seq": 0, "data": base64.StdEncoding.EncodeToString(tarOf(t, map[string]string{"up/one.txt": "1", "up/two.txt": "2"}))})
 	kind, out := f.call("file.upload.end", map[string]any{})
 	require.Equal(t, "uploaded", kind, "%v", out)
 
