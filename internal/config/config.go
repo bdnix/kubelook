@@ -384,8 +384,12 @@ func (c *Config) validate() error {
 	case len(c.EncryptionKey) != 32:
 		add("%s must decode to 32 bytes, got %d", EnvEncryptionKey, len(c.EncryptionKey))
 	}
-	if c.Helm.Version != 3 && c.Helm.Version != 4 {
-		add("helm.version must be 3 or 4, got %d", c.Helm.Version)
+	switch c.Helm.Version {
+	case 4:
+	case 3:
+		add("helm.version 3 is no longer supported: Kubelook manages Helm 3 releases with the Helm 4 SDK")
+	default:
+		add("helm.version must be 4, got %d", c.Helm.Version)
 	}
 	if c.Auth.Google.ClientID != "" && c.GoogleSecret == "" {
 		add("auth.google.clientId is set: %s is required", EnvGoogleSecret)

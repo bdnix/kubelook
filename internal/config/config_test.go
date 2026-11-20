@@ -130,7 +130,7 @@ func TestLoad_Full_EveryFieldEqualsFileValue(t *testing.T) {
 	assert.Equal(t, "example.org/debug:2", c.Debug.Image)
 	assert.Equal(t, "/bin/sh", c.Debug.Shell)
 	assert.Equal(t, []config.DebugProfile{{Name: "net", Profile: "netadmin", ShareProcessNamespace: true}}, c.Debug.Profiles)
-	assert.Equal(t, 3, c.Helm.Version)
+	assert.Equal(t, 4, c.Helm.Version)
 	assert.Equal(t, 2, c.Helm.MaxConcurrentJobs)
 	assert.Equal(t, int64(2048), c.Helm.MaxChartBytes)
 	assert.Equal(t, []config.HelmRepo{{Name: "bitnami", URL: "https://charts.example.org"}}, c.Helm.Repositories)
@@ -163,7 +163,8 @@ func TestLoad_Errors(t *testing.T) {
 		{"publicURL not http", "server:\n  publicURL: ftp://x\n", nil, "server.publicURL"},
 		{"postgres without url", base + "database:\n  driver: postgres\n", nil, "KUBELOOK_DATABASE_URL"},
 		{"bad driver", base + "database:\n  driver: mysql\n", nil, "database.driver"},
-		{"helm version", base + "helm:\n  version: 5\n", nil, "helm.version"},
+		{"helm version", base + "helm:\n  version: 5\n", nil, "helm.version must be 4, got 5"},
+		{"helm 3", base + "helm:\n  version: 3\n", nil, "helm.version 3 is no longer supported: Kubelook manages Helm 3 releases with the Helm 4 SDK"},
 		{"google id without secret", base + "auth:\n  google:\n    clientId: x\n", nil, "KUBELOOK_GOOGLE_CLIENT_SECRET"},
 		{"github id without secret", base + "auth:\n  github:\n    clientId: x\n", nil, "KUBELOOK_GITHUB_CLIENT_SECRET"},
 		{"bad duration", base + "vault:\n  tokenTTL: abc\n", nil, "invalid duration"},

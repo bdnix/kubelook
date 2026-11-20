@@ -50,7 +50,7 @@ debug:
       profile: netadmin
       shareProcessNamespace: true
 helm:
-  version: 3
+  version: 4
   maxConcurrentJobs: 2
   maxChartBytes: 2048
   repositories:
