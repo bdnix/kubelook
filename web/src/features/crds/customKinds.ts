@@ -46,7 +46,9 @@ export function customKinds(
 }
 
 /** The text "Create from YAML" opens with for a kind: apiVersion, kind and a name (and a namespace). */
-export function kindTemplate(r: Pick<DiscoveryResource, 'group' | 'version' | 'kind' | 'namespaced'>): string {
+export function kindTemplate(
+  r: Pick<DiscoveryResource, 'group' | 'version' | 'kind' | 'namespaced'>,
+): string {
   const apiVersion = r.group === '' ? r.version : `${r.group}/${r.version}`;
   return `apiVersion: ${apiVersion}\nkind: ${r.kind}\nmetadata:\n  name: example\n${r.namespaced ? '  namespace: default\n' : ''}`;
 }

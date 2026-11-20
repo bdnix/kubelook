@@ -88,6 +88,23 @@ describe('Sidebar', () => {
     expect(screen.getByRole('link', { name: 'Pods' })).not.toHaveAttribute('aria-current');
   });
 
+  it('lists the custom kinds the cluster serves under Custom Resources, by API group, and hides the ones the user cannot list', () => {
+    const withCrds: Discovery = {
+      ...discovery,
+      resources: [...discovery.resources, res('a.io', 'Alpha', 'alphas'), res('a.io', 'Hidden', 'hiddens')],
+    };
+    renderApp(<Sidebar cluster="c" discovery={withCrds} canList={(_g, r) => r !== 'hiddens'} />);
+    const section = within(screen.getByRole('region', { name: 'Custom Resources' }));
+    expect(section.getAllByRole('link').map((l) => l.textContent)).toEqual(['Alpha']);
+    expect(section.getByRole('link', { name: 'Alpha' })).toHaveAttribute('href', '/c/c/a.io/Alpha');
+    expect(screen.queryByRole('region', { name: 'Custom Resources' })).not.toBeNull();
+  });
+
+  it('has no Custom Resources section on a cluster without custom kinds', () => {
+    renderApp(<Sidebar cluster="c" discovery={discovery} canList={all} />);
+    expect(screen.queryByRole('region', { name: 'Custom Resources' })).toBeNull();
+  });
+
   it('shows a loading message until discovery arrives', () => {
     renderApp(<Sidebar cluster="c" discovery={undefined} canList={all} />);
     expect(screen.getByRole('status')).toHaveTextContent('Loading');
@@ -118,5 +135,30 @@ describe('ResourceSidebar', () => {
     expect(screen.getByRole('link', { name: 'Services' })).toBeInTheDocument();
     expect(asked).toHaveLength(1);
     expect(asked[0]?.every((c) => c.verb === 'list')).toBe(true);
+  });
+
+  it('also asks about the custom kinds', async () => {
+    const withCrds: Discovery = {
+      ...discovery,
+      resources: [...discovery.resources, res('a.io', 'Alpha', 'alphas')],
+    };
+    const asked: { resource: string }[] = [];
+    const fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/clusters/c/discovery')) return Promise.resolve(jsonResponse(withCrds));
+      const checks = (JSON.parse(String(init?.body)) as { checks: { resource: string }[] }).checks;
+      asked.push(...checks);
+      return Promise.resolve(
+        jsonResponse({ results: checks.map((c) => ({ allowed: c.resource !== 'alphas' })) }),
+      );
+    });
+    renderApp(
+      <Routes>
+        <Route path="/c/:cluster/*" element={<ResourceSidebar cluster="c" />} />
+      </Routes>,
+      { client: createClient({ fetch }), route: '/c/c' },
+    );
+    await screen.findByRole('link', { name: 'Pods' });
+    await waitFor(() => expect(asked.some((c) => c.resource === 'alphas')).toBe(true));
+    await waitFor(() => expect(screen.queryByRole('link', { name: 'Alpha' })).toBeNull());
   });
 });

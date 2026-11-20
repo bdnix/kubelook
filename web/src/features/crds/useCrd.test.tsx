@@ -4,7 +4,9 @@ import { createClient } from '../../api/client';
 import { jsonResponse, makeWrapper } from '../../test/render';
 import { useCrd } from './useCrd';
 
-const crd = { spec: { group: 'example.com', names: { kind: 'Widget', plural: 'widgets' }, scope: 'Namespaced' } };
+const crd = {
+  spec: { group: 'example.com', names: { kind: 'Widget', plural: 'widgets' }, scope: 'Namespaced' },
+};
 
 describe('useCrd', () => {
   it('reads the CRD named <plural>.<group>', async () => {

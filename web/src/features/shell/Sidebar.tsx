@@ -2,8 +2,9 @@ import { NavLink } from 'react-router';
 import { findResource, useDiscovery, type Discovery } from '../../api/discovery';
 import { useAccess, type AccessCheck } from '../../api/access';
 import { knownKinds } from '../../kinds/registry';
-import type { KindDescriptor } from '../../kinds/types';
 import { clusterPath } from '../../lib/paths';
+import { CrdSidebarSection } from '../crds/CrdSidebarSection';
+import { customKinds } from '../crds/customKinds';
 
 /** The sections of the resource sidebar, in the order of the spec. */
 export const SECTIONS = [
@@ -63,51 +64,57 @@ function kindItems(cluster: string, discovery: Discovery, canList: SidebarProps[
 export function Sidebar({ cluster, discovery, canList }: SidebarProps) {
   if (!discovery) return <p role="status">Loading…</p>;
   const bySection = kindItems(cluster, discovery, canList);
+  const custom = customKinds(discovery).filter((k) => canList(k.group, k.resource) !== false);
   for (const p of PAGES) {
     const items = bySection.get(p.section) ?? [];
     items.push({ key: p.path, title: p.title, to: `${clusterPath(cluster)}/${p.path}` });
     bySection.set(p.section, items);
   }
+  const has = (section: string) =>
+    section === 'Custom Resources' ? custom.length > 0 : (bySection.get(section)?.length ?? 0) > 0;
   return (
     <>
-      {SECTIONS.filter((s) => (bySection.get(s)?.length ?? 0) > 0).map((section) => (
-        <section key={section} aria-label={section} className="sidebar-section">
-          <h2>{section}</h2>
-          <ul>
-            {bySection.get(section)?.map((item) => (
-              <li key={item.key}>
-                <NavLink to={item.to} end>
-                  {item.title}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      {SECTIONS.filter(has).map((section) =>
+        section === 'Custom Resources' ? (
+          <section key={section} aria-label={section} className="sidebar-section">
+            <h2>{section}</h2>
+            <CrdSidebarSection cluster={cluster} kinds={custom} />
+          </section>
+        ) : (
+          <section key={section} aria-label={section} className="sidebar-section">
+            <h2>{section}</h2>
+            <ul>
+              {bySection.get(section)?.map((item) => (
+                <li key={item.key}>
+                  <NavLink to={item.to} end>
+                    {item.title}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ),
+      )}
     </>
   );
 }
 
-function listChecks(discovery: Discovery | undefined): { kind: KindDescriptor; check: AccessCheck }[] {
+function listChecks(discovery: Discovery | undefined): AccessCheck[] {
   if (!discovery) return [];
-  const out: { kind: KindDescriptor; check: AccessCheck }[] = [];
-  for (const kind of knownKinds()) {
-    const served = findResource(discovery, kind.group, kind.kind);
-    if (served) out.push({ kind, check: { verb: 'list', group: served.group, resource: served.resource } });
-  }
-  return out;
+  const served = [
+    ...knownKinds().flatMap((k) => findResource(discovery, k.group, k.kind) ?? []),
+    ...customKinds(discovery),
+  ];
+  return served.map((r) => ({ verb: 'list', group: r.group, resource: r.resource }));
 }
 
 /** The sidebar of an open cluster, with discovery and the access checks behind it. */
 export function ResourceSidebar({ cluster }: { cluster: string }) {
   const discovery = useDiscovery(cluster);
   const checks = listChecks(discovery.data);
-  const access = useAccess(
-    cluster,
-    checks.map((c) => c.check),
-  );
+  const access = useAccess(cluster, checks);
   const canList = (group: string, resource: string): boolean | undefined => {
-    const i = checks.findIndex((c) => c.check.group === group && c.check.resource === resource);
+    const i = checks.findIndex((c) => c.group === group && c.resource === resource);
     return i < 0 ? undefined : access.data?.[i]?.allowed;
   };
   return <Sidebar cluster={cluster} discovery={discovery.data} canList={canList} />;
