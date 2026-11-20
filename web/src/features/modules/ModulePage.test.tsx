@@ -9,7 +9,15 @@ const modules = [
   {
     name: 'keda',
     active: true,
-    kinds: [{ group: 'keda.sh', version: 'v1alpha1', resource: 'scaledobjects', kind: 'ScaledObject', namespaced: true }],
+    kinds: [
+      {
+        group: 'keda.sh',
+        version: 'v1alpha1',
+        resource: 'scaledobjects',
+        kind: 'ScaledObject',
+        namespaced: true,
+      },
+    ],
   },
   { name: 'trivy', active: false, reason: 'not_served', kinds: [] },
 ];
@@ -30,7 +38,10 @@ describe('ModulePage', () => {
   it('shows the module and links to the lists of its kinds', async () => {
     mount('keda');
     expect(await screen.findByRole('heading', { name: 'KEDA' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'ScaledObject' })).toHaveAttribute('href', '/c/c/keda.sh/ScaledObject');
+    expect(screen.getByRole('link', { name: 'ScaledObject' })).toHaveAttribute(
+      'href',
+      '/c/c/keda.sh/ScaledObject',
+    );
   });
 
   it('says so when the cluster does not have the module', async () => {

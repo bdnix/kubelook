@@ -117,7 +117,13 @@ describe('Sidebar', () => {
     const mod = (name: string, active: boolean, kinds: [string, string, string][] = []) => ({
       name,
       active,
-      kinds: kinds.map(([group, kind, resource]) => ({ group, version: 'v1', resource, kind, namespaced: true })),
+      kinds: kinds.map(([group, kind, resource]) => ({
+        group,
+        version: 'v1',
+        resource,
+        kind,
+        namespaced: true,
+      })),
     });
     const modules = [
       mod('keda', true, [['keda.sh', 'ScaledObject', 'scaledobjects']]),
@@ -142,7 +148,12 @@ describe('Sidebar', () => {
 
     it('lists the kinds of an inactive module under Custom Resources', () => {
       renderApp(
-        <Sidebar cluster="c" discovery={withKeda} modules={[mod('keda', false), mod('permissions', true)]} canList={all} />,
+        <Sidebar
+          cluster="c"
+          discovery={withKeda}
+          modules={[mod('keda', false), mod('permissions', true)]}
+          canList={all}
+        />,
       );
       expect(screen.queryByRole('link', { name: 'KEDA' })).toBeNull();
       const custom = within(screen.getByRole('region', { name: 'Custom Resources' }));

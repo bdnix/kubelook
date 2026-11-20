@@ -5,6 +5,8 @@ import { knownKinds } from '../../kinds/registry';
 import { clusterPath } from '../../lib/paths';
 import { CrdSidebarSection } from '../crds/CrdSidebarSection';
 import { customKinds } from '../crds/customKinds';
+import { claimedBy, MODULE_ENTRIES, visibleEntries, type ModuleStatus } from '../modules/registry';
+import { useModules } from '../modules/useModules';
 
 /** The sections of the resource sidebar, in the order of the spec. */
 export const SECTIONS = [
@@ -40,6 +42,8 @@ export interface SidebarProps {
   cluster: string;
   /** Undefined while discovery loads. */
   discovery: Discovery | undefined;
+  /** The modules of the cluster; undefined while they load (custom kinds wait for them). */
+  modules?: ModuleStatus[] | undefined;
   /** Whether the user may list the resource; undefined while the answer is not known (the item is shown). */
   canList: (group: string, resource: string) => boolean | undefined;
 }
@@ -60,18 +64,47 @@ function kindItems(cluster: string, discovery: Discovery, canList: SidebarProps[
   return bySection;
 }
 
+function ModuleLinks({ cluster, entries }: { cluster: string; entries: typeof MODULE_ENTRIES }) {
+  const link = (e: (typeof MODULE_ENTRIES)[number]) => (
+    <li key={e.name}>
+      <NavLink to={`${clusterPath(cluster)}/modules/${e.name}`} end>
+        {e.title}
+      </NavLink>
+    </li>
+  );
+  const security = entries.filter((e) => e.group === 'Security');
+  return (
+    <>
+      <ul>{entries.filter((e) => e.group === undefined).map(link)}</ul>
+      {security.length > 0 && (
+        <div role="group" aria-label="Security">
+          <h3>Security</h3>
+          <ul>{security.map(link)}</ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 /** The resource sidebar: sections and kinds the cluster serves and the user may list. */
-export function Sidebar({ cluster, discovery, canList }: SidebarProps) {
+export function Sidebar({ cluster, discovery, modules, canList }: SidebarProps) {
   if (!discovery) return <p role="status">Loading…</p>;
   const bySection = kindItems(cluster, discovery, canList);
-  const custom = customKinds(discovery).filter((k) => canList(k.group, k.resource) !== false);
+  const custom = modules
+    ? customKinds(discovery, claimedBy(modules)).filter((k) => canList(k.group, k.resource) !== false)
+    : [];
+  const entries = modules ? visibleEntries(modules, canList) : [];
   for (const p of PAGES) {
     const items = bySection.get(p.section) ?? [];
     items.push({ key: p.path, title: p.title, to: `${clusterPath(cluster)}/${p.path}` });
     bySection.set(p.section, items);
   }
   const has = (section: string) =>
-    section === 'Custom Resources' ? custom.length > 0 : (bySection.get(section)?.length ?? 0) > 0;
+    section === 'Custom Resources'
+      ? custom.length > 0
+      : section === 'Modules'
+        ? entries.length > 0
+        : (bySection.get(section)?.length ?? 0) > 0;
   return (
     <>
       {SECTIONS.filter(has).map((section) =>
@@ -79,6 +112,11 @@ export function Sidebar({ cluster, discovery, canList }: SidebarProps) {
           <section key={section} aria-label={section} className="sidebar-section">
             <h2>{section}</h2>
             <CrdSidebarSection cluster={cluster} kinds={custom} />
+          </section>
+        ) : section === 'Modules' ? (
+          <section key={section} aria-label={section} className="sidebar-section">
+            <h2>{section}</h2>
+            <ModuleLinks cluster={cluster} entries={entries} />
           </section>
         ) : (
           <section key={section} aria-label={section} className="sidebar-section">
@@ -117,5 +155,6 @@ export function ResourceSidebar({ cluster }: { cluster: string }) {
     const i = checks.findIndex((c) => c.group === group && c.resource === resource);
     return i < 0 ? undefined : access.data?.[i]?.allowed;
   };
-  return <Sidebar cluster={cluster} discovery={discovery.data} canList={canList} />;
+  const modules = useModules(cluster);
+  return <Sidebar cluster={cluster} discovery={discovery.data} modules={modules} canList={canList} />;
 }
