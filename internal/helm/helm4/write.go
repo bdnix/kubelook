@@ -8,6 +8,8 @@ import (
 	"slices"
 	"time"
 
+	"helm.sh/helm/v4/pkg/kube"
+
 	"helm.sh/helm/v4/pkg/action"
 	chart "helm.sh/helm/v4/pkg/chart/v2"
 	"helm.sh/helm/v4/pkg/chart/v2/loader"
@@ -22,6 +24,10 @@ import (
 
 // operationTimeout is the fixed timeout of every Helm operation in v1.
 const operationTimeout = 10 * time.Minute
+
+// waitStrategy is what the Helm 4 CLI uses without --wait: it waits for hook Pods and Jobs only. The SDK has no
+// default and refuses to run without one ("wait strategy not set").
+const waitStrategy = kube.HookOnlyStrategy
 
 // Locator finds a chart by reference and returns the path of the downloaded archive. It is the SDK's
 // ChartPathOptions.LocateChart, called on an install action that carries the registry client; tests replace it.
@@ -131,6 +137,7 @@ func (a *Adapter) Install(ctx context.Context, o helm.InstallOptions) (*helm.Rel
 	inst.ReleaseName = o.Name
 	inst.Namespace = o.Namespace
 	inst.Timeout = operationTimeout
+	inst.WaitStrategy = waitStrategy
 	done, err := inst.RunWithContext(ctx, ch, o.Values)
 	if err != nil {
 		return nil, fmt.Errorf("installing %s/%s: %w", o.Namespace, o.Name, err)
@@ -165,6 +172,7 @@ func (a *Adapter) Upgrade(ctx context.Context, o helm.UpgradeOptions) (*helm.Rel
 	up := action.NewUpgrade(cfg)
 	up.Namespace = o.Namespace
 	up.Timeout = operationTimeout
+	up.WaitStrategy = waitStrategy
 	up.ServerSideApply = applyFollowsRelease
 	done, err := up.RunWithContext(ctx, o.Name, ch, o.Values)
 	if err != nil {
@@ -192,6 +200,7 @@ func (a *Adapter) Rollback(ctx context.Context, namespace, name string, revision
 	rb := action.NewRollback(cfg)
 	rb.Version = revision
 	rb.Timeout = operationTimeout
+	rb.WaitStrategy = waitStrategy
 	rb.ServerSideApply = applyFollowsRelease
 	if err := rb.Run(name); err != nil {
 		return fmt.Errorf("rolling back %s/%s to revision %d: %w", namespace, name, revision, notFoundOr(err))
@@ -215,6 +224,7 @@ func (a *Adapter) Uninstall(_ context.Context, namespace, name string) error {
 	}
 	u := action.NewUninstall(cfg)
 	u.Timeout = operationTimeout
+	u.WaitStrategy = waitStrategy
 	if _, err := u.Run(name); err != nil {
 		return notFound(namespace, name, err)
 	}
