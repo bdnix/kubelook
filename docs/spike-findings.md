@@ -53,7 +53,7 @@ Written answers to the spec's "To confirm in the spike" list. Each section has t
 
 ## U1: minting credentials on Vault 2.2.1
 
-- **Result:** open — answered by the first green run of the `integration-tests` job (Step 7.2 acceptance, `hack/vault-setup.sh`).
-- **How it was checked:** Step 7.2 acceptance and `TestVault_*`.
-- **Date:** —
-- **Consequence for the plan:** if minting fails, fix the harness, not the product; if the discovery results differ from §2, stop and report to the repository owner.
+- **Result:** works. Vault 2.2.1 mints service account tokens on both kind clusters (Kubernetes 1.35 and 1.37) through `kubernetes/<cluster>/creds/<role>`, with a role bound to `cluster-admin` and one bound to `view`. The two policy results of plan §2 held too: a token lists only the mounts its policies allow, and a `create`-only grant does not count as `update`.
+- **How it was checked:** `hack/vault-setup.sh` (it runs on every `make it-up`) and `TestVault_Discovery_…`, `TestVault_Open_…`, `TestVault_ViewerRole_…` and `TestVault_Remint_…` in the `integration-tests` job.
+- **Date:** 2026-11-20
+- **Consequence for the plan:** none. Mounts need the `itops` namespace to exist in the cluster, or minting fails.
