@@ -18,10 +18,10 @@ Written answers to the spec's "To confirm in the spike" list. Each section has t
 
 ## YAML save conflict rate on a busy object
 
-- **Result:** open — answered in Step 7.7.
-- **How it was checked:** Step 7.7 edit test variant: 20 saves during a rollout, count of 409 answers (recorded, not asserted).
-- **Date:** —
-- **Consequence for the plan:** open an issue proposing patch-on-save; do not change behaviour without the owner's decision.
+- **Result:** one run, recorded and not asserted: 20 saves of a Deployment during a rollout, 19 saved and 1 refused with 409. One run is a sample, not a rate; the number varies with how fast the rollout moves.
+- **How it was checked:** `TestEdit_ConflictRateOnABusyObject_IsRecordedNotAsserted` in the `integration-tests` job; it writes `.it/findings/yaml-save-conflicts.txt`, which the job prints.
+- **Date:** 2026-11-20
+- **Consequence for the plan:** a conflict is rare enough that a full PUT with a conflict banner is workable; the owner may still decide on patch-on-save. Behaviour is not changed.
 
 ## Trivy rescans after report deletion
 
