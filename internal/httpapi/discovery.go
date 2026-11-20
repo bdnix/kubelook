@@ -19,6 +19,7 @@ func (d Deps) registerKube(mux *http.ServeMux) {
 	d.registerActions(mux)
 	d.registerBulk(mux)
 	d.registerHelm(mux)
+	d.registerFlux(mux)
 	d.registerLogs(mux)
 	d.registerMetrics(mux)
 	d.registerModules(mux)

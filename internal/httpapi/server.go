@@ -13,6 +13,7 @@ import (
 	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/execs"
+	"github.com/bdnix/kubelook/internal/flux"
 	"github.com/bdnix/kubelook/internal/helm"
 	"github.com/bdnix/kubelook/internal/jobs"
 	"github.com/bdnix/kubelook/internal/kube"
@@ -51,6 +52,8 @@ type Deps struct {
 	Kube kube.Clients
 	// Jobs runs long actions as durable jobs; nil → the job endpoints are not mounted.
 	Jobs *jobs.Runner
+	// Flux reads what Kustomizations and HelmReleases manage; nil → the inventory endpoint is not mounted.
+	Flux *flux.Inventory
 	// Helm lists and changes Helm releases; nil → the Helm endpoints are not mounted.
 	Helm *helm.Service
 	// Metrics reads pod and node usage; nil → the metrics endpoints are not mounted.

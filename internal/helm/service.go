@@ -154,3 +154,12 @@ func validAction(a string) bool {
 	}
 	return false
 }
+
+// Manifest is the manifest of a release with the values of Secrets masked; it reads nothing the details do not show.
+func (s *Service) Manifest(ctx context.Context, sess session.Session, cluster, namespace, name string) (string, error) {
+	d, _, err := s.Detail(ctx, sess, cluster, namespace, name, 0)
+	if err != nil {
+		return "", err
+	}
+	return d.Manifest, nil
+}

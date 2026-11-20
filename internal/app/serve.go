@@ -22,6 +22,7 @@ import (
 	"github.com/bdnix/kubelook/internal/crypto"
 	"github.com/bdnix/kubelook/internal/execs"
 	"github.com/bdnix/kubelook/internal/files"
+	"github.com/bdnix/kubelook/internal/flux"
 	"github.com/bdnix/kubelook/internal/helm"
 	"github.com/bdnix/kubelook/internal/helm/helm4"
 	"github.com/bdnix/kubelook/internal/httpapi"
@@ -204,7 +205,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, Jobs: c.jobs, Helm: helmService, WS: c.ws,
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, Jobs: c.jobs, Helm: helmService, Flux: &flux.Inventory{Clients: kubeClients, Helm: helmService}, WS: c.ws,
 		Metrics:  metrics.New(metrics.Deps{Clients: kubeClients, Clock: o.Clock, Prometheus: cfg.Prometheus}),
 		Debugger: execs.NewDebugger(execs.DebuggerDeps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit, Rand: o.Rand, Debug: cfg.Debug, NodeShell: cfg.NodeShell}), VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
