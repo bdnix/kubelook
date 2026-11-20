@@ -41,7 +41,7 @@ func (h *Hub) Factory() ws.Factory {
 		}
 		sess := c.Session()
 		key := Key{
-			SessionHash: sess.Hash, UserID: sess.UserID, Cluster: req.Cluster, Namespace: req.Namespace, FieldSelector: req.FieldSelector,
+			UserID: sess.UserID, Cluster: req.Cluster, Namespace: req.Namespace, FieldSelector: req.FieldSelector,
 			GVR: schema.GroupVersionResource{Group: req.Group, Version: req.Version, Resource: req.Resource},
 		}
 		wc := &channel{conn: c, ch: ch}
@@ -50,7 +50,7 @@ func (h *Hub) Factory() ws.Factory {
 			return nil, err
 		}
 		wc.unsub = unsub
-		wc.cancelVis = c.OnVisibility(func(bool) { h.ActivityChanged(key) })
+		wc.cancelVis = c.OnVisibility(func(bool) { h.ActivityChanged(sess, key) })
 		return wc, nil
 	}
 }

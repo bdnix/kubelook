@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { installGuard } from './guard';
 import { json, me, mockApi } from './helpers';
+
+installGuard();
 
 const kubeconfig = 'apiVersion: v1\nkind: Config\n';
 const source = {

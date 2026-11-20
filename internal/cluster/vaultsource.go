@@ -157,17 +157,38 @@ func (s *vaultSource) token(ctx context.Context, e *entry) (string, error) {
 	o := s.o
 	remint := o.d.Config.Vault.RemintBefore.D()
 	cred := s.current(e)
-	if cred.ExpiresAt.Sub(o.d.Clock.Now()) > remint {
+	now := o.d.Clock.Now()
+	if cred.ExpiresAt.Sub(now) > remint {
 		return cred.Token, nil
+	}
+	if now.Before(cred.ExpiresAt) && now.Before(s.pausedUntil(e)) {
+		return cred.Token, nil // Vault was down a moment ago: keep using the valid credential, do not wait for it again
 	}
 	err := o.flight.do(entryKey(e.sess.Hash, e.ref.ID), func() error { return s.remint(ctx, e) })
 	if err != nil {
 		if errors.Is(err, errVaultDown) && o.d.Clock.Now().Before(cred.ExpiresAt) {
+			s.pause(e)
 			return cred.Token, nil // Vault is down but the credential still works
 		}
 		return "", err
 	}
 	return s.current(e).Token, nil
+}
+
+// remintPause is how long a still-valid credential is used without asking Vault again after Vault was
+// unreachable. A hung Vault costs the whole request timeout per attempt, and one page makes several calls.
+const remintPause = 30 * time.Second
+
+func (s *vaultSource) pausedUntil(e *entry) time.Time {
+	s.o.mu.Lock()
+	defer s.o.mu.Unlock()
+	return e.remintPausedUntil
+}
+
+func (s *vaultSource) pause(e *entry) {
+	s.o.mu.Lock()
+	defer s.o.mu.Unlock()
+	e.remintPausedUntil = s.o.d.Clock.Now().Add(remintPause)
 }
 
 func (s *vaultSource) remint(ctx context.Context, e *entry) error {

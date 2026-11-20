@@ -1,0 +1,9 @@
+# Used instead of the repository's .dockerignore for this Dockerfile, which needs test/ in its context.
+.git
+.it
+bin
+web
+docs
+deploy
+.github
+coverage.out

@@ -1,82 +1,28 @@
 import { expect, test, type Page } from '@playwright/test';
+import { cluster, discovery, mockSocket, pod } from './fixtures';
+import { installGuard } from './guard';
 import { json, me, mockApi } from './helpers';
 
-const sources = (state: string) => ({
-  sources: [
-    {
-      type: 'vault',
-      label: 'Vault',
-      status: 'ok',
-      clusters: [{ id: 'v:prod', name: 'prod', state, roles: ['devops-role'] }],
-    },
-  ],
-});
+installGuard();
 
-const discovery = {
-  serverVersion: 'v1.35.0',
-  resources: [
-    {
-      group: '',
-      version: 'v1',
-      resource: 'pods',
-      kind: 'Pod',
-      namespaced: true,
-      verbs: ['list', 'watch'],
-      preferred: true,
-      servedVersions: ['v1'],
-    },
-  ],
-};
+const items = (d: Record<string, unknown>) =>
+  d.resource === 'pods' ? [pod('1', 'web-1', 'Running'), pod('2', 'web-2', 'Pending')] : [];
 
-const pod = (uid: string, name: string, phase: string) => ({
-  metadata: {
-    uid,
-    name,
-    namespace: 'shop',
-    creationTimestamp: new Date(Date.now() - 3 * 3600_000).toISOString(),
-  },
-  spec: { nodeName: 'node-a', containers: [{ name: 'app' }, { name: 'sidecar' }] },
-  status: {
-    phase,
-    containerStatuses: [{ ready: phase === 'Running', restartCount: 2, state: { running: {} } }],
-  },
-});
-
-/** Plays the server of the WebSocket: answers watch.open with a snapshot and lets the test push events. */
-async function mockSocket(page: Page) {
-  const pushes: Array<(frame: unknown) => void> = [];
-  await page.routeWebSocket('**/api/v1/ws', (ws) => {
-    pushes.push((frame) => ws.send(JSON.stringify(frame)));
-    ws.onMessage((raw) => {
-      const msg = JSON.parse(String(raw)) as { op: string; ch: number };
-      if (msg.op === 'watch.open') {
-        ws.send(JSON.stringify({ ch: msg.ch, t: 'opened' }));
-        ws.send(
-          JSON.stringify({
-            ch: msg.ch,
-            t: 'snapshot',
-            d: {
-              items: [pod('1', 'web-1', 'Running'), pod('2', 'web-2', 'Pending')],
-              resourceVersion: '5',
-              more: false,
-            },
-          }),
-        );
-      }
+/** The shared socket stand-in, plus the log lines this file's logs test needs. */
+const mockLive = (page: Page) =>
+  mockSocket(page, {
+    items,
+    extra: (msg, send) => {
       if (msg.op === 'logs.open') {
-        ws.send(JSON.stringify({ ch: msg.ch, t: 'opened' }));
-        ws.send(
-          JSON.stringify({
-            ch: msg.ch,
-            t: 'lines',
-            d: { lines: [{ ts: '2026-11-14T12:00:00Z', text: 'server listening on :8080' }] },
-          }),
-        );
+        send({ ch: msg.ch, t: 'opened' });
+        send({
+          ch: msg.ch,
+          t: 'lines',
+          d: { lines: [{ ts: '2026-11-14T12:00:00Z', text: 'server listening on :8080' }] },
+        });
       }
-    });
+    },
   });
-  return { push: (frame: unknown) => pushes.forEach((p) => p(frame)) };
-}
 
 test('opens a cluster and shows its pods live, with status badges and updates from the server', async ({
   page,
@@ -85,7 +31,7 @@ test('opens a cluster and shows its pods live, with status badges and updates fr
   await mockApi(page, {
     'GET /me': (r) => r.fulfill(json(me)),
     'GET /status': (r) => r.fulfill(json({ vault: { configured: true, reachable: true, since: null } })),
-    'GET /clusters': (r) => r.fulfill(json(sources(opened ? 'open' : 'closed'))),
+    'GET /clusters': (r) => r.fulfill(json(cluster.sources(opened ? 'open' : 'closed'))),
     'POST /clusters/v%3Aprod/open': (r) => {
       expect(r.request().headers()['x-csrf-token']).toBe('csrf-1');
       opened = true;
@@ -93,7 +39,7 @@ test('opens a cluster and shows its pods live, with status badges and updates fr
     },
     'GET /clusters/v%3Aprod/discovery': (r) => r.fulfill(json(discovery)),
   });
-  const socket = await mockSocket(page);
+  const socket = await mockLive(page);
 
   await page.goto('/');
   await page.getByRole('navigation', { name: 'Clusters' }).getByRole('link', { name: 'prod' }).click();
@@ -119,10 +65,10 @@ test('a pod opens its logs in the dock, which survives navigating to another pag
   await mockApi(page, {
     'GET /me': (r) => r.fulfill(json(me)),
     'GET /status': (r) => r.fulfill(json({ vault: { configured: true, reachable: true, since: null } })),
-    'GET /clusters': (r) => r.fulfill(json(sources('open'))),
+    'GET /clusters': (r) => r.fulfill(json(cluster.sources('open'))),
     'GET /clusters/v%3Aprod/discovery': (r) => r.fulfill(json(discovery)),
   });
-  await mockSocket(page);
+  await mockLive(page);
 
   await page.goto('/c/v%3Aprod/core/Pod');
   const grid = page.getByRole('grid', { name: 'Pods' });
@@ -161,7 +107,7 @@ test('while Vault is unreachable the banner shows and closed Vault clusters cann
     'GET /me': (r) => r.fulfill(json(me)),
     'GET /status': (r) =>
       r.fulfill(json({ vault: { configured: true, reachable: false, since: '2026-11-14T12:00:00Z' } })),
-    'GET /clusters': (r) => r.fulfill(json(sources('closed'))),
+    'GET /clusters': (r) => r.fulfill(json(cluster.sources('closed'))),
   });
   await page.goto('/');
   await expect(page.getByRole('alert')).toContainText(

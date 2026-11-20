@@ -163,7 +163,7 @@ func (s *Server) PadResponses(n int) {
 	s.padBytes = n
 }
 
-// Calls returns how often an endpoint was called: "lookup-self", "renew-self", "mounts", "capabilities", "config", "creds", "health".
+// Calls returns how often an endpoint was called: "lookup-self", "renew-self", "mounts", "capabilities", "config", "creds", "health", and "hung-up" (requests answered by closing the connection).
 func (s *Server) Calls(endpoint string) int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -202,6 +202,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.hangUp {
+		s.counts["hung-up"]++
 		if hj, ok := w.(http.Hijacker); ok {
 			if conn, _, err := hj.Hijack(); err == nil {
 				_ = conn.Close()

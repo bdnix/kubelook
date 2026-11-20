@@ -2,7 +2,7 @@
 
 A browser-based Kubernetes console. Sign in with a Vault token or an uploaded kubeconfig and operate every cluster that credential reaches, with no desktop install.
 
-> **Under construction.** Built so far: sign-in, Vault and kubeconfig clusters, live resource lists, logs, shells, YAML editing, workload and node actions and the pod file browser. They are covered by unit tests and have not yet been run against a real cluster or Vault; that is the next step of the [implementation plan](PLAN.md). Not built yet: Helm, Flux, the ecosystem modules, the Helm chart and a release.
+> **Under construction.** What exists: sign-in with Google or GitHub, Vault and kubeconfig clusters, live resource lists, logs, shells, YAML editing, workload and node actions, and the pod file browser. They are covered by unit tests and by integration tests that run the real image against a real Vault and two real Kubernetes clusters (see the [implementation plan](PLAN.md)). What does not exist yet: Helm, Flux, the ecosystem modules, the Helm chart and a release.
 
 ## Spec
 

@@ -184,7 +184,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	}))
 	c.ws.Register("exec.open", execs.NewFactory(execs.Deps{
 		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit,
-		IdleTimeout: time.Duration(cfg.Shell.IdleTimeout), KeepAlive: mgr.KeepAlive, NodeShell: cfg.NodeShell.IsEnabled(),
+		IdleTimeout: time.Duration(cfg.Shell.IdleTimeout), KeepAlive: mgr.KeepAlive, NodeShell: cfg.NodeShell.IsEnabled(), Log: log,
 	}))
 	c.ws.Register("file.open", files.NewFactory(files.Deps{
 		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit, Enabled: cfg.FileBrowser.IsEnabled(),
