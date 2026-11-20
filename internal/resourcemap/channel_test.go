@@ -111,7 +111,9 @@ func (c *conn) graphs() []resourcemap.Graph {
 	return out
 }
 
-type access struct{ deny func(resource, namespace string) bool }
+type access struct {
+	deny func(resource, namespace string) bool
+}
 
 func (a access) Can(_ context.Context, _ session.Session, _ string, c kube.Check) (bool, string, error) {
 	if a.deny != nil && a.deny(c.Resource, c.Namespace) {
@@ -160,7 +162,7 @@ func (r *rig) snapshot(resource, namespace string, items ...*unstructured.Unstru
 	sub.Snapshot(items, "1")
 }
 
-// every watch answers with an empty list, so the graph is sent
+// every watch of the namespace answers with an empty list
 func (r *rig) settle(namespace string, except ...string) {
 	skip := map[string]bool{}
 	for _, e := range except {
@@ -238,7 +240,9 @@ func TestOpen_NamespacesThatDoNotFitAreReported(t *testing.T) {
 	}
 	r.open(t, map[string]any{"cluster": "c", "namespaces": many})
 	r.settle("", "pods")
-	r.settle("a-ns")
+	for _, ns := range many {
+		r.settle(ns)
+	}
 	r.snapshot("pods", "", o("v1", "Pod", "a-ns", "p", nil))
 	g := r.conn.graphs()[0]
 	assert.NotEmpty(t, g.LeftOutNamespaces)
