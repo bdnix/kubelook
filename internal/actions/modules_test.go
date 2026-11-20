@@ -34,7 +34,7 @@ func TestEso_ForceSyncSetsTheAnnotationFromTheClock(t *testing.T) {
 	require.NoError(t, e.do("esoForceSync", fluxTarget("external-secrets.io", "v1", "externalsecrets", "db"), nil))
 	p := e.lastPatch(t)
 	assert.Equal(t, types.MergePatchType, p.PatchType)
-	assert.JSONEq(t, `{"metadata":{"annotations":{"force-sync":"1794484800"}}}`, string(p.Patch), "unix seconds of the fake clock, 2026-11-14T12:00:00Z")
+	assert.JSONEq(t, `{"metadata":{"annotations":{"force-sync":"1794657600"}}}`, string(p.Patch), "unix seconds of the fake clock, 2026-11-14T12:00:00Z")
 	assert.Equal(t, []string{"module-action:requested", "module-action:success"}, e.verbs(t))
 }
 

@@ -76,6 +76,7 @@ func New(d Deps) *Service {
 	registerWorkloads(s.handlers)
 	registerNodes(s.handlers)
 	registerFlux(s.handlers)
+	registerModules(s.handlers)
 	return s
 }
 
