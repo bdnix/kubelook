@@ -75,6 +75,7 @@ func New(d Deps) *Service {
 	s := &Service{d: d, handlers: map[string]handler{}}
 	registerWorkloads(s.handlers)
 	registerNodes(s.handlers)
+	registerFlux(s.handlers)
 	return s
 }
 

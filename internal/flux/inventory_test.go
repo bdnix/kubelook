@@ -3,6 +3,7 @@ package flux_test
 import (
 	"context"
 	"errors"
+	"maps"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -67,6 +68,7 @@ func newInventory(t *testing.T, h flux.HelmManifests, objs ...map[string]any) *f
 		&metav1.APIResourceList{GroupVersion: "rbac.authorization.k8s.io/v1", APIResources: []metav1.APIResource{{Name: "clusterroles", Kind: "ClusterRole", Namespaced: false, Verbs: metav1.Verbs{"get", "list"}}}},
 	)
 	for i, o := range objs {
+		o = maps.Clone(o)
 		u := fakekube.Object(o["apiVersion"].(string), o["kind"].(string), "flux-system", o["name"].(string), nil)
 		delete(o, "apiVersion")
 		delete(o, "kind")

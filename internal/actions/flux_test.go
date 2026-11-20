@@ -108,10 +108,7 @@ func TestFlux_FluxReportCannotBeSuspendedButCanBeReconciled(t *testing.T) {
 	e.serveFlux("fluxcd.controlplane.io", "v1", "fluxreports", "FluxReport", true)
 	e.fluxObject("fluxcd.controlplane.io", "v1", "FluxReport", "flux", nil)
 	tg := fluxTarget("fluxcd.controlplane.io", "v1", "fluxreports", "flux")
-	err := e.do("fluxSuspend", tg, nil)
-	var api *apperr.APIError
-	require.ErrorAs(t, err, &api)
-	assert.Equal(t, 400, api.Status)
+	assert.ErrorIs(t, e.do("fluxSuspend", tg, nil), apperr.ErrInvalid, "answered with 400")
 	assert.ErrorIs(t, e.do("fluxResume", tg, nil), apperr.ErrInvalid)
 	assert.Empty(t, e.verbs(t))
 	assert.NoError(t, e.do("fluxReconcile", tg, nil))
