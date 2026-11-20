@@ -118,7 +118,3 @@ func TestRelease_ARecordWithoutAnApplyMethodIsClientSideApply(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "csa", got[0].ApplyMethod)
 }
-
-func TestWriteMethods_AreNotImplementedYet(t *testing.T) {
-	assert.NotNil(t, seeded(t))
-}
