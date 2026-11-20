@@ -44,6 +44,31 @@ func isHelmRelease(obj *unstructured.Unstructured) bool {
 	return false
 }
 
+const trivyGroup = "aquasecurity.github.io"
+
+// isExposedSecretReport tells the Trivy Operator reports that hold the text a scanner matched as a secret.
+func isExposedSecretReport(obj *unstructured.Unstructured) bool {
+	if obj.GetKind() != "ExposedSecretReport" && obj.GetKind() != "ClusterExposedSecretReport" {
+		return false
+	}
+	group, _, _ := strings.Cut(obj.GetAPIVersion(), "/")
+	return group == trivyGroup
+}
+
+// dropMatches removes `report.secrets[*].match`: the text the scanner found is a real secret.
+func dropMatches(obj *unstructured.Unstructured) {
+	secrets, ok, _ := unstructured.NestedSlice(obj.Object, "report", "secrets")
+	if !ok {
+		return
+	}
+	for _, s := range secrets {
+		if m, ok := s.(map[string]any); ok {
+			delete(m, "match")
+		}
+	}
+	_ = unstructured.SetNestedSlice(obj.Object, secrets, "report", "secrets")
+}
+
 // Apply redacts obj in place. It returns false when the object must not be shown at all
 // (Helm's release records, which hold every value of a release).
 func Apply(obj *unstructured.Unstructured) (keep bool) {
@@ -51,6 +76,9 @@ func Apply(obj *unstructured.Unstructured) (keep bool) {
 		return false
 	}
 	unstructured.RemoveNestedField(obj.Object, "metadata", "managedFields")
+	if isExposedSecretReport(obj) {
+		dropMatches(obj)
+	}
 	if !isSecret(obj) {
 		return true
 	}
