@@ -5,6 +5,7 @@ import { externalSecretsDescriptors } from './externalsecrets';
 import { gatewayDescriptors } from './gatewayapi';
 import { karpenterDescriptors } from './karpenter';
 import { kedaDescriptors } from './keda';
+import { vaultSecretDescriptors } from './vaultsecrets';
 import { getString } from '../lib/path';
 import * as access from './core/access';
 import * as cluster from './core/cluster';
@@ -26,6 +27,7 @@ const KINDS: KindDescriptor[] = [
   ...externalSecretsDescriptors(),
   ...certManagerDescriptors(),
   ...gatewayDescriptors(),
+  ...vaultSecretDescriptors(),
 ];
 
 /** Whether the kind has a descriptor of its own (otherwise it is a custom resource or gets the plain columns). */

@@ -10,6 +10,8 @@ import { podsForService, podsMountingClaim, servicesOfIngress } from '../../lib/
 import type { K8sObject } from '../../state/live';
 import { CertificateDetails, mayHoldCertificates } from '../secrets/CertificateDetails';
 import { SecretData } from '../secrets/SecretData';
+import { SecretOperatorBanner } from '../vaultsecrets/SecretOperatorBanner';
+import { VaultSecretOverview } from '../vaultsecrets/VaultSecretOverview';
 import { NodeClaimDetails } from '../karpenter/NodeClaimDetails';
 import { NodeKarpenterSection } from '../karpenter/NodeKarpenterSection';
 import { FluxOverview } from '../flux/FluxOverview';
@@ -278,6 +280,7 @@ export function OverviewTab({ cluster, group, kind, object, now, chain, pods }: 
       )}
       {isCore && kind === 'Secret' && (
         <>
+          <SecretOperatorBanner cluster={cluster} secret={object} />
           <SecretData cluster={cluster} secret={object} />
           <CertificateDetails
             cluster={cluster}
@@ -286,6 +289,9 @@ export function OverviewTab({ cluster, group, kind, object, now, chain, pods }: 
             enabled={mayHoldCertificates(object)}
           />
         </>
+      )}
+      {group === 'ricoberger.de' && kind === 'VaultSecret' && (
+        <VaultSecretOverview cluster={cluster} object={object} now={now} />
       )}
       {isCore && kind === 'Node' && <NodeSection object={object} />}
       {isCore && kind === 'Node' && <NodeKarpenterSection cluster={cluster} node={object} />}
