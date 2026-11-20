@@ -72,7 +72,7 @@ describe('crdDescriptor', () => {
     expect(crdDescriptor(crd, 'v9').columns.map((c) => c.title)).toEqual(['Name', 'Namespace', 'Age']);
   });
 
-  it('skips the priority-1 columns only when they have no path', () => {
+  it('skips a printer column that has no path', () => {
     const d = crdDescriptor(
       { spec: { ...crd.spec, versions: [{ name: 'v1', additionalPrinterColumns: [{ name: 'Bad', type: 'string' }] }] } },
       'v1',
