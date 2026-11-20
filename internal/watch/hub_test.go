@@ -19,6 +19,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8swatch "k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 	clienttesting "k8s.io/client-go/testing"
 
 	"github.com/bdnix/kubelook/internal/apperr"
@@ -33,11 +34,12 @@ var (
 	t0      = time.Date(2026, 11, 14, 12, 0, 0, 0, time.UTC)
 	podsGVR = schema.GroupVersionResource{Version: "v1", Resource: "pods"}
 	sessA   = session.Session{Hash: "sa", UserID: "u1"}
+	sessA2  = session.Session{Hash: "sa2", UserID: "u1"} // a second session of the same user
 	sessB   = session.Session{Hash: "sb", UserID: "u2"}
 )
 
 func keyFor(s session.Session, ns string) watch.Key {
-	return watch.Key{SessionHash: s.Hash, UserID: s.UserID, Cluster: "c", GVR: podsGVR, Namespace: ns}
+	return watch.Key{UserID: s.UserID, Cluster: "c", GVR: podsGVR, Namespace: ns}
 }
 
 // rec is a subscriber that reports every call on a channel.
@@ -80,11 +82,33 @@ type spyClients struct {
 	lists    []metav1.ListOptions
 	watches  []metav1.ListOptions
 	watchers chan *k8swatch.FakeWatcher
+	// dynSessions are the session hashes Dynamic was called with, in order.
+	dynSessions []string
+	// pager, when set, answers every list instead of the fake (tests serve pages with it).
+	pager func(metav1.ListOptions) (*unstructured.UnstructuredList, error)
+	// restFor, when set, answers REST (tests give sessions different credentials with it).
+	restFor func(sess session.Session) *rest.Config
 }
 
 func (s *spyClients) Dynamic(ctx context.Context, sess session.Session, id string) (dynamic.Interface, error) {
+	s.mu.Lock()
+	s.dynSessions = append(s.dynSessions, sess.Hash)
+	s.mu.Unlock()
 	d, err := s.Clients.Dynamic(ctx, sess, id)
 	return spyDyn{d, s}, err
+}
+
+func (s *spyClients) REST(ctx context.Context, sess session.Session, id string) (*rest.Config, error) {
+	if s.restFor != nil {
+		return s.restFor(sess), nil
+	}
+	return s.Clients.REST(ctx, sess, id)
+}
+
+func (s *spyClients) sessionsSeen() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string(nil), s.dynSessions...)
 }
 
 func (s *spyClients) counts() (lists, watches int) {
@@ -111,6 +135,9 @@ func (r spyRes) List(ctx context.Context, o metav1.ListOptions) (*unstructured.U
 	r.s.mu.Lock()
 	r.s.lists = append(r.s.lists, o)
 	r.s.mu.Unlock()
+	if r.s.pager != nil {
+		return r.s.pager(o)
+	}
 	return r.NamespaceableResourceInterface.List(ctx, o)
 }
 
@@ -134,6 +161,9 @@ func (r spyNs) List(ctx context.Context, o metav1.ListOptions) (*unstructured.Un
 	r.s.mu.Lock()
 	r.s.lists = append(r.s.lists, o)
 	r.s.mu.Unlock()
+	if r.s.pager != nil {
+		return r.s.pager(o)
+	}
 	return r.ResourceInterface.List(ctx, o)
 }
 
@@ -488,11 +518,11 @@ func TestHub_Idle_ReturningBeforeTheTimeoutCancelsTheStop(t *testing.T) {
 	e.watcher(t)
 
 	r.active.Store(false)
-	e.hub.ActivityChanged(keyFor(sessA, ""))
+	e.hub.ActivityChanged(sessA, keyFor(sessA, ""))
 	e.clock.BlockUntil(1)
 	e.clock.Advance(9 * time.Second)
 	r.active.Store(true)
-	e.hub.ActivityChanged(keyFor(sessA, ""))
+	e.hub.ActivityChanged(sessA, keyFor(sessA, ""))
 	e.clock.Advance(5 * time.Second) // the cancelled timer would have fired by now
 	e.clock.Advance(20 * time.Second)
 
@@ -585,7 +615,7 @@ func TestHub_Close_RefusesNewSubscribers(t *testing.T) {
 
 func TestHub_ActivityChanged_UnknownKeyIsIgnored(t *testing.T) {
 	e := newHubEnv(t)
-	e.hub.ActivityChanged(keyFor(sessA, "nope"))
+	e.hub.ActivityChanged(sessA, keyFor(sessA, "nope"))
 }
 
 func TestHub_WatchErrorEventThatIsNotGone_BacksOffAndReconnects(t *testing.T) {

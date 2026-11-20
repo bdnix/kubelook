@@ -93,7 +93,9 @@ type entry struct {
 	expires  time.Time
 	lastUsed time.Time
 	vcred    vaultClusterCred // vault
-	kube     *kubeState       // kubeconfig
+	// remintPausedUntil: while Vault is unreachable, no re-mint is tried before this time (vault)
+	remintPausedUntil time.Time
+	kube              *kubeState // kubeconfig
 }
 
 // Opener turns a cluster ID into working Kubernetes credentials.

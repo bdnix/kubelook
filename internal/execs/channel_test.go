@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"sync"
 	"testing"
@@ -392,6 +393,21 @@ func TestShell_BadOpsAndOpenRequests(t *testing.T) {
 	assert.ErrorIs(t, err, apperr.ErrInvalid)
 	_, err = execs.Open(t.Context(), e.deps, e.sink, sess, 2, json.RawMessage(`{"cluster":"c"}`))
 	assert.ErrorIs(t, err, apperr.ErrInvalid)
+}
+
+func TestShell_UnexpectedStreamError_IsLoggedWithItsCauseAndThePod(t *testing.T) {
+	e := newEnv(t)
+	var logs bytes.Buffer
+	e.deps.Log = slog.New(slog.NewTextHandler(&logs, nil))
+	e.exec.scripts["/bin/bash"] = func(context.Context, execs.ExecRequest, execs.StreamIO) error {
+		return errors.New("connection reset by peer")
+	}
+	_, err := e.open(80, 24)
+	require.NoError(t, err)
+	e.next()
+	assert.Equal(t, "error", testutil.Recv(t, e.sink.closed))
+	assert.Contains(t, logs.String(), "connection reset by peer", "the user sees general words, the log has the cause")
+	assert.Contains(t, logs.String(), "web-1")
 }
 
 func TestShell_UnexpectedStreamErrorIsReportedInGeneralWords(t *testing.T) {

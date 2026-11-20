@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Config
+clusters:
+  - name: demo
+    cluster:
+      server: https://kubelook-it-alpha-control-plane:6443
+      insecure-skip-tls-verify: true
+users:
+  - name: plugin-user
+    user:
+      exec:
+        apiVersion: client.authentication.k8s.io/v1
+        command: /usr/local/bin/get-token
+contexts:
+  - name: demo
+    context: {cluster: demo, user: plugin-user}
+current-context: demo
