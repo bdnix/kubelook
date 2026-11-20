@@ -10,6 +10,8 @@ const items = (d: Record<string, unknown>) => (d.resource === 'pods' ? [pod('1',
 test('Ctrl+K opens the command palette and Enter goes to the chosen kind', async ({ page }) => {
   await setup(page, {}, { items });
   await page.goto(`/c/${cluster.path}/core/ConfigMap`);
+  // the hotkey handler is mounted with the signed-in shell: wait for it
+  await expect(page.getByRole('navigation', { name: 'Resources' })).toBeVisible();
   await page.keyboard.press('Control+k');
 
   const palette = page.getByRole('dialog', { name: 'Command palette' });

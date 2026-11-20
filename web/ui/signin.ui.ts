@@ -1,5 +1,8 @@
 import { expect, test } from '@playwright/test';
+import { installGuard } from './guard';
 import { json, mockApi, unauthenticated } from './helpers';
+
+installGuard();
 
 test.describe('signed out', () => {
   test.beforeEach(async ({ page }) => {
