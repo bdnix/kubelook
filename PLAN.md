@@ -118,7 +118,7 @@ The spec leaves these open. Each line is the decision this plan takes. Items mar
 
 - Every version in §3 exists in its registry (Go module proxy, npm registry, Docker Hub tag lists, upstream git tags).
 - Every GitHub Action commit SHA in Step 0.7–0.9 is the commit that the named tag points to (annotated tags were peeled). The input names used in the workflows exist in each action's `action.yml` at that SHA.
-- One Go module can import `helm.sh/helm/v3@v3.22.1`, `helm.sh/helm/v4@v4.3.1`, `k8s.io/client-go@v0.37.2`, `modernc.org/sqlite@v1.62.0` and `github.com/jackc/pgx/v5@v5.12.0` together and builds with Go 1.27.4 and `CGO_ENABLED=0`.
+- One Go module can import `helm.sh/helm/v3@v3.22.1`, `helm.sh/helm/v4@v4.3.1`, `k8s.io/client-go@v0.37.2`, `modernc.org/sqlite@v1.62.0` and `github.com/jackc/pgx/v5@v5.13.0` together and builds with Go 1.27.4 and `CGO_ENABLED=0`.
 - `go-test-coverage` v2.23.0 with the `.testcoverage.yml` shown in Step 0.3 exits 1 below the threshold and 0 above it, and prints the lines quoted there.
 - Go API facts quoted in the steps (`action.Configuration.Init` signatures for Helm 3 and 4, `kube/fake.PrintingKubeClient`, `storage.Init`, `driver.NewMemory`, `fake.NewClientset`, `remotecommand.NewWebSocketExecutor`, `clientcmd.Load`, `websocket.Accept`, `oauth2.S256ChallengeOption`, `oauth2.VerifierOption`).
 - **Vault 2.2.1, run for real in dev mode** (image digest in §3), with the policies of Step 7.2:
@@ -172,7 +172,7 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 | `net/http` `ServeMux` (standard library) | Go 1.27 | Method and wildcard patterns are built in; no router dependency |
 | `github.com/coder/websocket` | v1.8.15 | Context-aware, maintained WebSocket library with origin checking built into `Accept` |
 | `modernc.org/sqlite` | v1.62.0 | Pure-Go SQLite: static binary with `CGO_ENABLED=0`, runs in a distroless image |
-| `github.com/jackc/pgx/v5` (`stdlib` adapter) | v5.12.0 | Standard PostgreSQL driver; used through `database/sql` so SQLite and PostgreSQL share code |
+| `github.com/jackc/pgx/v5` (`stdlib` adapter) | v5.13.0 | Standard PostgreSQL driver; used through `database/sql` so SQLite and PostgreSQL share code |
 | Hand-written migrator (Step 1.4) | — | ~60 lines over `database/sql`; fully unit-testable; avoids a dependency for two dialects |
 | Hand-written Vault HTTP client (Step 2.5) | — | Kubelook calls six endpoints with a per-request token; `net/http` + `httptest` is simpler and fully fakeable |
 | `golang.org/x/oauth2` | v0.38.0 | Authorization-code flow with PKCE helpers |
@@ -189,13 +189,13 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 
 | Choice | Version | Why |
 | --- | --- | --- |
-| Node.js | 26.13.0 (LTS "Lithium") | Current LTS; satisfies every package's `engines` |
-| npm | the one bundled with Node 26.13.0 | No extra package manager to install |
+| Node.js | 26.13.1 (LTS "Lithium") | Current LTS; satisfies every package's `engines` |
+| npm | the one bundled with Node 26.13.1 | No extra package manager to install |
 | TypeScript | 6.0.3 | Newest version `typescript-eslint` 8.72.2 accepts |
 | React, React DOM | 19.3.1 | Spec: React |
-| Vite, `@vitejs/plugin-react` | 8.3.7, 6.3.0 | Build and dev server |
+| Vite, `@vitejs/plugin-react` | 8.3.8, 6.3.0 | Build and dev server |
 | Vitest, `@vitest/coverage-v8` | 5.1.0, 5.1.0 | Unit tests and coverage thresholds in one tool |
-| `@testing-library/react`, `@testing-library/dom`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom` | 16.3.3, `^10` (latest 10.x at install), 14.6.9, 7.0.1, 31.0.0 | Component tests by role and text |
+| `@testing-library/react`, `@testing-library/dom`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom` | 16.3.3, `^10` (latest 10.x at install), 14.6.11, 7.0.1, 31.0.1 | Component tests by role and text |
 | `fake-indexeddb` | 6.2.8 | In-memory IndexedDB for tests of the saved-credential store |
 | React Router (`react-router`) | 8.5.1 | Deep links |
 | `@tanstack/react-query` | 5.107.1 | Server-state cache for REST calls |
@@ -205,9 +205,9 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 | `d3-force` | 3.0.1 | Force layout for the resource map and Flux graph |
 | `yaml` | 2.9.1 | YAML parse/print in the browser |
 | `idb` | 8.0.4 | Promise wrapper for IndexedDB |
-| ESLint, `typescript-eslint`, `eslint-plugin-react-hooks` | 10.14.0, 8.72.2, 7.1.1 | Lint |
-| Prettier | 3.9.10 | Formatting |
-| `@playwright/test` | 1.65.0 | Browser UI tests of the web app with a mocked API (`web/ui`, from Phase 2, run in CI job `ui-tests`) and full-stack browser tests (`test/e2e`, Phase 7) |
+| ESLint, `typescript-eslint`, `eslint-plugin-react-hooks` | 10.15.0, 8.72.2, 7.1.1 | Lint |
+| Prettier | 3.10.1 | Formatting |
+| `@playwright/test` | 1.65.1 | Browser UI tests of the web app with a mocked API (`web/ui`, from Phase 2, run in CI job `ui-tests`) and full-stack browser tests (`test/e2e`, Phase 7) |
 | CSS | plain CSS files with custom properties | No UI framework: fewer dependencies, themes via variables |
 
 ### Tooling, images, CI
@@ -224,7 +224,7 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 | Helm 3 CLI | v3.22.1, installed as `bin/helm3` by `hack/install-tools.sh` (Step 7.8) | **(amended, M4)** Integration tests only: makes and checks Helm 3 releases for the cross-version test |
 | Vault image | `hashicorp/vault:2.2.1@sha256:962a92876e168d68eaaa24b0b8b49bbce1cb63024060a67bba95cd158a366fc2` | Newest Vault (see U1) |
 | PostgreSQL image | `postgres:18.6-trixie` | Newest stable PostgreSQL |
-| Build images | `golang:1.27.4-trixie`, `node:26.13.0-trixie` | Match tool versions. Digests pinned in the `Dockerfile` |
+| Build images | `golang:1.27.4-trixie`, `node:26.13.1-trixie` | Match tool versions. Digests pinned in the `Dockerfile` |
 | Runtime base image | `gcr.io/distroless/static-debian13:nonroot` | No shell, non-root, small attack surface. Digest pinned in the `Dockerfile` |
 | Debug image base | `nicolaka/netshoot:v0.16` | Spec: default debug image is built from netshoot |
 | Trivy | via `aquasecurity/trivy-action` v0.36.0 | Image vulnerability scan |
@@ -462,7 +462,7 @@ Rules for this grouping:
 
 Outcome: an empty-but-real application (a `kubelook version` command and a one-component web page) with the full pipeline around it: lint, unit tests, a 90% coverage gate that is proven to fail, build, container image with vulnerability scan, push to GHCR, Dependabot. Every later step lands inside this pipeline.
 
-Prerequisites on the executor's machine: Git, Docker (with buildx), Go 1.27.4, Node.js 26.13.0, GNU Make, bash, curl.
+Prerequisites on the executor's machine: Git, Docker (with buildx), Go 1.27.4, Node.js 26.13.1, GNU Make, bash, curl.
 
 ### Step 0.1 — Scaffolding, Makefile, tool pins
 
@@ -475,7 +475,7 @@ Prerequisites on the executor's machine: Git, Docker (with buildx), Go 1.27.4, N
 ```bash
 go mod init github.com/bdnix/kubelook
 go mod edit -go=1.27.4
-printf '26.13.0\n' > web/.nvmrc      # create web/ first: mkdir -p web
+printf '26.13.1\n' > web/.nvmrc      # create web/ first: mkdir -p web
 chmod +x hack/install-tools.sh
 ```
 
@@ -976,10 +976,10 @@ npm pkg delete main keywords author description
 npm pkg set scripts.dev="vite" scripts.build="tsc --noEmit && vite build" scripts.test="vitest run" \
   scripts.lint="eslint . --max-warnings=0" scripts.format:check="prettier --check ." scripts.typecheck="tsc --noEmit"
 npm install --save-exact react@19.3.1 react-dom@19.3.1
-npm install --save-dev --save-exact typescript@6.0.3 vite@8.3.7 @vitejs/plugin-react@6.3.0 \
-  vitest@5.1.0 @vitest/coverage-v8@5.1.0 jsdom@31.0.0 \
-  @testing-library/react@16.3.3 @testing-library/user-event@14.6.9 @testing-library/jest-dom@7.0.1 \
-  eslint@10.14.0 typescript-eslint@8.72.2 eslint-plugin-react-hooks@7.1.1 prettier@3.9.10 \
+npm install --save-dev --save-exact typescript@6.0.3 vite@8.3.8 @vitejs/plugin-react@6.3.0 \
+  vitest@5.1.0 @vitest/coverage-v8@5.1.0 jsdom@31.0.1 \
+  @testing-library/react@16.3.3 @testing-library/user-event@14.6.11 @testing-library/jest-dom@7.0.1 \
+  eslint@10.15.0 typescript-eslint@8.72.2 eslint-plugin-react-hooks@7.1.1 prettier@3.10.1 \
   @types/react@19.3.0
 npm install --save-dev --save-exact @eslint/js@10.0.1 @testing-library/dom@10.4.2 @types/node@26.6.6 @types/react-dom@19.3.0
 ```
@@ -1192,7 +1192,7 @@ make verify        # ends with VERIFY OK  (first time the full gate works)
 
 ```dockerfile
 # syntax=docker/dockerfile:1
-FROM --platform=$BUILDPLATFORM node:26.13.0-trixie AS web
+FROM --platform=$BUILDPLATFORM node:26.13.1-trixie AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci
@@ -1844,7 +1844,7 @@ Purposes used later (constants in this package): `PurposeSavedCredential` (`save
 
 **Files.** Create `internal/store/db.go`, `internal/store/migrate.go`, `internal/store/migrations/0001_init.sql`, `internal/store/db_test.go`, `internal/store/migrate_test.go`, `internal/store/storetest/storetest.go`.
 
-**Red.** `go get modernc.org/sqlite@v1.62.0 github.com/jackc/pgx/v5@v5.12.0`. Cases:
+**Red.** `go get modernc.org/sqlite@v1.62.0 github.com/jackc/pgx/v5@v5.13.0`. Cases:
 - `Open(ctx, Options{Driver:"sqlite", SQLitePath: <temp file>})` returns a `*DB` whose `Dialect()` is `SQLite`; `PRAGMA foreign_keys` reads `1`; `PRAGMA journal_mode` reads `wal`.
 - `Open` with `Driver:"postgres", URL:"postgres://u:p@127.0.0.1:1/db"` returns without connecting (`sql.Open` is lazy) and `Dialect()` is `Postgres`. (No server needed.)
 - `Open` with an unknown driver → error.
@@ -4576,7 +4576,7 @@ One source for the retention period **(amended, M7)**: `retention_days` passed t
 
 **Files.** Create `test/e2e/package.json`, `test/e2e/playwright.config.ts`, `test/e2e/tests/*.spec.ts`, `test/e2e/helpers.ts`.
 
-**Commands.** `cd test/e2e && npm init -y && npm install --save-dev --save-exact @playwright/test@1.65.0 && npx playwright install --with-deps chromium`
+**Commands.** `cd test/e2e && npm init -y && npm install --save-dev --save-exact @playwright/test@1.65.1 && npx playwright install --with-deps chromium`
 
 `playwright.config.ts`: `baseURL: 'http://localhost:18080'`, one worker, `retries: 0`, Chromium only with `launchOptions.args: ['--host-resolver-rules=MAP kubelook-it-fakeidp 127.0.0.1']`, `trace: 'retain-on-failure'`, `expect.timeout: 15000`.
 
