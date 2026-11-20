@@ -157,6 +157,9 @@ jobs:
         run: make it-up
       - name: Integration tests
         run: make it
+      - name: Recorded findings
+        if: ${{ always() }}
+        run: cat .it/findings/* 2>/dev/null || echo "no findings recorded"
       - name: Collect logs
         if: ${{ failure() }}
         run: |
