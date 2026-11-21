@@ -129,8 +129,8 @@ func TestMetrics_Counters_CountByLabel(t *testing.T) {
 func TestMetrics_Durations_AreObservedByLabel(t *testing.T) {
 	m, reg := newMetrics(t, telemetry.Sources{})
 	m.ObserveVault("creds", "ok", 120*time.Millisecond)
-	m.ObserveKube("list", "ok", 30*time.Millisecond)
-	m.ObserveKube("list", "ok", 50*time.Millisecond)
+	m.ObserveKube("get", "ok", 30*time.Millisecond)
+	m.ObserveKube("get", "ok", 50*time.Millisecond)
 	m.ObserveHTTP("GET /api/v1/me", "GET", 200, 5*time.Millisecond)
 	m.ObserveHTTP("GET /api/v1/me", "GET", 401, 5*time.Millisecond)
 
@@ -138,7 +138,7 @@ func TestMetrics_Durations_AreObservedByLabel(t *testing.T) {
 	assert.EqualValues(t, 1, v.GetHistogram().GetSampleCount())
 	assert.InDelta(t, 0.12, v.GetHistogram().GetSampleSum(), 1e-9)
 
-	k := find(t, family(t, reg, "kubelook_kube_request_duration_seconds"), map[string]string{"verb": "list", "outcome": "ok"})
+	k := find(t, family(t, reg, "kubelook_kube_request_duration_seconds"), map[string]string{"verb": "get", "outcome": "ok"})
 	assert.EqualValues(t, 2, k.GetHistogram().GetSampleCount())
 
 	reqs := family(t, reg, "kubelook_http_requests_total")

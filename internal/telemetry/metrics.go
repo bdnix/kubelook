@@ -20,9 +20,9 @@ const other = "other"
 var (
 	wsChannels    = []string{"watch", "map", "logs", "exec", "file"}
 	refusedKinds  = []string{"watch", "exec", "helm"}
-	vaultEndpoint = []string{"lookup_self", "renew_self", "mounts", "capabilities", "cluster_config", "creds", "health"}
+	vaultEndpoint = []string{"lookup_self", "renew_self", "mounts", "capabilities", "cluster_config", "creds"}
 	vaultOutcomes = []string{"ok", "denied", "error"}
-	kubeVerbs     = []string{"get", "list", "watch", "create", "update", "patch", "delete"}
+	kubeVerbs     = []string{"get", "watch", "create", "update", "patch", "delete"}
 	kubeOutcomes  = []string{"ok", "client_error", "server_error", "error"}
 	httpMethods   = []string{
 		http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch,
