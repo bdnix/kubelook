@@ -104,7 +104,9 @@ func TestObserve_KeepsTheTransportWrapperTheSourceSet(t *testing.T) {
 	assert.Equal(t, 1, seen)
 }
 
-type wrappingSource struct{ wrap func(http.RoundTripper) http.RoundTripper }
+type wrappingSource struct {
+	wrap func(http.RoundTripper) http.RoundTripper
+}
 
 func (s *wrappingSource) RESTConfig(context.Context, session.Session, string) (*rest.Config, error) {
 	return &rest.Config{Host: "http://x", WrapTransport: s.wrap}, nil

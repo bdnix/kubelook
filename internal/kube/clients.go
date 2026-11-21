@@ -52,6 +52,7 @@ type Deps struct {
 	Clock   clock.Clock
 	Closers *session.Registry
 	Build   func(*rest.Config) (Built, error) // nil → real client-go clients
+	Observe Observer                          // nil → requests are not observed
 }
 
 type cached struct {
@@ -104,6 +105,9 @@ func (f *factory) get(ctx context.Context, sess session.Session, id string) (*ca
 	cfg, err := f.d.Config.RESTConfig(ctx, sess, id)
 	if err != nil {
 		return nil, err
+	}
+	if f.d.Observe != nil {
+		cfg = observeConfig(cfg, f.d.Clock, f.d.Observe)
 	}
 	built, err := f.d.Build(cfg)
 	if err != nil {
