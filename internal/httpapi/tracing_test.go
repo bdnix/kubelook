@@ -59,7 +59,7 @@ func TestTracing_OneServerSpanPerRequest_NamedByTheRoutePattern(t *testing.T) {
 	assert.Equal(t, trace.SpanKindServer, s.SpanKind)
 	attrs := map[string]string{}
 	for _, a := range s.Attributes {
-		attrs[string(a.Key)] = a.Value.Emit()
+		attrs[string(a.Key)] = a.Value.String()
 	}
 	assert.Equal(t, "GET /healthz", attrs["http.route"])
 	assert.Equal(t, "GET", attrs["http.request.method"])

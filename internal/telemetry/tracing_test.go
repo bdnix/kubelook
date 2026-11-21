@@ -60,7 +60,7 @@ func newTracing(t *testing.T) (*telemetry.Tracing, *recorder) {
 func attrValues(s tracetest.SpanStub) []string {
 	var out []string
 	for _, a := range s.Attributes {
-		out = append(out, string(a.Key)+"="+a.Value.Emit())
+		out = append(out, string(a.Key)+"="+a.Value.String())
 	}
 	return out
 }
