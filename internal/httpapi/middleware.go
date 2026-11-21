@@ -110,8 +110,8 @@ func recordRoute(next http.Handler) http.Handler {
 }
 
 // accessLog writes one record per request: method, route pattern, status, duration and
-// request ID. Neither the path nor the query string is logged.
-func accessLog(log *slog.Logger, c clock.Clock) middleware {
+// request ID. Neither the path nor the query string is logged. Each request is also observed for the metrics.
+func accessLog(log *slog.Logger, c clock.Clock, t Telemetry) middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := c.Now()
@@ -125,6 +125,9 @@ func accessLog(log *slog.Logger, c clock.Clock) middleware {
 			status := sw.status
 			if !sw.wrote {
 				status = http.StatusOK
+			}
+			if t != nil {
+				t.ObserveHTTP(route, r.Method, status, c.Now().Sub(start))
 			}
 			log.Info("request",
 				"method", r.Method, "route", route, "status", status,

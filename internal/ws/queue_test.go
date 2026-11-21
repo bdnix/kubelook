@@ -73,3 +73,21 @@ func TestConn_Send_FullQueue_EvictsADroppableFrameOfAnyChannel(t *testing.T) {
 	assert.Equal(t, []string{"1:a", "1:b"}, types(c))
 	assert.Equal(t, 1, c.Dropped(2))
 }
+
+type dropCounter struct{ byChannel map[string]int }
+
+func (d *dropCounter) WSDropped(channel string, n int) { d.byChannel[channel] += n }
+
+func TestConn_Dropped_FramesAreReportedByChannelKind(t *testing.T) {
+	m := &dropCounter{byChannel: map[string]int{}}
+	c := ws.DetachedConnWithMetrics(2, m)
+	c.SetKind(1, "logs")
+	c.SetKind(2, "watch")
+	c.SendDroppable(1, "x1", nil)
+	c.SendDroppable(1, "x2", nil)
+	c.SendDroppable(1, "x3", nil) // evicts x1
+	c.SendDroppable(2, "y1", nil) // nothing of channel 2 to evict: dropped itself
+	c.SendDroppable(9, "z1", nil) // a channel without a kind
+
+	assert.Equal(t, map[string]int{"logs": 1, "watch": 1, "": 1}, m.byChannel)
+}
