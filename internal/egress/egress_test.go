@@ -134,6 +134,9 @@ func TestCheckURL(t *testing.T) {
 		{"https://0.0.0.0", true, true},
 		{"https://10.0.0.1:6443", true, false},
 		{"https://kubernetes.example.org", true, false},
+		{"127.0.0.1:6443", true, true},
+		{"[::1]:6443", true, true},
+		{"10.0.0.1:6443", true, false},
 		{"https://127.0.0.1:6443", false, false},
 		{"://bad", true, false},
 	} {
