@@ -332,3 +332,27 @@ func TestServe_OTLPEndpointConfigured_StartsAndStopsWithoutAnyGoroutineLeft(t *t
 	r.cancel()
 	assert.NoError(t, testutil.Recv(t, r.result))
 }
+
+func TestServe_MemoryGuardBusy_StillAnswersHealthChecksAndMetrics(t *testing.T) {
+	cfg := loadConfig(t, "")
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	ready := make(chan app.Ready, 1)
+	result := make(chan error, 1)
+	go func() {
+		result <- app.Serve(ctx, cfg, app.ServeOptions{
+			Listener: ln, OnReady: func(r app.Ready) { ready <- r },
+			MemoryUsage: func() uint64 { return 100 }, MemoryLimit: func() uint64 { return 100 }, // full
+		})
+	}()
+	addr := testutil.Recv(t, ready).Addr
+
+	code, _ := get(t, "http://"+addr+"/healthz")
+	assert.Equal(t, 200, code)
+	code, _ = get(t, "http://"+addr+"/metrics")
+	assert.Equal(t, 200, code)
+	cancel()
+	assert.NoError(t, testutil.Recv(t, result))
+}

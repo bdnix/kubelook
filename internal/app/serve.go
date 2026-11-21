@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -46,8 +47,10 @@ import (
 const (
 	readHeaderTimeout = 10 * time.Second
 	shutdownTimeout   = 10 * time.Second
-	authHTTPTimeout   = 15 * time.Second
-	vaultHTTPTimeout  = 15 * time.Second
+	// cgroupMemoryMax holds the container's memory limit (cgroup v2).
+	cgroupMemoryMax  = "/sys/fs/cgroup/memory.max"
+	authHTTPTimeout  = 15 * time.Second
+	vaultHTTPTimeout = 15 * time.Second
 )
 
 // ServeOptions injects the parts of Serve that tests replace.
@@ -58,6 +61,9 @@ type ServeOptions struct {
 	Rand     io.Reader    // nil → crypto/rand.Reader
 	LogLevel slog.Level
 	OnReady  func(Ready) // called once the server is accepting connections
+	// MemoryUsage and MemoryLimit replace the readers of the memory guard (tests); nil → the Go runtime's
+	// memory in use and the container's memory limit.
+	MemoryUsage, MemoryLimit func() uint64
 }
 
 // Ready describes a running server to OnReady.
@@ -93,6 +99,12 @@ func (o *ServeOptions) defaults() {
 	}
 	if o.Stdout == nil {
 		o.Stdout = io.Discard
+	}
+	if o.MemoryUsage == nil {
+		o.MemoryUsage = telemetry.GoMemoryUsage
+	}
+	if o.MemoryLimit == nil {
+		o.MemoryLimit = telemetry.CgroupLimit(cgroupMemoryMax, func() int64 { return debug.SetMemoryLimit(-1) })
 	}
 }
 
@@ -141,6 +153,9 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		audit: audit.NewRecorder(db, o.Clock, o.Stdout, store.NewID),
 	}
 	c.tracing = tracing
+	guard := telemetry.NewMemGuard(telemetry.MemGuardDeps{
+		Clock: o.Clock, Usage: o.MemoryUsage, Limit: o.MemoryLimit, Percent: cfg.Memory.RefuseNewWorkPercent,
+	})
 	c.metrics = telemetry.NewMetrics(prometheus.NewRegistry(), telemetry.Deps{
 		Version: version.Version, Commit: version.Commit, Sources: c.metricSources(),
 	})
@@ -172,6 +187,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	}
 	c.hub = watch.NewHub(watch.Deps{
 		Clients: kubeClients, Clock: o.Clock, Log: log, Closers: mgr.Registry(), MaxPerUser: cfg.Watch.MaxPerUser,
+		Guard: guard, Refusals: c.metrics,
 		IdleSeconds: func(ctx context.Context, userID string) int {
 			st, err := c.users.GetSettings(ctx, userID)
 			if err != nil {
@@ -203,6 +219,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		Repos:   &helm.Repos{Org: cfg.Helm.Repositories, Sessions: store.NewSessions(db), Sealer: sealer, Clock: o.Clock},
 		Fetcher: &helm.Fetcher{MaxBytes: cfg.Helm.MaxChartBytes},
 		Audit:   c.audit,
+		Guard:   guard, Refusals: c.metrics,
 	}
 	for _, h := range helm.NewJobHandlers(helmService.JobDeps()) {
 		c.jobs.Register(h)
@@ -217,7 +234,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	}))
 	c.ws.Register("exec.open", execs.NewFactory(execs.Deps{
 		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit,
-		IdleTimeout: time.Duration(cfg.Shell.IdleTimeout), KeepAlive: mgr.KeepAlive, NodeShell: cfg.NodeShell.IsEnabled(), Log: log, Metrics: c.metrics,
+		IdleTimeout: time.Duration(cfg.Shell.IdleTimeout), KeepAlive: mgr.KeepAlive, NodeShell: cfg.NodeShell.IsEnabled(), Log: log, Metrics: c.metrics, Guard: guard, Refusals: c.metrics,
 	}))
 	c.ws.Register("file.open", files.NewFactory(files.Deps{
 		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit, Enabled: cfg.FileBrowser.IsEnabled(),

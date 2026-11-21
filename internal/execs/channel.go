@@ -45,6 +45,9 @@ type noMetrics struct{}
 func (noMetrics) ExecOpened() {}
 func (noMetrics) ExecClosed() {}
 
+// Refusals counts the requests refused because the server was busy.
+type Refusals interface{ Refused(kind string) }
+
 // Sink is where a shell sends frames; *ws.Conn implements it.
 type Sink interface {
 	Send(ch int, typ string, d any) error
@@ -59,6 +62,7 @@ type Deps struct {
 	IdleTimeout time.Duration                                 // ≤ 0 → DefaultIdleTimeout
 	KeepAlive   func(ctx context.Context, sessionHash string) // counts an open shell as activity; nil → none
 	Guard       Guard                                         // nil → never refuses
+	Refusals    Refusals                                      // nil → refusals are not counted
 	NodeShell   bool                                          // allow {nodeShell: true} opens
 	Log         *slog.Logger                                  // nil → the unexpected end of a shell is not logged
 	Metrics     Metrics                                       // nil → nothing is reported
@@ -103,7 +107,10 @@ func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, 
 		return nil, fmt.Errorf("node shells are not enabled: %w", apperr.ErrNotFound)
 	}
 	if d.Guard.Busy() {
-		return nil, fmt.Errorf("The server is busy; try again in a moment.: %w", apperr.ErrBusy) //nolint:staticcheck // shown to the user
+		if d.Refusals != nil {
+			d.Refusals.Refused("exec")
+		}
+		return nil, apperr.ErrServerBusy
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	s := &shell{d: d, sink: sink, sess: sess, ch: ch, req: req, cancel: cancel, done: make(chan struct{}), resize: make(chan Size, 1), candidates: shellCandidates}

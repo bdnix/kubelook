@@ -39,6 +39,12 @@ func (h *Hub) Factory() ws.Factory {
 		if req.Cluster == "" || req.Version == "" || req.Resource == "" {
 			return nil, fmt.Errorf("watch.open needs a cluster, a version and a resource: %w", apperr.ErrInvalid)
 		}
+		if h.d.Guard != nil && h.d.Guard.Busy() {
+			if h.d.Refusals != nil {
+				h.d.Refusals.Refused("watch")
+			}
+			return nil, apperr.ErrServerBusy
+		}
 		sess := c.Session()
 		key := Key{
 			UserID: sess.UserID, Cluster: req.Cluster, Namespace: req.Namespace, FieldSelector: req.FieldSelector,
