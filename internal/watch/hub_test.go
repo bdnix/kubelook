@@ -653,3 +653,18 @@ func TestHub_ListFailureThatIsTransient_RetriesAfterTheBackoff(t *testing.T) {
 	e.clock.Advance(time.Second)
 	assert.Equal(t, "snapshot rv=100 [a b]", r.next(t))
 }
+
+func TestHub_WatchesPerUser_CountsEachUsersUpstreamsSorted(t *testing.T) {
+	e := newHubEnv(t)
+	assert.Empty(t, e.hub.WatchesPerUser())
+
+	ra1, ra2, rb := newRec(), newRec(), newRec()
+	e.subscribe(t, sessA, "", ra1)
+	e.subscribe(t, sessA, "other", ra2) // a second upstream of the same user
+	e.subscribe(t, sessB, "", rb)
+	ra1.next(t)
+	ra2.next(t)
+	rb.next(t)
+
+	assert.Equal(t, []int{1, 2}, e.hub.WatchesPerUser())
+}
