@@ -26,6 +26,19 @@ var errNoOps = fmt.Errorf("a log channel takes no ops: %w", apperr.ErrInvalid)
 var errAuditFailed = &apperr.APIError{Status: http.StatusServiceUnavailable, Code: "server_busy",
 	Message: "Logs can't be opened right now because the audit record could not be written."}
 
+// Metrics receives what the metrics need from the log streams.
+type Metrics interface {
+	LogStreamOpened()
+	LogStreamClosed()
+	LogLinesDropped(n int)
+}
+
+type noMetrics struct{}
+
+func (noMetrics) LogStreamOpened()    {}
+func (noMetrics) LogStreamClosed()    {}
+func (noMetrics) LogLinesDropped(int) {}
+
 // Deps are the dependencies of the log channel.
 type Deps struct {
 	Source            Source
@@ -38,6 +51,7 @@ type Deps struct {
 	Resolver Resolver
 	// HistoryMaxLines caps the lines a channel loads when the reader scrolls back (logs.historyMaxLines).
 	HistoryMaxLines int
+	Metrics         Metrics // nil → nothing is reported
 }
 
 // openRequest is the "d" of a logs.open op.
@@ -128,8 +142,11 @@ func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, 
 		_ = d.Audit.Record(ctx, closeEvent)
 		return nil, failed[0].err
 	}
+	if d.Metrics == nil {
+		d.Metrics = noMetrics{}
+	}
 	sd := streamDeps{
-		clock: d.Clock, maxPerSec: d.MaxLinesPerSecond, source: d.Source, sess: sess, cluster: req.Cluster, namespace: req.Namespace,
+		metrics: d.Metrics, clock: d.Clock, maxPerSec: d.MaxLinesPerSecond, source: d.Source, sess: sess, cluster: req.Cluster, namespace: req.Namespace,
 		filter: filter, historyMax: d.HistoryMaxLines, tagged: req.Sources != nil,
 		onEnd: func(ctx context.Context) { _ = d.Audit.Record(context.WithoutCancel(ctx), closeEvent) },
 	}
@@ -139,6 +156,7 @@ func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, 
 	if d.KeepAlive != nil {
 		sd.keepAlive = func(ctx context.Context) { d.KeepAlive(ctx, sess.Hash) }
 	}
+	d.Metrics.LogStreamOpened()
 	return start(ctx, sd, sink, ch, req.Follow, ups, failed), nil
 }
 

@@ -45,6 +45,7 @@ type Sink interface {
 }
 
 type streamDeps struct {
+	metrics   Metrics
 	clock     clock.Clock
 	keepAlive func(ctx context.Context)
 	maxPerSec int
@@ -112,6 +113,7 @@ func (s *stream) Handle(ctx context.Context, op string, d json.RawMessage) error
 // Close stops the stream and waits for it to finish.
 func (s *stream) Close() {
 	s.closeOnce.Do(func() {
+		s.d.metrics.LogStreamClosed()
 		s.cancel()
 		for _, u := range s.ups {
 			_ = u.rc.Close()
@@ -185,12 +187,14 @@ func (s *stream) loop(ctx context.Context) string {
 			}
 			if !bucket.allow() {
 				dropped++
+				s.d.metrics.LogLinesDropped(1)
 				continue
 			}
 			pending = append(pending, l)
 			if len(pending) > maxBuffered {
 				pending = pending[1:]
 				dropped++
+				s.d.metrics.LogLinesDropped(1)
 			}
 			if len(pending) >= flushLines {
 				flush(false)

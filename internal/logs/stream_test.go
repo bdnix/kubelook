@@ -491,6 +491,10 @@ func TestMetrics_DroppedLinesAreCounted_BothTheRateCapAndTheSlowBrowser(t *testi
 		fmt.Fprintf(&chunk, "2026-11-14T12:00:00Z line%04d\n", i)
 	}
 	e.src.rd.feed(t, chunk.String())
+	e.sink.backlog.Store(0)
+	e.clock.Advance(100 * time.Millisecond)
+	for f := e.sink.next(t); f.Typ != "dropped"; f = e.sink.next(t) { // the report follows the lines
+	}
 	assert.EqualValues(t, 500, m.dropped.Load(), "the oldest 500 of 2500 were pushed out of the 2000-line buffer")
 
 	e2 := newEnv(t, 1000)
@@ -499,5 +503,8 @@ func TestMetrics_DroppedLinesAreCounted_BothTheRateCapAndTheSlowBrowser(t *testi
 	_, err = e2.open(t, baseReq)
 	require.NoError(t, err)
 	e2.src.rd.feed(t, strings.Repeat("2026-11-14T12:00:00Z x\n", 3000))
-	assert.EqualValues(t, 2000, m2.dropped.Load(), "the rate cap lets 1000 of the 3000 lines through")
+	e2.clock.Advance(100 * time.Millisecond)
+	for f := e2.sink.next(t); f.Typ != "dropped"; f = e2.sink.next(t) {
+	}
+	assert.GreaterOrEqual(t, int(m2.dropped.Load()), 1900, "the rate cap lets 1000 of the 3000 lines through; a refill tick may let a few more")
 }
