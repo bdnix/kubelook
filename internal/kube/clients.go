@@ -5,6 +5,7 @@ package kube
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
@@ -52,6 +53,9 @@ type Deps struct {
 	Clock   clock.Clock
 	Closers *session.Registry
 	Build   func(*rest.Config) (Built, error) // nil → real client-go clients
+	// WrapTransport wraps the transport of the clients built here (request metrics); nil → none. The
+	// configuration that REST returns is not changed.
+	WrapTransport func(http.RoundTripper) http.RoundTripper
 }
 
 type cached struct {
@@ -105,7 +109,12 @@ func (f *factory) get(ctx context.Context, sess session.Session, id string) (*ca
 	if err != nil {
 		return nil, err
 	}
-	built, err := f.d.Build(cfg)
+	buildCfg := cfg
+	if f.d.WrapTransport != nil {
+		buildCfg = rest.CopyConfig(cfg)
+		buildCfg.Wrap(f.d.WrapTransport)
+	}
+	built, err := f.d.Build(buildCfg)
 	if err != nil {
 		return nil, err
 	}

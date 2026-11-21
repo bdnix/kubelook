@@ -36,6 +36,7 @@ type Conn struct {
 	opening   map[int][]item // frames sent by a factory before its channel was announced
 	visSubs   map[int]func(bool)
 	nextSub   int
+	kinds     sync.Map // channel number → kind of channel, for the drop metric
 	closeOnce sync.Once
 	lastPong  atomic.Int64 // unix nanoseconds of the last pong (or of the connection)
 }
@@ -114,6 +115,15 @@ func (c *Conn) enqueue(it item, push func(item) error) error {
 		c.CloseChannel(it.ch, "slow_consumer")
 	}
 	return err
+}
+
+// noteDrop reports a dropped frame of channel ch to the metrics.
+func (c *Conn) noteDrop(ch int) {
+	kind := "other"
+	if k, ok := c.kinds.Load(ch); ok {
+		kind = k.(string)
+	}
+	c.mux.d.Metrics.WSDropped(kind, 1)
 }
 
 // Dropped returns how many droppable frames of the channel were discarded.

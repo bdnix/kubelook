@@ -40,6 +40,17 @@ type Sink interface {
 	CloseChannel(ch int, reason string)
 }
 
+// Metrics receives what shells report about themselves; the default does nothing.
+type Metrics interface {
+	ExecStarted()
+	ExecEnded()
+}
+
+type noMetrics struct{}
+
+func (noMetrics) ExecStarted() {}
+func (noMetrics) ExecEnded()   {}
+
 // Deps are the dependencies of the shell channel.
 type Deps struct {
 	Executor    Executor
@@ -50,6 +61,7 @@ type Deps struct {
 	Guard       Guard                                         // nil → never refuses
 	NodeShell   bool                                          // allow {nodeShell: true} opens
 	Log         *slog.Logger                                  // nil → the unexpected end of a shell is not logged
+	Metrics     Metrics                                       // nil → none
 }
 
 type openRequest struct {
@@ -73,6 +85,9 @@ func NewFactory(d Deps) ws.Factory {
 func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, raw json.RawMessage) (ws.Channel, error) {
 	if d.Guard == nil {
 		d.Guard = neverBusy{}
+	}
+	if d.Metrics == nil {
+		d.Metrics = noMetrics{}
 	}
 	if d.IdleTimeout <= 0 {
 		d.IdleTimeout = DefaultIdleTimeout
@@ -99,6 +114,7 @@ func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, 
 	if req.Cols > 0 && req.Rows > 0 {
 		s.resize <- Size{Cols: req.Cols, Rows: req.Rows}
 	}
+	d.Metrics.ExecStarted()
 	go s.run(runCtx)
 	return s, nil
 }
@@ -175,6 +191,7 @@ type shell struct {
 // Close stops the shell and waits for it to finish.
 func (s *shell) Close() {
 	s.closeOnce.Do(func() {
+		defer s.d.Metrics.ExecEnded()
 		s.idle.Stop()
 		s.cancel()
 		s.mu.Lock()

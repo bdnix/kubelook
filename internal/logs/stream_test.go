@@ -450,9 +450,9 @@ type logCounts struct {
 	started, ended, dropped atomic.Int32
 }
 
-func (l *logCounts) StreamStarted()     { l.started.Add(1) }
-func (l *logCounts) StreamEnded()       { l.ended.Add(1) }
-func (l *logCounts) LinesDropped(n int) { l.dropped.Add(int32(n)) }
+func (l *logCounts) LogStreamStarted()     { l.started.Add(1) }
+func (l *logCounts) LogStreamEnded()       { l.ended.Add(1) }
+func (l *logCounts) LogLinesDropped(n int) { l.dropped.Add(int32(n)) }
 
 func TestMetrics_StreamStartsAndEndsOnceAndDroppedLinesMatchWhatTheBrowserIsTold(t *testing.T) {
 	m := &logCounts{}

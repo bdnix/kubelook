@@ -45,6 +45,7 @@ type Sink interface {
 }
 
 type streamDeps struct {
+	metrics   Metrics
 	clock     clock.Clock
 	keepAlive func(ctx context.Context)
 	maxPerSec int
@@ -96,6 +97,10 @@ type stream struct {
 // start begins forwarding. The returned stream is a ws.Channel.
 func start(ctx context.Context, d streamDeps, sink Sink, ch int, follow bool, ups []*upstream, failed []sourceFailure) *stream {
 	ctx, cancel := context.WithCancel(ctx)
+	if d.metrics == nil {
+		d.metrics = noMetrics{}
+	}
+	d.metrics.LogStreamStarted()
 	s := &stream{d: d, sink: sink, ch: ch, follow: follow, ups: ups, failed: failed, cancel: cancel, done: make(chan struct{})}
 	go s.run(ctx)
 	return s
@@ -124,6 +129,7 @@ func (s *stream) Close() {
 // happens here, one event at a time.
 func (s *stream) run(ctx context.Context) {
 	reason := s.loop(ctx)
+	s.d.metrics.LogStreamEnded()
 	if s.d.onEnd != nil {
 		s.d.onEnd(ctx)
 	}
@@ -185,12 +191,14 @@ func (s *stream) loop(ctx context.Context) string {
 			}
 			if !bucket.allow() {
 				dropped++
+				s.d.metrics.LogLinesDropped(1)
 				continue
 			}
 			pending = append(pending, l)
 			if len(pending) > maxBuffered {
 				pending = pending[1:]
 				dropped++
+				s.d.metrics.LogLinesDropped(1)
 			}
 			if len(pending) >= flushLines {
 				flush(false)

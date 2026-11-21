@@ -33,10 +33,13 @@ import (
 	"github.com/bdnix/kubelook/internal/resourcemap"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
+	"github.com/bdnix/kubelook/internal/telemetry"
 	"github.com/bdnix/kubelook/internal/vault"
+	"github.com/bdnix/kubelook/internal/version"
 	"github.com/bdnix/kubelook/internal/watch"
 	"github.com/bdnix/kubelook/internal/webui"
 	"github.com/bdnix/kubelook/internal/ws"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
@@ -75,6 +78,7 @@ type components struct {
 	vaultMonitor *vault.Monitor
 	hub          *watch.Hub
 	jobs         *jobs.Runner
+	metrics      *telemetry.Metrics
 	handler      http.Handler
 }
 
@@ -126,11 +130,13 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		users: store.NewUsers(db, o.Clock, store.NewID),
 		audit: audit.NewRecorder(db, o.Clock, o.Stdout, store.NewID),
 	}
+	c.metrics = telemetry.NewMetrics(prometheus.NewRegistry(), telemetry.BuildInfo{Version: version.Version, Commit: version.Commit}, c.metricSources())
 	authHandlers, err := newAuth(ctx, cfg, o, log, c, sealer)
 	if err != nil {
 		return fail(err)
 	}
-	rawVault := vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout})
+	vaultTransport := telemetry.RoundTripper(http.DefaultTransport, o.Clock, vault.Endpoint, c.metrics.ObserveVault)
+	rawVault := vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout, Transport: vaultTransport})
 	c.vaultMonitor = vault.NewMonitor(rawVault, o.Clock, cfg.Vault.Address != "")
 	vaultClient := c.vaultMonitor.Wrap(rawVault)
 	cache := cluster.NewDiscoveryCache(o.Clock, mgr.Registry())
@@ -147,13 +153,18 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	})
 	clusters.SetStates(opener.StateOf)
 	c.opener = opener
-	kubeClients := kube.NewClients(kube.Deps{Config: opener, Clock: o.Clock, Closers: mgr.Registry()})
+	kubeClients := kube.NewClients(kube.Deps{
+		Config: opener, Clock: o.Clock, Closers: mgr.Registry(),
+		WrapTransport: func(rt http.RoundTripper) http.RoundTripper {
+			return telemetry.RoundTripper(rt, o.Clock, telemetry.KubeVerb, c.metrics.ObserveKube)
+		},
+	})
 	publicURL, err := url.Parse(cfg.Server.PublicURL)
 	if err != nil {
 		return fail(fmt.Errorf("parsing server.publicURL: %w", err))
 	}
 	c.hub = watch.NewHub(watch.Deps{
-		Clients: kubeClients, Clock: o.Clock, Log: log, Closers: mgr.Registry(), MaxPerUser: cfg.Watch.MaxPerUser,
+		Clients: kubeClients, Clock: o.Clock, Log: log, Closers: mgr.Registry(), MaxPerUser: cfg.Watch.MaxPerUser, Metrics: c.metrics,
 		IdleSeconds: func(ctx context.Context, userID string) int {
 			st, err := c.users.GetSettings(ctx, userID)
 			if err != nil {
@@ -189,17 +200,17 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	for _, h := range helm.NewJobHandlers(helmService.JobDeps()) {
 		c.jobs.Register(h)
 	}
-	c.ws = ws.NewMux(ws.Deps{Clock: o.Clock, Log: log, Sessions: mgr, PublicHost: publicURL.Host, Fail: httpapi.ErrorWriter(log)})
+	c.ws = ws.NewMux(ws.Deps{Clock: o.Clock, Log: log, Sessions: mgr, PublicHost: publicURL.Host, Fail: httpapi.ErrorWriter(log), Metrics: c.metrics})
 	c.ws.Register("watch.open", c.hub.Factory())
 	c.ws.Register("map.open", resourcemap.Factory(resourcemap.Deps{Source: c.hub, Clients: kubeClients, Access: kube.NewAccess(kubeClients, o.Clock, mgr.Registry()), Clock: o.Clock}))
 	c.ws.Register("logs.open", logs.NewFactory(logs.Deps{
 		Source: logs.NewKubeSource(kubeClients), Resolver: logs.NewKubeResolver(kubeClients), Clock: o.Clock, Audit: c.audit,
 		MaxLinesPerSecond: cfg.Logs.MaxLinesPerSecond, HistoryMaxLines: cfg.Logs.HistoryMaxLines,
-		KeepAlive: mgr.KeepAlive,
+		KeepAlive: mgr.KeepAlive, Metrics: c.metrics,
 	}))
 	c.ws.Register("exec.open", execs.NewFactory(execs.Deps{
 		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit,
-		IdleTimeout: time.Duration(cfg.Shell.IdleTimeout), KeepAlive: mgr.KeepAlive, NodeShell: cfg.NodeShell.IsEnabled(), Log: log,
+		IdleTimeout: time.Duration(cfg.Shell.IdleTimeout), KeepAlive: mgr.KeepAlive, NodeShell: cfg.NodeShell.IsEnabled(), Log: log, Metrics: c.metrics,
 	}))
 	c.ws.Register("file.open", files.NewFactory(files.Deps{
 		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit, Enabled: cfg.FileBrowser.IsEnabled(),
@@ -207,12 +218,44 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, Jobs: c.jobs, Helm: helmService, Flux: &flux.Inventory{Clients: kubeClients, Helm: helmService}, WS: c.ws,
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, Jobs: c.jobs, Helm: helmService, Flux: &flux.Inventory{Clients: kubeClients, Helm: helmService}, WS: c.ws, Telemetry: c.metrics,
 		Metrics:  metrics.New(metrics.Deps{Clients: kubeClients, Clock: o.Clock, Prometheus: cfg.Prometheus}),
 		Debugger: execs.NewDebugger(execs.DebuggerDeps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit, Rand: o.Rand, Debug: cfg.Debug, NodeShell: cfg.NodeShell}), VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
 	})
 	return c, nil
+}
+
+// metricSources are the gauges read at scrape time. They look the components up when asked, because
+// the metrics exist before the components they describe.
+func (c *components) metricSources() telemetry.Sources {
+	return telemetry.Sources{
+		Sessions: func(ctx context.Context) (int, error) { return store.NewSessions(c.db).Count(ctx) },
+		Watch: func() (int, int, int) {
+			if c.hub == nil {
+				return 0, 0, 0
+			}
+			st := c.hub.Stats()
+			return st.Watches, st.Subscribers, st.CachedObjects
+		},
+		WSConnections: func() int {
+			if c.ws == nil {
+				return 0
+			}
+			return c.ws.Connections()
+		},
+		Jobs: func(ctx context.Context) (map[telemetry.JobKey]int, error) {
+			counts, err := store.NewJobs(c.db).CountByTypeStatus(ctx)
+			if err != nil {
+				return nil, err
+			}
+			out := make(map[telemetry.JobKey]int, len(counts))
+			for k, n := range counts {
+				out[telemetry.JobKey{Type: k.Type, Status: k.Status}] = n
+			}
+			return out, nil
+		},
+	}
 }
 
 // newAuth builds the sign-in handlers. A provider exists only when its client ID is configured.

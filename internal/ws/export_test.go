@@ -41,6 +41,3 @@ func DetachedConnWithMetrics(capacity int, m Metrics) *Conn {
 
 // SetKind records what kind of channel ch is, as the mux does when it opens one.
 func (c *Conn) SetKind(ch int, op string) { c.kinds.Store(ch, kindOf(op)) }
-
-// Connections returns the number of open connections of the mux.
-func (m *Mux) Connections() int { return m.connectionCount() }

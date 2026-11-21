@@ -232,3 +232,13 @@ func optMS(t time.Time) int64 {
 	}
 	return ms(t)
 }
+
+// Count returns how many sessions are stored. Expired ones are removed by the sweep, so this is
+// the number of sessions that can still be used, give or take one sweep interval.
+func (s *Sessions) Count(ctx context.Context) (int, error) {
+	var n int
+	if err := s.db.QueryRow(ctx, "SELECT COUNT(*) FROM sessions").Scan(&n); err != nil {
+		return 0, fmt.Errorf("counting sessions: %w", err)
+	}
+	return n, nil
+}

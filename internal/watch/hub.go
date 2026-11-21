@@ -54,6 +54,16 @@ type Stats struct {
 	Watches, Subscribers, CachedObjects int
 }
 
+// Metrics receives what the hub reports about itself; the default does nothing.
+type Metrics interface {
+	// WatchOpened is called when a new upstream starts, with the number of watches the user holds then.
+	WatchOpened(userWatches int)
+}
+
+type noMetrics struct{}
+
+func (noMetrics) WatchOpened(int) {}
+
 // Deps are the dependencies of Hub.
 type Deps struct {
 	Clients     kube.Clients
@@ -62,6 +72,7 @@ type Deps struct {
 	IdleSeconds func(ctx context.Context, userID string) int // the user's WatchIdleSeconds; nil or ≤ 0 → 30
 	MaxPerUser  int                                          // ≤ 0 → 50
 	Closers     *session.Registry                            // nil → upstreams are not tied to the session
+	Metrics     Metrics                                      // nil → none
 }
 
 // ukey is what the hub indexes upstreams by: the Key, plus for a kubeconfig cluster a fingerprint of
@@ -95,6 +106,9 @@ type Hub struct {
 func NewHub(d Deps) *Hub {
 	if d.MaxPerUser <= 0 {
 		d.MaxPerUser = DefaultMaxPerUser
+	}
+	if d.Metrics == nil {
+		d.Metrics = noMetrics{}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	key := make([]byte, 32)
@@ -186,6 +200,7 @@ func (h *Hub) upstreamFor(sess session.Session, k ukey, sub *subscription) (u *u
 	u.cmds <- command{kind: cmdAdd, sub: sub}
 	h.ups[k] = u
 	h.order = append(h.order, u)
+	h.d.Metrics.WatchOpened(h.userWatchesLocked(k.UserID))
 	h.wg.Add(1)
 	go u.run(h.ctx)
 	h.mu.Unlock()
@@ -230,6 +245,17 @@ func (h *Hub) makeRoom(userID string) error {
 	victim.send(command{kind: cmdPause})
 	h.removeLocked(victim) // takes effect now so the new watch fits
 	return nil
+}
+
+// userWatchesLocked counts the user's upstreams. Callers hold h.mu.
+func (h *Hub) userWatchesLocked(userID string) int {
+	n := 0
+	for _, u := range h.order {
+		if u.key.UserID == userID {
+			n++
+		}
+	}
+	return n
 }
 
 // removeLocked forgets the upstream. Callers hold h.mu.

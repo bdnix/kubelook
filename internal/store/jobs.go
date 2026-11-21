@@ -165,3 +165,28 @@ func scanJob(r scanner) (JobRow, error) {
 	}
 	return j, nil
 }
+
+// JobCountKey groups jobs for CountByTypeStatus.
+type JobCountKey struct{ Type, Status string }
+
+// CountByTypeStatus counts every stored job by its type and status.
+func (j *Jobs) CountByTypeStatus(ctx context.Context) (map[JobCountKey]int, error) {
+	rows, err := j.db.Query(ctx, "SELECT type, status, COUNT(*) FROM jobs GROUP BY type, status")
+	if err != nil {
+		return nil, fmt.Errorf("counting jobs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[JobCountKey]int{}
+	for rows.Next() {
+		var k JobCountKey
+		var n int
+		if err := rows.Scan(&k.Type, &k.Status, &n); err != nil {
+			return nil, fmt.Errorf("counting jobs: %w", err)
+		}
+		out[k] = n
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("counting jobs: %w", err)
+	}
+	return out, nil
+}

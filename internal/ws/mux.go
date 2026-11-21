@@ -26,6 +26,22 @@ const (
 // Factory opens a channel for an "<x>.open" op. Frames it sends before returning are delivered after "opened".
 type Factory func(ctx context.Context, c *Conn, ch int, d json.RawMessage) (Channel, error)
 
+// Metrics receives what the mux reports about itself; the default does nothing. Methods must not block.
+type Metrics interface {
+	// WSDropped counts droppable frames discarded on a channel of the given kind ("watch", "logs", …).
+	WSDropped(channel string, n int)
+}
+
+type noMetrics struct{}
+
+func (noMetrics) WSDropped(string, int) {}
+
+// kindOf is the channel kind of an open op: "logs.open" → "logs".
+func kindOf(op string) string {
+	kind, _ := strings.CutSuffix(op, ".open")
+	return kind
+}
+
 // Deps are the dependencies of Mux.
 type Deps struct {
 	Clock      clock.Clock
@@ -33,6 +49,7 @@ type Deps struct {
 	Sessions   *session.Manager
 	PublicHost string                                                  // host[:port] of server.publicURL; the only accepted Origin
 	Fail       func(w http.ResponseWriter, r *http.Request, err error) // writes the standard error response
+	Metrics    Metrics                                                 // nil → none
 }
 
 // Mux upgrades requests and routes channel ops to factories.
@@ -47,6 +64,9 @@ type Mux struct {
 
 // NewMux returns a Mux with no factories.
 func NewMux(d Deps) *Mux {
+	if d.Metrics == nil {
+		d.Metrics = noMetrics{}
+	}
 	return &Mux{d: d, factories: map[string]Factory{}, conns: map[*Conn]struct{}{}}
 }
 
@@ -71,6 +91,16 @@ func (m *Mux) Shutdown() {
 	}
 	m.wg.Wait()
 }
+
+// connectionCount is the number of open connections.
+func (m *Mux) connectionCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.conns)
+}
+
+// Connections returns the number of open connections.
+func (m *Mux) Connections() int { return m.connectionCount() }
 
 func (m *Mux) shuttingDown() bool {
 	m.mu.Lock()
@@ -114,6 +144,7 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		mux: m, ws: wsConn, sess: sess, ctx: ctx, stop: stop, q: newQueue(QueueCapacity),
 		channels: map[int]Channel{}, opening: map[int][]item{}, visSubs: map[int]func(bool){},
 	}
+	c.q.onDrop = c.noteDrop
 	c.lastPong.Store(m.d.Clock.Now().UnixNano())
 	m.mu.Lock()
 	m.conns[c] = struct{}{}
@@ -249,6 +280,7 @@ func (c *Conn) open(in In) {
 	c.opening[in.Ch] = nil
 	c.mu.Unlock()
 
+	c.kinds.Store(in.Ch, kindOf(in.Op))
 	chn, err := f(c.ctx, c, in.Ch, in.D)
 
 	c.mu.Lock()

@@ -661,7 +661,11 @@ type watchCounts struct {
 }
 
 func (w *watchCounts) WatchOpened(n int) { w.mu.Lock(); w.seen = append(w.seen, n); w.mu.Unlock() }
-func (w *watchCounts) get() []int        { w.mu.Lock(); defer w.mu.Unlock(); return append([]int(nil), w.seen...) }
+func (w *watchCounts) get() []int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return append([]int(nil), w.seen...)
+}
 
 func TestHub_Metrics_ReportsHowManyWatchesTheUserHoldsWhenOneOpens(t *testing.T) {
 	m := &watchCounts{}
