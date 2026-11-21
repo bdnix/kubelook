@@ -68,6 +68,7 @@ type Config struct {
 	Modules     map[string]Module `json:"modules"`
 	Prometheus  Prometheus        `json:"prometheus"`
 	Telemetry   Telemetry         `json:"telemetry"`
+	Egress      Egress            `json:"egress"`
 
 	// From the environment only; never serialised.
 	EncryptionKey []byte `json:"-"`
@@ -273,6 +274,16 @@ type PrometheusCluster struct {
 type Prometheus struct {
 	Clusters map[string]PrometheusCluster `json:"clusters"`
 }
+
+// Egress configures the guard on the addresses users supply.
+type Egress struct {
+	// BlockLocalAddresses refuses loopback, link-local and unspecified addresses in kubeconfigs, identity providers
+	// and session Helm repositories. nil → true.
+	BlockLocalAddresses *bool `json:"blockLocalAddresses"`
+}
+
+// Blocks reports whether local and link-local addresses are refused.
+func (e Egress) Blocks() bool { return e.BlockLocalAddresses == nil || *e.BlockLocalAddresses }
 
 // Telemetry configures OpenTelemetry export.
 type Telemetry struct {
