@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -282,6 +283,22 @@ func (h *Hub) Stats() Stats {
 		st.CachedObjects += int(u.cached.Load())
 	}
 	return st
+}
+
+// WatchesPerUser returns, for every user that holds any upstream, how many it holds; the counts are sorted.
+func (h *Hub) WatchesPerUser() []int {
+	h.mu.Lock()
+	perUser := map[string]int{}
+	for _, u := range h.order {
+		perUser[u.key.UserID]++
+	}
+	h.mu.Unlock()
+	out := make([]int, 0, len(perUser))
+	for _, n := range perUser {
+		out = append(out, n)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // Close stops every upstream and waits for them.
