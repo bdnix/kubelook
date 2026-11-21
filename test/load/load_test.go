@@ -306,6 +306,8 @@ func watchPods(ctx context.Context, base string, u user, snapshotted func()) (re
 			continue
 		}
 		switch f.T {
+		case "ping": // the server closes a connection that does not answer within 60 s
+			_ = c.Write(ctx, websocket.MessageText, []byte(`{"op":"pong","ch":0}`))
 		case "error":
 			res.refusal = f.D.Code
 			return res
