@@ -62,6 +62,8 @@ type Deps struct {
 	WS http.Handler
 	// VaultMonitor tracks Vault's reachability; nil → /api/v1/status reports Vault as not configured.
 	VaultMonitor *vault.Monitor
+	// Telemetry serves GET /metrics (outside /api/, so without a session) and counts every request; nil → neither.
+	Telemetry Telemetry
 	// KeyID identifies the encryption key; shown in /api/v1/me so the browser can tell when it changed.
 	KeyID string
 }
@@ -85,6 +87,7 @@ func New(d Deps) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+	observer := d.registerTelemetry(mux)
 	mux.HandleFunc("GET /api/v1/me", d.me)
 	mux.HandleFunc("GET /api/v1/status", d.status)
 	d.registerSettings(mux)
@@ -108,7 +111,7 @@ func New(d Deps) http.Handler {
 	mws := []middleware{
 		recoverPanics(d.Log),
 		requestID(d.NewID),
-		accessLog(d.Log, d.Clock),
+		accessLog(d.Log, d.Clock, observer),
 		securityHeaders(d.Config.CookieSecure()),
 	}
 	if d.Sessions != nil {

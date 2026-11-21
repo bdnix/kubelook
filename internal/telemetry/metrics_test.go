@@ -55,11 +55,7 @@ func TestSources_Scrape_ReportGauges(t *testing.T) {
 	assert.EqualValues(t, 120, val("kubelook_watch_cached_objects"))
 	assert.EqualValues(t, 4, val("kubelook_ws_connections"))
 	assert.EqualValues(t, 2, val("kubelook_jobs"))
-	labels := fams["kubelook_jobs"].GetMetric()[0].GetLabel()
-	assert.Equal(t, "type", labels[0].GetName())
-	assert.Equal(t, "helm.install", labels[0].GetValue())
-	assert.Equal(t, "status", labels[1].GetName())
-	assert.Equal(t, "running", labels[1].GetValue())
+	assert.Equal(t, map[string]string{"type": "helm.install", "status": "running"}, labelsOf(fams["kubelook_jobs"].GetMetric()[0]))
 }
 
 func TestSources_SourceFails_ThatGaugeIsOmittedAndScrapeSucceeds(t *testing.T) {
@@ -109,8 +105,7 @@ func TestWSDropped_CountsPerChannelKind(t *testing.T) {
 	m.WSDropped("watch", 4)
 	got := map[string]float64{}
 	for _, mm := range gather(t, reg)["kubelook_ws_dropped_messages_total"].GetMetric() {
-		assert.Equal(t, "channel", mm.GetLabel()[0].GetName())
-		got[mm.GetLabel()[0].GetValue()] = mm.GetCounter().GetValue()
+		got[labelsOf(mm)["channel"]] = mm.GetCounter().GetValue()
 	}
 	assert.Equal(t, map[string]float64{"logs": 3, "watch": 4}, got)
 }
@@ -138,7 +133,7 @@ func TestRefused_CountsPerKind(t *testing.T) {
 	f := gather(t, reg)["kubelook_refused_requests_total"]
 	got := map[string]float64{}
 	for _, mm := range f.GetMetric() {
-		got[mm.GetLabel()[0].GetValue()] = mm.GetCounter().GetValue()
+		got[labelsOf(mm)["kind"]] = mm.GetCounter().GetValue()
 	}
 	assert.Equal(t, map[string]float64{"watch": 2, "exec": 1}, got)
 }
@@ -151,10 +146,7 @@ func TestHTTPRequest_RecordsCountAndDurationByRoutePattern(t *testing.T) {
 	fams := gather(t, reg)
 	var pods float64
 	for _, mm := range fams["kubelook_http_requests_total"].GetMetric() {
-		l := map[string]string{}
-		for _, x := range mm.GetLabel() {
-			l[x.GetName()] = x.GetValue()
-		}
+		l := labelsOf(mm)
 		if l["route"] == "/api/v1/clusters/{cluster}/pods" {
 			assert.Equal(t, "GET", l["method"])
 			assert.Equal(t, "200", l["status"])
@@ -164,7 +156,7 @@ func TestHTTPRequest_RecordsCountAndDurationByRoutePattern(t *testing.T) {
 	assert.EqualValues(t, 2, pods)
 	var count uint64
 	for _, mm := range fams["kubelook_http_request_duration_seconds"].GetMetric() {
-		if mm.GetLabel()[0].GetValue() == "/api/v1/clusters/{cluster}/pods" {
+		if labelsOf(mm)["route"] == "/api/v1/clusters/{cluster}/pods" {
 			count = mm.GetHistogram().GetSampleCount()
 			assert.InDelta(t, 0.2, mm.GetHistogram().GetSampleSum(), 1e-9)
 		}
@@ -176,7 +168,7 @@ func TestHTTPRequest_EmptyRoute_IsUnmatched(t *testing.T) {
 	m, reg := newMetrics(t, telemetry.Sources{})
 	m.HTTPRequest("", "GET", 404, time.Millisecond)
 	f := gather(t, reg)["kubelook_http_requests_total"]
-	assert.Equal(t, "unmatched", f.GetMetric()[0].GetLabel()[0].GetValue())
+	assert.Equal(t, "unmatched", labelsOf(f.GetMetric()[0])["route"])
 }
 
 type fakeRT struct {
@@ -238,20 +230,24 @@ func TestRoundTripper_ExposesWrappedTransport(t *testing.T) {
 	assert.Same(t, base, w.WrappedRoundTripper())
 }
 
+func labelsOf(m *dto.Metric) map[string]string {
+	out := map[string]string{}
+	for _, l := range m.GetLabel() {
+		out[l.GetName()] = l.GetValue()
+	}
+	return out
+}
+
 func TestVaultAndKube_ObserversRecordHistograms(t *testing.T) {
 	m, reg := newMetrics(t, telemetry.Sources{})
 	m.ObserveVault("creds", "ok", 100*time.Millisecond)
 	m.ObserveKube("get", "client_error", 20*time.Millisecond)
 	fams := gather(t, reg)
 	v := fams["kubelook_vault_request_duration_seconds"].GetMetric()[0]
-	assert.Equal(t, "endpoint", v.GetLabel()[0].GetName())
-	assert.Equal(t, "creds", v.GetLabel()[0].GetValue())
-	assert.Equal(t, "outcome", v.GetLabel()[1].GetName())
-	assert.Equal(t, "ok", v.GetLabel()[1].GetValue())
+	assert.Equal(t, map[string]string{"endpoint": "creds", "outcome": "ok"}, labelsOf(v))
+	assert.InDelta(t, 0.1, v.GetHistogram().GetSampleSum(), 1e-9)
 	k := fams["kubelook_kube_request_duration_seconds"].GetMetric()[0]
-	assert.Equal(t, "verb", k.GetLabel()[0].GetName())
-	assert.Equal(t, "get", k.GetLabel()[0].GetValue())
-	assert.Equal(t, "client_error", k.GetLabel()[1].GetValue())
+	assert.Equal(t, map[string]string{"verb": "get", "outcome": "client_error"}, labelsOf(k))
 }
 
 func TestKubeVerb_FromRequest(t *testing.T) {

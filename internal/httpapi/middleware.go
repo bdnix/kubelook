@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/clock"
@@ -109,9 +110,14 @@ func recordRoute(next http.Handler) http.Handler {
 	})
 }
 
+// RequestObserver receives one call per served request; the route is the mux pattern.
+type RequestObserver interface {
+	HTTPRequest(route, method string, status int, d time.Duration)
+}
+
 // accessLog writes one record per request: method, route pattern, status, duration and
-// request ID. Neither the path nor the query string is logged.
-func accessLog(log *slog.Logger, c clock.Clock) middleware {
+// request ID. Neither the path nor the query string is logged. A non-nil obs also receives the request.
+func accessLog(log *slog.Logger, c clock.Clock, obs RequestObserver) middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := c.Now()
@@ -126,9 +132,13 @@ func accessLog(log *slog.Logger, c clock.Clock) middleware {
 			if !sw.wrote {
 				status = http.StatusOK
 			}
+			took := c.Now().Sub(start)
 			log.Info("request",
 				"method", r.Method, "route", route, "status", status,
-				"durationMs", c.Now().Sub(start).Milliseconds(), "requestId", w.Header().Get("X-Request-Id"))
+				"durationMs", took.Milliseconds(), "requestId", w.Header().Get("X-Request-Id"))
+			if obs != nil {
+				obs.HTTPRequest(route, r.Method, status, took)
+			}
 		})
 	}
 }
