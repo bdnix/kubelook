@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -438,4 +439,34 @@ func TestStdinQueue_RefusesToBufferWithoutLimit(t *testing.T) {
 	require.NoError(t, ch.Handle(t.Context(), "exec.stdin", stdin(big)))
 	assert.ErrorIs(t, ch.Handle(t.Context(), "exec.stdin", stdin(big)), apperr.ErrBusy)
 	close(hold)
+}
+
+type shellCounter struct{ opened, closed atomic.Int32 }
+
+func (c *shellCounter) ExecOpened() { c.opened.Add(1) }
+func (c *shellCounter) ExecClosed() { c.closed.Add(1) }
+
+func TestMetrics_OpenShellIsCountedUntilTheChannelCloses(t *testing.T) {
+	e := newEnv(t)
+	m := &shellCounter{}
+	e.deps.Metrics = m
+	ch, err := e.open(80, 24)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, m.opened.Load())
+	assert.EqualValues(t, 0, m.closed.Load())
+
+	ch.Close()
+	ch.Close()
+	assert.EqualValues(t, 1, m.closed.Load(), "a second close does not count twice")
+}
+
+func TestMetrics_RefusedShellIsNotCounted(t *testing.T) {
+	e := newEnv(t)
+	m := &shellCounter{}
+	e.deps.Metrics = m
+	e.deps.Guard = busy{}
+	_, err := e.open(80, 24)
+	require.ErrorIs(t, err, apperr.ErrBusy)
+	assert.EqualValues(t, 0, m.opened.Load())
+	assert.EqualValues(t, 0, m.closed.Load())
 }
