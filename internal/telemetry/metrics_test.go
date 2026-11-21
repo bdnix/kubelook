@@ -208,7 +208,7 @@ func TestRoundTripper_Outcomes(t *testing.T) {
 				func(r *http.Request) string { return "label-" + r.Method },
 				func(label, outcome string, d time.Duration) { gotLabel, gotOutcome, gotD = label, outcome, d })
 			req := httptest.NewRequest(http.MethodGet, "http://example.invalid/secret/path?token=abc", nil)
-			resp, err := rt.RoundTrip(req)
+			resp, err := rt.RoundTrip(req) //nolint:bodyclose // the fake response has no body
 			if c.err != nil {
 				require.ErrorIs(t, err, c.err)
 			} else {
@@ -272,7 +272,7 @@ func TestMetricLabels_NeverContainUserClusterNamespaceOrObjectNames(t *testing.T
 	m, reg := newMetrics(t, telemetry.Sources{})
 	rt := telemetry.RoundTripper(&fakeRT{clk: clk, status: 200}, clk, telemetry.KubeVerb, m.ObserveKube)
 	req := httptest.NewRequest(http.MethodGet, "https://prod-cluster/api/v1/namespaces/payments/pods/alice-pod", nil)
-	_, err := rt.RoundTrip(req)
+	_, err := rt.RoundTrip(req) //nolint:bodyclose // the fake response has no body
 	require.NoError(t, err)
 	m.HTTPRequest("/api/v1/clusters/{cluster}/pods", "GET", 200, 0)
 

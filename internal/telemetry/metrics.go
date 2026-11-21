@@ -99,25 +99,30 @@ func (m *Metrics) WSDropped(channel string, n int) {
 	m.wsDropped.WithLabelValues(channel).Add(float64(n))
 }
 
-// LogStreamStarted and LogStreamEnded keep kubelook_log_streams_active.
+// LogStreamStarted counts an opened log stream in kubelook_log_streams_active.
 func (m *Metrics) LogStreamStarted() { m.logStreams.Inc() }
-func (m *Metrics) LogStreamEnded()   { m.logStreams.Dec() }
+
+// LogStreamEnded counts a finished log stream out of kubelook_log_streams_active.
+func (m *Metrics) LogStreamEnded() { m.logStreams.Dec() }
 
 // LogLinesDropped counts log lines discarded for a slow browser.
 func (m *Metrics) LogLinesDropped(n int) { m.logDropped.Add(float64(n)) }
 
-// ExecStarted and ExecEnded keep kubelook_exec_sessions_active.
+// ExecStarted counts an opened shell in kubelook_exec_sessions_active.
 func (m *Metrics) ExecStarted() { m.execSessions.Inc() }
-func (m *Metrics) ExecEnded()   { m.execSessions.Dec() }
+
+// ExecEnded counts a closed shell out of kubelook_exec_sessions_active.
+func (m *Metrics) ExecEnded() { m.execSessions.Dec() }
 
 // Refused counts new work the memory guard turned away; kind is "watch", "exec" or "helm".
 func (m *Metrics) Refused(kind string) { m.refused.WithLabelValues(kind).Inc() }
 
-// ObserveVault and ObserveKube record one outbound request.
+// ObserveVault records one request to Vault.
 func (m *Metrics) ObserveVault(endpoint, outcome string, d time.Duration) {
 	m.vaultDuration.WithLabelValues(endpoint, outcome).Observe(d.Seconds())
 }
 
+// ObserveKube records one request to a Kubernetes API server.
 func (m *Metrics) ObserveKube(verb, outcome string, d time.Duration) {
 	m.kubeDuration.WithLabelValues(verb, outcome).Observe(d.Seconds())
 }

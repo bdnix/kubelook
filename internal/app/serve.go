@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/bdnix/kubelook/internal/actions"
 	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/auth"
@@ -39,7 +41,6 @@ import (
 	"github.com/bdnix/kubelook/internal/watch"
 	"github.com/bdnix/kubelook/internal/webui"
 	"github.com/bdnix/kubelook/internal/ws"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 const (
