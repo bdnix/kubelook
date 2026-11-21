@@ -445,3 +445,59 @@ func TestNewKubeSource_ReadsThroughTheTypedClient(t *testing.T) {
 	_, err = logs.NewKubeSource(fk).Stream(t.Context(), session.Session{}, "c", "ns", "web-1", &corev1.PodLogOptions{})
 	require.ErrorIs(t, err, apperr.ErrClusterUnavailable)
 }
+
+type countingMetrics struct {
+	opened, closed, dropped atomic.Int32
+}
+
+func (m *countingMetrics) LogStreamOpened()      { m.opened.Add(1) }
+func (m *countingMetrics) LogStreamClosed()      { m.closed.Add(1) }
+func (m *countingMetrics) LogLinesDropped(n int) { m.dropped.Add(int32(n)) } //nolint:gosec // a test count
+
+func TestMetrics_OpenStreamIsCountedUntilTheChannelCloses(t *testing.T) {
+	e := newEnv(t, 1000)
+	m := &countingMetrics{}
+	e.deps.Metrics = m
+	ch, err := e.open(t, baseReq)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, m.opened.Load())
+	assert.EqualValues(t, 0, m.closed.Load())
+
+	ch.Close()
+	ch.Close() // a second close does not count twice
+	assert.EqualValues(t, 1, m.closed.Load())
+}
+
+func TestMetrics_FailedOpenIsNotCounted(t *testing.T) {
+	e := newEnv(t, 1000)
+	m := &countingMetrics{}
+	e.deps.Metrics = m
+	e.src.err = errors.New("pod not found")
+	_, err := e.open(t, baseReq)
+	require.Error(t, err)
+	assert.EqualValues(t, 0, m.opened.Load())
+	assert.EqualValues(t, 0, m.closed.Load())
+}
+
+func TestMetrics_DroppedLinesAreCounted_BothTheRateCapAndTheSlowBrowser(t *testing.T) {
+	e := newEnv(t, 100000)
+	m := &countingMetrics{}
+	e.deps.Metrics = m
+	e.sink.backlog.Store(1000)
+	_, err := e.open(t, baseReq)
+	require.NoError(t, err)
+	var chunk strings.Builder
+	for i := range 2500 {
+		fmt.Fprintf(&chunk, "2026-11-14T12:00:00Z line%04d\n", i)
+	}
+	e.src.rd.feed(t, chunk.String())
+	assert.EqualValues(t, 500, m.dropped.Load(), "the oldest 500 of 2500 were pushed out of the 2000-line buffer")
+
+	e2 := newEnv(t, 1000)
+	m2 := &countingMetrics{}
+	e2.deps.Metrics = m2
+	_, err = e2.open(t, baseReq)
+	require.NoError(t, err)
+	e2.src.rd.feed(t, strings.Repeat("2026-11-14T12:00:00Z x\n", 3000))
+	assert.EqualValues(t, 2000, m2.dropped.Load(), "the rate cap lets 1000 of the 3000 lines through")
+}
