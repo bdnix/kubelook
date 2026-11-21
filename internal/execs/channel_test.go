@@ -346,7 +346,10 @@ func TestShell_BusyServerRefusesNewShells(t *testing.T) {
 	e := newEnv(t)
 	e.deps.Guard = busy{}
 	_, err := e.open(80, 24)
-	assert.ErrorIs(t, err, apperr.ErrBusy)
+	var api *apperr.APIError
+	require.ErrorAs(t, err, &api)
+	assert.Equal(t, "server_busy", api.Code)
+	assert.Equal(t, "The server is busy. Try again shortly.", api.Message)
 	assert.Empty(t, e.exec.commands())
 }
 
@@ -465,7 +468,7 @@ func TestShell_Metrics_ARefusedOpenIsNotCounted(t *testing.T) {
 	e.deps.Metrics = m
 	e.deps.Guard = busy{}
 	_, err := e.open(80, 24)
-	require.ErrorIs(t, err, apperr.ErrBusy)
+	require.Error(t, err)
 	assert.Zero(t, m.started.Load())
 	assert.Zero(t, m.ended.Load())
 }

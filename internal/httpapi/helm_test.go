@@ -305,3 +305,24 @@ func TestHelm_Releases_ForAClusterWhoseDiscoveryFails(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, e.post("/api/v1/clusters/v:nope/helm/releases/a/b/values/reveal", `{}`).Code)
 	assert.Equal(t, http.StatusNotFound, e.get("/api/v1/clusters/v:nope/helm/releases/a/b").Code)
 }
+
+type busyGuard struct{ busy bool }
+
+func (g busyGuard) Busy() bool { return g.busy }
+
+func TestHelm_Jobs_BusyServerRefusesANewJobWith503AndReadsStillWork(t *testing.T) {
+	e := newHelmEnv(t)
+	e.deps.Busy = busyGuard{busy: true}
+	body := `{"action":"uninstall","namespace":"team-a","name":"web"}`
+
+	rec := e.post(helmBase+"/jobs", body)
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
+	assert.Equal(t, "server_busy", errorCode(t, rec))
+	assert.Contains(t, rec.Body.String(), "The server is busy. Try again shortly.")
+	assert.Equal(t, http.StatusOK, e.get(helmBase+"/releases").Code, "only new work is refused")
+	assert.NotContains(t, e.get("/api/v1/jobs").Body.String(), "uninstall", "no job was created")
+
+	e.deps.Busy = busyGuard{}
+	assert.Equal(t, http.StatusOK, e.post(helmBase+"/jobs", body).Code)
+	e.runner.Wait()
+}

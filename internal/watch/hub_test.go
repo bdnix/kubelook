@@ -188,6 +188,7 @@ type hubEnv struct {
 	idleSecs  int
 	maxPerUsr int
 	metrics   watch.Metrics
+	guard     watch.Guard
 }
 
 func pod(name string) *unstructured.Unstructured { return fakekube.Pod("ns1", name, nil) }
@@ -227,7 +228,7 @@ func newHubEnv(t *testing.T, mutate ...func(*hubEnv)) *hubEnv {
 		return true, w, nil
 	})
 	e.hub = watch.NewHub(watch.Deps{
-		Clients: e.spy, Clock: e.clock, Log: slog.New(slog.DiscardHandler), Closers: e.closers, MaxPerUser: e.maxPerUsr, Metrics: e.metrics,
+		Clients: e.spy, Clock: e.clock, Log: slog.New(slog.DiscardHandler), Closers: e.closers, MaxPerUser: e.maxPerUsr, Metrics: e.metrics, Guard: e.guard,
 		IdleSeconds: func(context.Context, string) int { return e.idleSecs },
 	})
 	t.Cleanup(e.hub.Close)
@@ -675,4 +676,32 @@ func TestHub_Metrics_ReportsHowManyWatchesTheUserHoldsWhenOneOpens(t *testing.T)
 	e.subscribe(t, sessA, "ns1", newRec()) // a second watch of the same user
 	e.subscribe(t, sessB, "", newRec())    // another user starts at one
 	assert.Equal(t, []int{1, 2, 1}, m.get())
+}
+
+type toggleGuard struct{ busy atomic.Bool }
+
+func (g *toggleGuard) Busy() bool { return g.busy.Load() }
+
+func TestHub_Busy_RefusesNewWatchesAndLeavesExistingOnesWorking(t *testing.T) {
+	g := &toggleGuard{}
+	e := newHubEnv(t, func(e *hubEnv) { e.guard = g })
+	existing := newRec()
+	e.subscribe(t, sessA, "", existing)
+	assert.Equal(t, "snapshot rv=100 [a b]", existing.next(t))
+	w := e.watcher(t)
+
+	g.busy.Store(true)
+	for _, s := range []session.Session{sessA, sessB} { // a new view of a shared upstream and a new upstream
+		_, err := e.hub.Subscribe(t.Context(), s, keyFor(s, ""), newRec())
+		var api *apperr.APIError
+		require.ErrorAs(t, err, &api)
+		assert.Equal(t, "server_busy", api.Code)
+		assert.Equal(t, "The server is busy. Try again shortly.", api.Message)
+		assert.Equal(t, 503, api.Status)
+	}
+
+	w.Add(pod("c"))
+	assert.Equal(t, "ADDED c", existing.next(t), "the existing watch still delivers events")
+	g.busy.Store(false)
+	e.subscribe(t, sessB, "", newRec())
 }
