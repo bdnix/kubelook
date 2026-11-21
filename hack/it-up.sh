@@ -31,10 +31,12 @@ container_running kubelook-it-postgres || { remove_container kubelook-it-postgre
   -p 127.0.0.1:15432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=kubelook postgres:18.6-trixie >/dev/null; }
 wait_pg kubelook-it-postgres 60
 
-# 4. Identity stand-in
+# 4. Identity stand-in; it also serves the Helm chart repository (.it/charts, built by it-chartrepo.sh).
+"$ROOT/hack/it-chartrepo.sh"
 docker build -q -t kubelook-fakeidp:dev -f "$ROOT/test/integration/fakeidp/Dockerfile" "$ROOT" >/dev/null
-container_running kubelook-it-fakeidp || { remove_container kubelook-it-fakeidp; docker run -d --name kubelook-it-fakeidp --network kind \
-  -p 127.0.0.1:8300:8300 kubelook-fakeidp:dev >/dev/null; }
+remove_container kubelook-it-fakeidp   # always recreated: the charts mount and the image may have changed
+docker run -d --name kubelook-it-fakeidp --network kind -v "$ROOT/.it/charts:/charts:ro" \
+  -p 127.0.0.1:8300:8300 kubelook-fakeidp:dev >/dev/null
 wait_http http://127.0.0.1:8300/healthz 30
 
 # 4b. Pre-load the small workload images so tests never wait on a registry.

@@ -383,14 +383,17 @@ describe('ClusterPage', () => {
     );
   });
 
-  it('shows not found for unknown sub-pages', () => {
+  it('shows not found for unknown sub-pages', async () => {
     renderApp(
       <Routes>
         <Route path="/c/:cluster/*" element={<ClusterPage />} />
       </Routes>,
-      { route: '/c/v%3Aprod/a/b/c/d' },
+      {
+        route: '/c/v%3Aprod/a/b/c/d',
+        client: fakeClient({ 'GET /clusters': () => jsonResponse(clusters('open')) }),
+      },
     );
-    expect(screen.getByText('Page not found')).toBeInTheDocument();
+    expect(await screen.findByText('Page not found')).toBeInTheDocument();
   });
 });
 

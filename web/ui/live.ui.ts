@@ -40,10 +40,15 @@ test('opens a cluster and shows its pods live, with status badges and updates fr
     'GET /clusters/v%3Aprod/discovery': (r) => r.fulfill(json(discovery)),
   });
   const socket = await mockLive(page);
+  // the overview opens its own watches first: the Pods list is on the channel the server opened for pods last
+  const podsChannel = () =>
+    socket.received.filter((m) => m.op === 'watch.open' && m.d?.resource === 'pods').at(-1)?.ch ?? 1;
 
   await page.goto('/');
   await page.getByRole('navigation', { name: 'Clusters' }).getByRole('link', { name: 'prod' }).click();
 
+  await expect(page).toHaveURL(/\/c\/v(:|%3A)prod$/);
+  await page.getByRole('navigation', { name: 'Resources' }).getByRole('link', { name: 'Pods' }).click();
   await expect(page).toHaveURL(/\/c\/v(:|%3A)prod\/core\/Pod$/);
   const grid = page.getByRole('grid', { name: 'Pods' });
   await expect(grid.getByText('web-1')).toBeVisible();
@@ -51,9 +56,13 @@ test('opens a cluster and shows its pods live, with status badges and updates fr
   await expect(grid.getByRole('img', { name: 'needs attention' })).toBeVisible();
   await expect(grid.getByText('1/2').first()).toBeVisible();
 
-  socket.push({ ch: 1, t: 'event', d: { type: 'ADDED', object: pod('3', 'web-3', 'Running') } });
+  socket.push({ ch: podsChannel(), t: 'event', d: { type: 'ADDED', object: pod('3', 'web-3', 'Running') } });
   await expect(grid.getByText('web-3')).toBeVisible();
-  socket.push({ ch: 1, t: 'event', d: { type: 'DELETED', object: pod('1', 'web-1', 'Running') } });
+  socket.push({
+    ch: podsChannel(),
+    t: 'event',
+    d: { type: 'DELETED', object: pod('1', 'web-1', 'Running') },
+  });
   await expect(grid.getByText('web-1')).toHaveCount(0);
 
   await page.getByRole('searchbox', { name: /Filter Pods/ }).fill('web-3');

@@ -153,6 +153,7 @@ describe('DetailsDrawer', () => {
       'Logs',
       'Files',
       'Related',
+      'Resources',
     ]);
     expect(screen.getByRole('img', { name: 'healthy' })).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'Containers' })).toBeInTheDocument();
@@ -184,6 +185,7 @@ describe('DetailsDrawer', () => {
       'Events',
       'Logs',
       'Related',
+      'Resources',
     ]);
   });
 

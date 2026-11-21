@@ -2,8 +2,11 @@ import { NavLink } from 'react-router';
 import { findResource, useDiscovery, type Discovery } from '../../api/discovery';
 import { useAccess, type AccessCheck } from '../../api/access';
 import { knownKinds } from '../../kinds/registry';
-import type { KindDescriptor } from '../../kinds/types';
 import { clusterPath } from '../../lib/paths';
+import { CrdSidebarSection } from '../crds/CrdSidebarSection';
+import { customKinds } from '../crds/customKinds';
+import { claimedBy, MODULE_ENTRIES, visibleEntries, type ModuleStatus } from '../modules/registry';
+import { useModules } from '../modules/useModules';
 
 /** The sections of the resource sidebar, in the order of the spec. */
 export const SECTIONS = [
@@ -30,8 +33,12 @@ interface Item {
 }
 
 /** Pages that are not Kubernetes kinds. Later pull requests add Overview, Helm, FluxCD and the others here. */
-const PAGES: { section: string; title: string; path: string }[] = [
+const PAGES: { section: string; title: string; path: string; module?: string }[] = [
+  { section: 'Overview', title: 'Overview', path: '' },
+  { section: 'FluxCD', title: 'Dashboard', path: 'flux', module: 'flux' },
   { section: 'Access Control', title: 'Who can…', path: 'who-can' },
+  { section: 'Helm', title: 'Releases', path: 'helm' },
+  { section: 'Resource Map', title: 'Resource Map', path: 'resource-map' },
   { section: 'Pod Files', title: 'Pod Files', path: 'pod-files' },
 ];
 
@@ -39,6 +46,8 @@ export interface SidebarProps {
   cluster: string;
   /** Undefined while discovery loads. */
   discovery: Discovery | undefined;
+  /** The modules of the cluster; undefined while they load (custom kinds wait for them). */
+  modules?: ModuleStatus[] | undefined;
   /** Whether the user may list the resource; undefined while the answer is not known (the item is shown). */
   canList: (group: string, resource: string) => boolean | undefined;
 }
@@ -59,56 +68,102 @@ function kindItems(cluster: string, discovery: Discovery, canList: SidebarProps[
   return bySection;
 }
 
-/** The resource sidebar: sections and kinds the cluster serves and the user may list. */
-export function Sidebar({ cluster, discovery, canList }: SidebarProps) {
-  if (!discovery) return <p role="status">Loading…</p>;
-  const bySection = kindItems(cluster, discovery, canList);
-  for (const p of PAGES) {
-    const items = bySection.get(p.section) ?? [];
-    items.push({ key: p.path, title: p.title, to: `${clusterPath(cluster)}/${p.path}` });
-    bySection.set(p.section, items);
-  }
+function ModuleLinks({ cluster, entries }: { cluster: string; entries: typeof MODULE_ENTRIES }) {
+  const link = (e: (typeof MODULE_ENTRIES)[number]) => (
+    <li key={e.name}>
+      <NavLink to={`${clusterPath(cluster)}/modules/${e.name}`} end>
+        {e.title}
+      </NavLink>
+    </li>
+  );
+  const security = entries.filter((e) => e.group === 'Security');
   return (
     <>
-      {SECTIONS.filter((s) => (bySection.get(s)?.length ?? 0) > 0).map((section) => (
-        <section key={section} aria-label={section} className="sidebar-section">
-          <h2>{section}</h2>
-          <ul>
-            {bySection.get(section)?.map((item) => (
-              <li key={item.key}>
-                <NavLink to={item.to} end>
-                  {item.title}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      <ul>{entries.filter((e) => e.group === undefined).map(link)}</ul>
+      {security.length > 0 && (
+        <div role="group" aria-label="Security">
+          <h3>Security</h3>
+          <ul>{security.map(link)}</ul>
+        </div>
+      )}
     </>
   );
 }
 
-function listChecks(discovery: Discovery | undefined): { kind: KindDescriptor; check: AccessCheck }[] {
-  if (!discovery) return [];
-  const out: { kind: KindDescriptor; check: AccessCheck }[] = [];
-  for (const kind of knownKinds()) {
-    const served = findResource(discovery, kind.group, kind.kind);
-    if (served) out.push({ kind, check: { verb: 'list', group: served.group, resource: served.resource } });
+/** The resource sidebar: sections and kinds the cluster serves and the user may list. */
+export function Sidebar({ cluster, discovery, modules, canList }: SidebarProps) {
+  if (!discovery) return <p role="status">Loading…</p>;
+  const bySection = kindItems(cluster, discovery, canList);
+  const custom = modules
+    ? customKinds(discovery, claimedBy(modules)).filter((k) => canList(k.group, k.resource) !== false)
+    : [];
+  const entries = modules ? visibleEntries(modules, canList) : [];
+  for (const p of PAGES) {
+    if (p.module && !modules?.some((m) => m.name === p.module && m.active)) continue;
+    const items = bySection.get(p.section) ?? [];
+    items.push({
+      key: p.path || 'overview',
+      title: p.title,
+      to: p.path ? `${clusterPath(cluster)}/${p.path}` : clusterPath(cluster),
+    });
+    bySection.set(p.section, items);
   }
-  return out;
+  const has = (section: string) =>
+    section === 'Custom Resources'
+      ? custom.length > 0
+      : section === 'Modules'
+        ? entries.length > 0
+        : (bySection.get(section)?.length ?? 0) > 0;
+  return (
+    <>
+      {SECTIONS.filter(has).map((section) =>
+        section === 'Custom Resources' ? (
+          <section key={section} aria-label={section} className="sidebar-section">
+            <h2>{section}</h2>
+            <CrdSidebarSection cluster={cluster} kinds={custom} />
+          </section>
+        ) : section === 'Modules' ? (
+          <section key={section} aria-label={section} className="sidebar-section">
+            <h2>{section}</h2>
+            <ModuleLinks cluster={cluster} entries={entries} />
+          </section>
+        ) : (
+          <section key={section} aria-label={section} className="sidebar-section">
+            <h2>{section}</h2>
+            <ul>
+              {bySection.get(section)?.map((item) => (
+                <li key={item.key}>
+                  <NavLink to={item.to} end>
+                    {item.title}
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ),
+      )}
+    </>
+  );
+}
+
+function listChecks(discovery: Discovery | undefined): AccessCheck[] {
+  if (!discovery) return [];
+  const served = [
+    ...knownKinds().flatMap((k) => findResource(discovery, k.group, k.kind) ?? []),
+    ...customKinds(discovery),
+  ];
+  return served.map((r) => ({ verb: 'list', group: r.group, resource: r.resource }));
 }
 
 /** The sidebar of an open cluster, with discovery and the access checks behind it. */
 export function ResourceSidebar({ cluster }: { cluster: string }) {
   const discovery = useDiscovery(cluster);
   const checks = listChecks(discovery.data);
-  const access = useAccess(
-    cluster,
-    checks.map((c) => c.check),
-  );
+  const access = useAccess(cluster, checks);
   const canList = (group: string, resource: string): boolean | undefined => {
-    const i = checks.findIndex((c) => c.check.group === group && c.check.resource === resource);
+    const i = checks.findIndex((c) => c.group === group && c.resource === resource);
     return i < 0 ? undefined : access.data?.[i]?.allowed;
   };
-  return <Sidebar cluster={cluster} discovery={discovery.data} canList={canList} />;
+  const modules = useModules(cluster);
+  return <Sidebar cluster={cluster} discovery={discovery.data} modules={modules} canList={canList} />;
 }

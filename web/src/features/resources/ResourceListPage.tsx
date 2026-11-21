@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { findResource, useDiscovery } from '../../api/discovery';
 import type { K8sObject } from '../../state/live';
 import { useOpenCluster } from '../../api/open';
@@ -15,7 +15,10 @@ import { FilterBar } from '../filter/FilterBar';
 import { SavedFilters } from '../filter/SavedFilters';
 import { useFilter } from '../filter/useFilter';
 import { CreateFromYaml } from '../editor/CreateFromYaml';
-import { getKind } from '../../kinds/registry';
+import { crdDescriptor } from '../../kinds/generic';
+import { getKind, isKnownKind } from '../../kinds/registry';
+import { isBuiltInGroup, kindTemplate } from '../crds/customKinds';
+import { useCrd } from '../crds/useCrd';
 import { useNow } from '../../lib/clock';
 import { getString } from '../../lib/path';
 import { resourcePath } from '../../lib/paths';
@@ -55,7 +58,17 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
     [live.items, namespaced, plan],
   );
   const now = useNow(MINUTE);
-  const descriptor = getKind(group, kind);
+  const isCustom = resource !== undefined && !isBuiltInGroup(resource.group) && !isKnownKind(group, kind);
+  const crd = useCrd(cluster, resource?.group ?? '', resource?.resource ?? '', isCustom);
+  const descriptor =
+    isCustom && resource
+      ? crdDescriptor(crd, resource.version, {
+          group: resource.group,
+          kind: resource.kind,
+          resource: resource.resource,
+          namespaced: resource.namespaced,
+        })
+      : getKind(group, kind);
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
@@ -73,7 +86,9 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
     withUsage,
     settings?.columnPresets[presetKey(descriptor.group, descriptor.kind)],
   );
-  const [query, setQuery] = useState('');
+  const [params] = useSearchParams();
+  // a link from the overview can open the list with a filter
+  const [query, setQuery] = useState(params.get('filter') ?? '');
   const [shown, setShown] = useState<K8sObject[]>([]);
   const filtered = useFilter(items, query, { group: descriptor.group, kind: descriptor.kind }, now);
 
@@ -114,7 +129,12 @@ export function ResourceListPage({ cluster, group, kind }: { cluster: string; gr
       <h1>{descriptor.title}</h1>
       {descriptor.note && <p>{descriptor.note}</p>}
       <Button onClick={() => setCreating(!creating)}>{creating ? 'Close' : 'Create from YAML'}</Button>
-      {creating && <CreateFromYaml cluster={cluster} />}
+      {creating && (
+        <CreateFromYaml
+          cluster={cluster}
+          initialText={isCustom && resource ? kindTemplate(resource) : undefined}
+        />
+      )}
       {live.status === 'paused' && (
         <Banner kind="info">Live updates paused. They resume when this tab is visible.</Banner>
       )}

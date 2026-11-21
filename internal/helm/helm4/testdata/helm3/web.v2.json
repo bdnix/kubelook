@@ -1,0 +1,20 @@
+{
+  "kind": "Secret",
+  "apiVersion": "v1",
+  "metadata": {
+    "name": "sh.helm.release.v1.web.v2",
+    "namespace": "demo",
+    "creationTimestamp": "2026-01-10T09:00:00Z",
+    "labels": {
+      "createdAt": "1795204732",
+      "name": "web",
+      "owner": "helm",
+      "status": "deployed",
+      "version": "2"
+    }
+  },
+  "data": {
+    "release": "SDRzSUFBQUFBQUFDLzV4VGJXL2lPQmo4SzlGelh3MTFjb0lUbHZyaFNrdUsycU5xb2J4ZFRpZmptTVRnTjhVT2xLMzQ3NnVFQWwycHJMVDdMWjZNbnhsN3h1K2dxZUpBWU1zWGdFRG9wUUh5RGt0Uk9QOS95cTAwTzU0Q2dRaEg3UVlPR3lFZTRRN0JtR0E4QndTU1hxU0YrRXhMdWVTK0p0UUx4d3BodlRBYUNMemFyS0FwRDVoUnRpSUJBdWVwTHgwUU9BMUdvSTNuRlRUS3FWNEhPMU1HUzFNRVFqdFBwUlE2QzdaODBVdzA3Qkd3bkJhK09vVGlucWJVMCtyN2gxTnVlT0VPNm1FemJHSkFRSzBZbjhCTlZDUDJqRVRORUJENG5hMW1VR3VsWUxUMnYwY2dEVnNEMGFXVUNEeFhWdExhNmI4bnpSTjR4WXhlaWt4UjI5eFJKYXVycU4zQmJIcGp4MnE4WTVIY0xGWW1TMWQzRHpTUzVmeldaTTlScDV3cnFVZVQzcmFyUXBuR3ZmVnMrcEkvWlNicng2MThNWGx0OSsvOVgvMXVhemlmdk1uWmRDQWYxeldlTGFmWXp6NzJkN1ByYTlpakwxdzV6Z3J1ZjhIU2F6UmVNVFhHdjJPSEhmZnFBV1pLbG5QOGtxZnhYYnNyL3M1WTNQdkcva3czVEQyMyszRWVMdlNMWkt2K3c5ZTJCMCtqdTJIVHYvbXo2WEdjNXd2bE1qN3BoUDE0dm1IaXhpNzBBTThtYjQ1T1d2ckQyQzJOZTd1MDIzcWFUVUxadnc4N2o1bTVodjEvQ0RaVWx0d2R1dU1jelNyRm5FdHBBRUhCNjlnZGtIQ1B3TEdjSzNyTWZTa2tkNGRGVmNBNjVtcktlVSswUjZDb0ZrdnVQQkJvTkJxSi9pTVltckpnbkZUbHZicFVrMFNmeTBtQ1Raam90ZEFwQ2JvMTZ4OXFFMzBzT2tsMEVGUVhWVTlzSE9ZaytxZGluOUsvcERTc0tSZGwzTWR2NXd1aHM5c2p3VkxudHFaSVNaQ1gydk1pU3ZUbnB4ZWhPbEpuS2VQMVUxY0c5dDhIQUdHWlF4T09CQUFB"
+  },
+  "type": "helm.sh/release.v1"
+}

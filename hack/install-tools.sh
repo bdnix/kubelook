@@ -20,6 +20,7 @@ GOVULNCHECK_VERSION=v1.9.0
 KIND_VERSION=v0.33.0
 KUBECTL_VERSION=v1.37.2
 HELM_VERSION=v4.3.1
+HELM3_VERSION=v3.22.1   # integration tests only: makes and checks releases of Helm 3
 
 go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION}"
 go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
@@ -39,5 +40,13 @@ if ! grep -Fqw "${HELM_VERSION}" <<<"$have_helm"; then
   echo "$(curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-${OS}-${ARCH}.tar.gz.sha256sum" | awk '{print $1}')  $tmp/helm.tgz" | sha256_check
   tar -xzf "$tmp/helm.tgz" -C "$tmp"
   mv "$tmp/${OS}-${ARCH}/helm" "$GOBIN/helm"
+fi
+have_helm3="$("$GOBIN/helm3" version --short 2>/dev/null || true)"
+if ! grep -Fqw "${HELM3_VERSION}" <<<"$have_helm3"; then
+  curl -fsSLo "$tmp/helm3.tgz" "https://get.helm.sh/helm-${HELM3_VERSION}-${OS}-${ARCH}.tar.gz"
+  echo "$(curl -fsSL "https://get.helm.sh/helm-${HELM3_VERSION}-${OS}-${ARCH}.tar.gz.sha256sum" | awk '{print $1}')  $tmp/helm3.tgz" | sha256_check
+  mkdir "$tmp/helm3"
+  tar -xzf "$tmp/helm3.tgz" -C "$tmp/helm3"
+  mv "$tmp/helm3/${OS}-${ARCH}/helm" "$GOBIN/helm3"
 fi
 echo "TOOLS OK"

@@ -160,6 +160,8 @@ export function baseRoutes(extra: Record<string, (r: import('@playwright/test').
     'GET /clusters': (r: import('@playwright/test').Route) => r.fulfill(json(cluster.sources())),
     [`GET /clusters/${cluster.path}/discovery`]: (r: import('@playwright/test').Route) =>
       r.fulfill(json(discovery)),
+    [`GET /clusters/${cluster.path}/modules`]: (r: import('@playwright/test').Route) =>
+      r.fulfill(json({ modules: [] })),
     [`POST /clusters/${cluster.path}/access`]: async (r: import('@playwright/test').Route) => {
       const body = r.request().postDataJSON() as { checks: unknown[] };
       await r.fulfill(json({ results: body.checks.map(() => ({ allowed: true })) }));

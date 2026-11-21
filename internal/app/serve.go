@@ -22,11 +22,15 @@ import (
 	"github.com/bdnix/kubelook/internal/crypto"
 	"github.com/bdnix/kubelook/internal/execs"
 	"github.com/bdnix/kubelook/internal/files"
+	"github.com/bdnix/kubelook/internal/flux"
+	"github.com/bdnix/kubelook/internal/helm"
+	"github.com/bdnix/kubelook/internal/helm/helm4"
 	"github.com/bdnix/kubelook/internal/httpapi"
 	"github.com/bdnix/kubelook/internal/jobs"
 	"github.com/bdnix/kubelook/internal/kube"
 	"github.com/bdnix/kubelook/internal/logs"
 	"github.com/bdnix/kubelook/internal/metrics"
+	"github.com/bdnix/kubelook/internal/resourcemap"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/vault"
@@ -160,6 +164,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	})
 	c.jobs = jobs.NewRunner(jobs.Deps{
 		Store: store.NewJobs(db), Clock: o.Clock, Sealer: sealer, Log: log, ReplicaID: store.NewID(), NewID: store.NewID,
+		Limits:   jobs.Limits{Helm: cfg.Helm.MaxConcurrentJobs},
 		Sessions: store.NewSessions(db),
 		// Jobs run without a request: give them the identity the audit records of a request would carry.
 		Context: func(ctx context.Context, j *jobs.Job) context.Context {
@@ -175,8 +180,18 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	actionDeps := actions.Deps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit}
 	c.jobs.Register(actions.NewBulkHandler(actionDeps))
 	c.jobs.Register(actions.NewDrainHandler(actionDeps))
+	helmService := &helm.Service{
+		Factory: &helm4.Factory{Clients: kubeClients},
+		Repos:   &helm.Repos{Org: cfg.Helm.Repositories, Sessions: store.NewSessions(db), Sealer: sealer, Clock: o.Clock},
+		Fetcher: &helm.Fetcher{MaxBytes: cfg.Helm.MaxChartBytes},
+		Audit:   c.audit,
+	}
+	for _, h := range helm.NewJobHandlers(helmService.JobDeps()) {
+		c.jobs.Register(h)
+	}
 	c.ws = ws.NewMux(ws.Deps{Clock: o.Clock, Log: log, Sessions: mgr, PublicHost: publicURL.Host, Fail: httpapi.ErrorWriter(log)})
 	c.ws.Register("watch.open", c.hub.Factory())
+	c.ws.Register("map.open", resourcemap.Factory(resourcemap.Deps{Source: c.hub, Clients: kubeClients, Access: kube.NewAccess(kubeClients, o.Clock, mgr.Registry()), Clock: o.Clock}))
 	c.ws.Register("logs.open", logs.NewFactory(logs.Deps{
 		Source: logs.NewKubeSource(kubeClients), Resolver: logs.NewKubeResolver(kubeClients), Clock: o.Clock, Audit: c.audit,
 		MaxLinesPerSecond: cfg.Logs.MaxLinesPerSecond, HistoryMaxLines: cfg.Logs.HistoryMaxLines,
@@ -192,7 +207,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, Jobs: c.jobs, WS: c.ws,
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, Jobs: c.jobs, Helm: helmService, Flux: &flux.Inventory{Clients: kubeClients, Helm: helmService}, WS: c.ws,
 		Metrics:  metrics.New(metrics.Deps{Clients: kubeClients, Clock: o.Clock, Prometheus: cfg.Prometheus}),
 		Debugger: execs.NewDebugger(execs.DebuggerDeps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit, Rand: o.Rand, Debug: cfg.Debug, NodeShell: cfg.NodeShell}), VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
