@@ -78,6 +78,7 @@ type components struct {
 	ws           *ws.Mux
 	vaultMonitor *vault.Monitor
 	metrics      *telemetry.Metrics
+	tracing      *telemetry.Tracing
 	hub          *watch.Hub
 	jobs         *jobs.Runner
 	handler      http.Handler
@@ -97,12 +98,20 @@ func (o *ServeOptions) defaults() {
 
 // build opens the database, brings the schema up to date (or checks it) and wires the components.
 func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components, error) {
-	log := slog.New(slog.NewJSONHandler(o.Stdout, &slog.HandlerOptions{Level: o.LogLevel}))
+	log := telemetry.NewLogger(o.Stdout, o.LogLevel)
+	tracing, err := telemetry.NewTracing(ctx, telemetry.TracingConfig{Endpoint: cfg.Telemetry.OTLPEndpoint})
+	if err != nil {
+		return nil, err
+	}
 	db, err := store.Open(ctx, store.Options{Driver: cfg.Database.Driver, SQLitePath: cfg.Database.SQLitePath, URL: cfg.DatabaseURL})
 	if err != nil {
 		return nil, err
 	}
-	fail := func(err error) (*components, error) { _ = db.Close(); return nil, err }
+	fail := func(err error) (*components, error) {
+		_ = db.Close()
+		_ = tracing.Shutdown(context.WithoutCancel(ctx))
+		return nil, err
+	}
 
 	if cfg.Database.MigrateOnStart() {
 		if err := store.Migrate(ctx, db, store.Migrations()); err != nil {
@@ -131,6 +140,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		users: store.NewUsers(db, o.Clock, store.NewID),
 		audit: audit.NewRecorder(db, o.Clock, o.Stdout, store.NewID),
 	}
+	c.tracing = tracing
 	c.metrics = telemetry.NewMetrics(prometheus.NewRegistry(), telemetry.Deps{
 		Version: version.Version, Commit: version.Commit, Sources: c.metricSources(),
 	})
@@ -138,7 +148,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	if err != nil {
 		return fail(err)
 	}
-	rawVault := vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout})
+	rawVault := vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout, Transport: tracing.Transport(http.DefaultTransport)})
 	c.vaultMonitor = vault.NewMonitor(rawVault, o.Clock, cfg.Vault.Address != "")
 	vaultClient := vault.Instrument(c.vaultMonitor.Wrap(rawVault), o.Clock, c.metrics.ObserveVault)
 	cache := cluster.NewDiscoveryCache(o.Clock, mgr.Registry())
@@ -155,7 +165,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	})
 	clusters.SetStates(opener.StateOf)
 	c.opener = opener
-	kubeClients := kube.NewClients(kube.Deps{Config: opener, Clock: o.Clock, Closers: mgr.Registry(), Observe: c.metrics.ObserveKube})
+	kubeClients := kube.NewClients(kube.Deps{Config: opener, Clock: o.Clock, Closers: mgr.Registry(), Observe: c.metrics.ObserveKube, WrapTransport: tracing.Transport})
 	publicURL, err := url.Parse(cfg.Server.PublicURL)
 	if err != nil {
 		return fail(fmt.Errorf("parsing server.publicURL: %w", err))
@@ -219,7 +229,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		Metrics:  metrics.New(metrics.Deps{Clients: kubeClients, Clock: o.Clock, Prometheus: cfg.Prometheus}),
 		Debugger: execs.NewDebugger(execs.DebuggerDeps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit, Rand: o.Rand, Debug: cfg.Debug, NodeShell: cfg.NodeShell}), VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready:     func(ctx context.Context) error { return db.PingContext(ctx) },
-		Telemetry: c.metrics,
+		Telemetry: c.metrics, Tracer: tracing.Tracer(),
 	})
 	return c, nil
 }
@@ -300,6 +310,13 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 		return err
 	}
 	defer func() { _ = c.db.Close() }()
+	defer func() { // after the server has stopped, so the last spans are sent
+		flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
+		defer cancel()
+		if err := c.tracing.Shutdown(flushCtx); err != nil {
+			c.log.Warn("flushing traces", "error", err.Error())
+		}
+	}()
 
 	ln := o.Listener
 	if ln == nil {

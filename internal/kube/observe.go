@@ -14,13 +14,11 @@ import (
 // the cluster answered. Never a cluster, namespace or object name.
 type Observer func(verb, outcome string, d time.Duration)
 
-// observeConfig returns a copy of cfg whose transport reports every request to observe.
-func observeConfig(cfg *rest.Config, c clock.Clock, observe Observer) *rest.Config {
-	cfg = rest.CopyConfig(cfg)
+// observeConfig makes cfg's transport report every request to observe.
+func observeConfig(cfg *rest.Config, c clock.Clock, observe Observer) {
 	cfg.Wrap(func(rt http.RoundTripper) http.RoundTripper {
 		return &observedTransport{next: rt, clock: c, observe: observe}
 	})
-	return cfg
 }
 
 type observedTransport struct {

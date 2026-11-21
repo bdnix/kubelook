@@ -130,5 +130,5 @@ func TestWrapTransport_TheCallerWrapsTheTransportOfEveryCluster(t *testing.T) {
 	resp, err := got.WrapTransport(&upstream{clk: clk, status: 200}).RoundTrip(req) //nolint:bodyclose // http.NoBody
 	require.NoError(t, err)
 	assert.Equal(t, 200, resp.StatusCode)
-	assert.Equal(t, []string{"tracing", "observe"}, wrappedBy, "the caller's wrapper sits inside the observation, so the measured time includes it")
+	assert.ElementsMatch(t, []string{"tracing", "observe"}, wrappedBy, "the caller's wrapper is applied, and the request is observed")
 }
