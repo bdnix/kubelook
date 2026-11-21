@@ -187,7 +187,12 @@ type hubEnv struct {
 	watchErr  func() error
 	idleSecs  int
 	maxPerUsr int
+	busy      atomic.Bool  // the memory guard of the hub
+	refused   atomic.Int32 // refusals reported to the metrics
 }
+
+func (e *hubEnv) Busy() bool     { return e.busy.Load() }
+func (e *hubEnv) Refused(string) { e.refused.Add(1) }
 
 func pod(name string) *unstructured.Unstructured { return fakekube.Pod("ns1", name, nil) }
 
@@ -228,6 +233,7 @@ func newHubEnv(t *testing.T, mutate ...func(*hubEnv)) *hubEnv {
 	e.hub = watch.NewHub(watch.Deps{
 		Clients: e.spy, Clock: e.clock, Log: slog.New(slog.DiscardHandler), Closers: e.closers, MaxPerUser: e.maxPerUsr,
 		IdleSeconds: func(context.Context, string) int { return e.idleSecs },
+		Guard:       e, Metrics: e,
 	})
 	t.Cleanup(e.hub.Close)
 	return e

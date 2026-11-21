@@ -233,3 +233,30 @@ func TestChannel_OpsAreRefused(t *testing.T) {
 	assert.Equal(t, "error", f.T)
 	assert.Equal(t, "bad_request", f.D["code"])
 }
+
+func TestChannel_BusyServer_RefusesANewWatchButExistingOnesKeepFlowing(t *testing.T) {
+	e := newChanEnv(t)
+	c := e.connect(t)
+	sendOp(t, c, "watch.open", 1, openReq(""))
+	require.Equal(t, "opened", recvFrame(t, c).T)
+	require.Equal(t, "snapshot", recvFrame(t, c).T)
+	w := e.watcher(t)
+
+	e.busy.Store(true)
+	sendOp(t, c, "watch.open", 2, openReq("ns1"))
+	f := recvFrame(t, c)
+	assert.Equal(t, "error", f.T)
+	assert.Equal(t, 2, f.Ch)
+	assert.Equal(t, "server_busy", f.D["code"])
+	assert.Equal(t, "The server is busy. Try again shortly.", f.D["message"])
+	assert.EqualValues(t, 1, e.refused.Load())
+
+	w.Add(withRV(pod("c"), "101"))
+	ev := recvFrame(t, c)
+	assert.Equal(t, "event", ev.T, "the open watch is not affected")
+	assert.Equal(t, 1, ev.Ch)
+
+	e.busy.Store(false)
+	sendOp(t, c, "watch.open", 3, openReq("ns1"))
+	assert.Equal(t, "opened", recvFrame(t, c).T)
+}
