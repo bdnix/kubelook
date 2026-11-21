@@ -15,6 +15,8 @@ import (
 	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/egress"
+	"github.com/bdnix/kubelook/internal/execs"
+	"github.com/bdnix/kubelook/internal/kube"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/testutil/fakeoidc"
 )
@@ -126,4 +128,24 @@ func TestToken_OIDCIssuerOnALocalAddress_IsRefusedWhenTheGuardIsOn(t *testing.T)
 
 	require.ErrorIs(t, err, egress.ErrBlocked)
 	assert.Equal(t, 0, idp.Refreshes(), "the identity provider was never contacted")
+}
+
+func TestExec_ThroughAGuardedKubeconfigCluster_IsRefusedForALoopbackServer(t *testing.T) {
+	var reached bool
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
+	t.Cleanup(srv.Close)
+	named := strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)
+
+	e := newOpenerEnv(t)
+	_, _, err := e.c.AddKubeconfig(t.Context(), e.sess, "work", kubeconfigFor(named))
+	require.NoError(t, err)
+	clients := kube.NewClients(kube.Deps{Config: e.guardedOpener(t), Clock: e.clock})
+
+	var out strings.Builder
+	err = execs.NewKubeExecutor(clients).Stream(t.Context(), e.sess, "k:work/ctx",
+		execs.ExecRequest{Namespace: "ns", Pod: "web-1", Container: "app", Command: []string{"sh"}},
+		execs.StreamIO{Stdout: &out})
+
+	require.ErrorIs(t, err, egress.ErrBlocked)
+	assert.False(t, reached, "no connection was made")
 }
