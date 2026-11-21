@@ -33,7 +33,7 @@ func newTracing(t *testing.T) (*telemetry.Tracing, *tracetest.InMemoryExporter) 
 func attrs(s tracetest.SpanStub) map[string]string {
 	out := map[string]string{}
 	for _, kv := range s.Attributes {
-		out[string(kv.Key)] = kv.Value.Emit()
+		out[string(kv.Key)] = kv.Value.String()
 	}
 	return out
 }
@@ -223,7 +223,7 @@ func TestTracing_ResourceCarriesTheServiceNameAndVersion(t *testing.T) {
 	end("/", 200)
 	got := map[attribute.Key]string{}
 	for _, kv := range exp.GetSpans()[0].Resource.Attributes() {
-		got[kv.Key] = kv.Value.Emit()
+		got[kv.Key] = kv.Value.String()
 	}
 	assert.Equal(t, "kubelook", got["service.name"])
 	assert.Equal(t, "1.2.3", got["service.version"])

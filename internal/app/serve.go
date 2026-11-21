@@ -48,6 +48,8 @@ const (
 	shutdownTimeout   = 10 * time.Second
 	authHTTPTimeout   = 15 * time.Second
 	vaultHTTPTimeout  = 15 * time.Second
+	// traceFlushTimeout bounds the final export of spans, so an unreachable collector cannot hold up shutdown.
+	traceFlushTimeout = 2 * time.Second
 )
 
 // ServeOptions injects the parts of Serve that tests replace.
@@ -80,6 +82,7 @@ type components struct {
 	hub          *watch.Hub
 	jobs         *jobs.Runner
 	metrics      *telemetry.Metrics
+	tracing      *telemetry.Tracing
 	handler      http.Handler
 }
 
@@ -97,7 +100,7 @@ func (o *ServeOptions) defaults() {
 
 // build opens the database, brings the schema up to date (or checks it) and wires the components.
 func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components, error) {
-	log := slog.New(slog.NewJSONHandler(o.Stdout, &slog.HandlerOptions{Level: o.LogLevel}))
+	log := telemetry.NewLogger(o.Stdout, o.LogLevel)
 	db, err := store.Open(ctx, store.Options{Driver: cfg.Database.Driver, SQLitePath: cfg.Database.SQLitePath, URL: cfg.DatabaseURL})
 	if err != nil {
 		return nil, err
@@ -132,11 +135,15 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		audit: audit.NewRecorder(db, o.Clock, o.Stdout, store.NewID),
 	}
 	c.metrics = telemetry.NewMetrics(prometheus.NewRegistry(), telemetry.BuildInfo{Version: version.Version, Commit: version.Commit}, c.metricSources())
+	c.tracing, err = telemetry.NewTracing(ctx, telemetry.TracingDeps{Endpoint: cfg.Telemetry.OTLPEndpoint, Version: version.Version})
+	if err != nil {
+		return fail(err)
+	}
 	authHandlers, err := newAuth(ctx, cfg, o, log, c, sealer)
 	if err != nil {
 		return fail(err)
 	}
-	vaultTransport := telemetry.RoundTripper(http.DefaultTransport, o.Clock, vault.Endpoint, c.metrics.ObserveVault)
+	vaultTransport := telemetry.RoundTripper(c.tracing.Transport("vault", http.DefaultTransport), o.Clock, vault.Endpoint, c.metrics.ObserveVault)
 	rawVault := vault.NewClient(cfg.Vault.Address, &http.Client{Timeout: vaultHTTPTimeout, Transport: vaultTransport})
 	c.vaultMonitor = vault.NewMonitor(rawVault, o.Clock, cfg.Vault.Address != "")
 	vaultClient := c.vaultMonitor.Wrap(rawVault)
@@ -157,7 +164,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	kubeClients := kube.NewClients(kube.Deps{
 		Config: opener, Clock: o.Clock, Closers: mgr.Registry(),
 		WrapTransport: func(rt http.RoundTripper) http.RoundTripper {
-			return telemetry.RoundTripper(rt, o.Clock, telemetry.KubeVerb, c.metrics.ObserveKube)
+			return telemetry.RoundTripper(c.tracing.Transport("kube", rt), o.Clock, telemetry.KubeVerb, c.metrics.ObserveKube)
 		},
 	})
 	publicURL, err := url.Parse(cfg.Server.PublicURL)
@@ -219,7 +226,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	}))
 	c.handler = httpapi.New(httpapi.Deps{
 		Config: cfg, Clock: o.Clock, Log: log, WebFS: webui.FS(), Sessions: mgr, Users: c.users,
-		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, Jobs: c.jobs, Helm: helmService, Flux: &flux.Inventory{Clients: kubeClients, Helm: helmService}, WS: c.ws, Telemetry: c.metrics,
+		Auth: authHandlers, Credentials: creds, Clusters: clusters, Opener: opener, Kube: kubeClients, Audit: c.audit, Jobs: c.jobs, Helm: helmService, Flux: &flux.Inventory{Clients: kubeClients, Helm: helmService}, WS: c.ws, Telemetry: c.metrics, Tracing: c.tracing,
 		Metrics:  metrics.New(metrics.Deps{Clients: kubeClients, Clock: o.Clock, Prometheus: cfg.Prometheus}),
 		Debugger: execs.NewDebugger(execs.DebuggerDeps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit, Rand: o.Rand, Debug: cfg.Debug, NodeShell: cfg.NodeShell}), VaultMonitor: c.vaultMonitor, KeyID: sealer.KeyID(),
 		Ready: func(ctx context.Context) error { return db.PingContext(ctx) },
@@ -298,6 +305,13 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 		return err
 	}
 	defer func() { _ = c.db.Close() }()
+	defer func() { // after the server has stopped, so the last spans are flushed too
+		flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), traceFlushTimeout)
+		defer cancel()
+		if err := c.tracing.Shutdown(flushCtx); err != nil {
+			c.log.Warn("flushing traces", "error", err.Error())
+		}
+	}()
 
 	ln := o.Listener
 	if ln == nil {

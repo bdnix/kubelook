@@ -34,7 +34,7 @@ func TestTracing_Healthz_OneServerSpanNamedByPatternAndTheAccessLogCarriesItsTra
 	require.Len(t, spans, 1)
 	assert.Equal(t, "GET /healthz", spans[0].Name)
 	for _, kv := range spans[0].Attributes {
-		assert.NotContains(t, kv.Value.Emit(), "secret")
+		assert.NotContains(t, kv.Value.String(), "secret")
 	}
 
 	var found bool
@@ -60,7 +60,7 @@ func TestTracing_RejectedUnauthenticatedRequest_StillTraced(t *testing.T) {
 	spans := exp.GetSpans()
 	require.Len(t, spans, 1)
 	assert.Equal(t, "unmatched", spans[0].Name)
-	assert.Equal(t, "401", spans[0].Attributes[len(spans[0].Attributes)-1].Value.Emit())
+	assert.Equal(t, "401", spans[0].Attributes[len(spans[0].Attributes)-1].Value.String())
 }
 
 func TestTracing_NotWired_NothingChanges(t *testing.T) {

@@ -5,16 +5,15 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log/slog"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/store"
+	"github.com/bdnix/kubelook/internal/telemetry"
 	"github.com/bdnix/kubelook/internal/version"
 )
 
@@ -93,19 +92,8 @@ func auditCleanup(ctx context.Context, stdout, stderr io.Writer, getenv func(str
 	return 0
 }
 
-func parseLogLevel(s string) (slog.Level, error) {
-	var l slog.Level
-	if s == "" {
-		return slog.LevelInfo, nil
-	}
-	if err := l.UnmarshalText([]byte(strings.ToLower(s))); err != nil {
-		return 0, fmt.Errorf("KUBELOOK_LOG_LEVEL must be debug, info, warn or error, got %q", s)
-	}
-	return l, nil
-}
-
 func serve(ctx context.Context, stdout, stderr io.Writer, getenv func(string) string) int {
-	level, err := parseLogLevel(getenv("KUBELOOK_LOG_LEVEL"))
+	level, err := telemetry.ParseLevel(getenv("KUBELOOK_LOG_LEVEL"))
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "serve: %v\n", err)
 		return 1

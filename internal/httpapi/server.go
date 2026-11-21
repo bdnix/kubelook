@@ -64,6 +64,8 @@ type Deps struct {
 	VaultMonitor *vault.Monitor
 	// Telemetry serves GET /metrics (outside /api/, so without a session) and counts every request; nil → neither.
 	Telemetry Telemetry
+	// Tracing starts a span for every request; nil → no spans.
+	Tracing Tracing
 	// KeyID identifies the encryption key; shown in /api/v1/me so the browser can tell when it changed.
 	KeyID string
 }
@@ -108,12 +110,16 @@ func New(d Deps) http.Handler {
 	})
 	mux.Handle("/", webui.Handler(d.WebFS))
 
-	mws := []middleware{
+	var mws []middleware
+	if d.Tracing != nil {
+		mws = append(mws, tracing(d.Tracing))
+	}
+	mws = append(mws,
 		recoverPanics(d.Log),
 		requestID(d.NewID),
 		accessLog(d.Log, d.Clock, observer),
 		securityHeaders(d.Config.CookieSecure()),
-	}
+	)
 	if d.Sessions != nil {
 		fail := func(w http.ResponseWriter, r *http.Request, err error) { writeError(w, r, d.Log, err) }
 		mws = append(mws, d.Sessions.Require(fail), session.CSRF(fail))

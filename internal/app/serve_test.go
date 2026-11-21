@@ -325,3 +325,9 @@ func TestServe_MetricsEndpoint_PublicWithTheListedSeries(t *testing.T) {
 	_, body = get(t, "http://"+r.addr+"/metrics")
 	assert.Contains(t, body, `kubelook_http_requests_total{method="GET",route="/healthz",status="200"} 1`)
 }
+
+func TestServe_OTLPEndpointConfigured_StartsAndStopsCleanly(t *testing.T) {
+	r := start(t, loadConfig(t, "telemetry:\n  otlpEndpoint: 127.0.0.1:1\n"), true)
+	r.cancel() // no request was made, so there is no span to export and the exporter stops at once
+	assert.NoError(t, testutil.Recv(t, r.result))
+}

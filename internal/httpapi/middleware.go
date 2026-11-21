@@ -115,15 +115,53 @@ type RequestObserver interface {
 	HTTPRequest(route, method string, status int, d time.Duration)
 }
 
+// Tracing starts the span of a request. The function it returns ends the span with the route pattern the
+// router matched ("" when none did) and the status written.
+type Tracing interface {
+	StartRequest(r *http.Request) (*http.Request, func(route string, status int))
+}
+
+// holderFor returns the route holder of the request, adding one when no middleware has yet.
+func holderFor(r *http.Request) (*routeHolder, *http.Request) {
+	if h, ok := r.Context().Value(routeKey{}).(*routeHolder); ok {
+		return h, r
+	}
+	h := &routeHolder{}
+	return h, r.WithContext(context.WithValue(r.Context(), routeKey{}, h))
+}
+
+// tracing is the outermost middleware, so everything below it, the access log included, runs inside the span.
+func tracing(t Tracing) middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			holder, r := holderFor(r)
+			r, end := t.StartRequest(r)
+			sw := &statusWriter{ResponseWriter: w}
+			defer func() {
+				route := ""
+				if p := holder.pattern.Load(); p != nil {
+					route = *p
+				}
+				status := sw.status
+				if !sw.wrote {
+					status = http.StatusOK
+				}
+				end(route, status)
+			}()
+			next.ServeHTTP(sw, r)
+		})
+	}
+}
+
 // accessLog writes one record per request: method, route pattern, status, duration and
 // request ID. Neither the path nor the query string is logged. A non-nil obs also receives the request.
 func accessLog(log *slog.Logger, c clock.Clock, obs RequestObserver) middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := c.Now()
-			holder := &routeHolder{}
+			holder, r := holderFor(r)
 			sw := &statusWriter{ResponseWriter: w}
-			next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), routeKey{}, holder)))
+			next.ServeHTTP(sw, r)
 			route := ""
 			if p := holder.pattern.Load(); p != nil {
 				route = *p
@@ -133,7 +171,7 @@ func accessLog(log *slog.Logger, c clock.Clock, obs RequestObserver) middleware 
 				status = http.StatusOK
 			}
 			took := c.Now().Sub(start)
-			log.Info("request",
+			log.InfoContext(r.Context(), "request",
 				"method", r.Method, "route", route, "status", status,
 				"durationMs", took.Milliseconds(), "requestId", w.Header().Get("X-Request-Id"))
 			if obs != nil {
