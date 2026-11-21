@@ -34,6 +34,17 @@ type neverBusy struct{}
 
 func (neverBusy) Busy() bool { return false }
 
+// Metrics receives what the metrics need from the shells.
+type Metrics interface {
+	ExecOpened()
+	ExecClosed()
+}
+
+type noMetrics struct{}
+
+func (noMetrics) ExecOpened() {}
+func (noMetrics) ExecClosed() {}
+
 // Sink is where a shell sends frames; *ws.Conn implements it.
 type Sink interface {
 	Send(ch int, typ string, d any) error
@@ -50,6 +61,7 @@ type Deps struct {
 	Guard       Guard                                         // nil → never refuses
 	NodeShell   bool                                          // allow {nodeShell: true} opens
 	Log         *slog.Logger                                  // nil → the unexpected end of a shell is not logged
+	Metrics     Metrics                                       // nil → nothing is reported
 }
 
 type openRequest struct {
@@ -73,6 +85,9 @@ func NewFactory(d Deps) ws.Factory {
 func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, raw json.RawMessage) (ws.Channel, error) {
 	if d.Guard == nil {
 		d.Guard = neverBusy{}
+	}
+	if d.Metrics == nil {
+		d.Metrics = noMetrics{}
 	}
 	if d.IdleTimeout <= 0 {
 		d.IdleTimeout = DefaultIdleTimeout
@@ -99,6 +114,7 @@ func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, 
 	if req.Cols > 0 && req.Rows > 0 {
 		s.resize <- Size{Cols: req.Cols, Rows: req.Rows}
 	}
+	d.Metrics.ExecOpened()
 	go s.run(runCtx)
 	return s, nil
 }
@@ -175,6 +191,7 @@ type shell struct {
 // Close stops the shell and waits for it to finish.
 func (s *shell) Close() {
 	s.closeOnce.Do(func() {
+		s.d.Metrics.ExecClosed()
 		s.idle.Stop()
 		s.cancel()
 		s.mu.Lock()
