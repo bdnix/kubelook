@@ -29,6 +29,9 @@ type Conn struct {
 	stop context.CancelFunc
 	q    *queue
 
+	metrics Metrics  // nil → nothing is reported
+	kinds   sync.Map // channel number → kind ("watch", "logs", …), for the metrics
+
 	hidden atomic.Bool
 
 	mu        sync.Mutex
@@ -116,6 +119,16 @@ func (c *Conn) enqueue(it item, push func(item) error) error {
 	return err
 }
 
+// reportDrop tells the metrics that a frame of channel ch was dropped.
+func (c *Conn) reportDrop(ch int) {
+	if c.metrics == nil {
+		return
+	}
+	kind, _ := c.kinds.Load(ch)
+	name, _ := kind.(string)
+	c.metrics.WSDropped(name, 1)
+}
+
 // Dropped returns how many droppable frames of the channel were discarded.
 func (c *Conn) Dropped(ch int) int { return c.q.dropped(ch) }
 
@@ -135,6 +148,7 @@ func (c *Conn) removeChannel(ch int) bool {
 	delete(c.channels, ch)
 	c.mu.Unlock()
 	if ok {
+		c.kinds.Delete(ch)
 		chn.Close()
 	}
 	return ok

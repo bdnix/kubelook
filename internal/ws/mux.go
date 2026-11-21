@@ -33,6 +33,13 @@ type Deps struct {
 	Sessions   *session.Manager
 	PublicHost string                                                  // host[:port] of server.publicURL; the only accepted Origin
 	Fail       func(w http.ResponseWriter, r *http.Request, err error) // writes the standard error response
+	Metrics    Metrics                                                 // nil → nothing is reported
+}
+
+// Metrics receives what the metrics need from the connections.
+type Metrics interface {
+	// WSDropped counts n frames dropped on a channel of the given kind ("watch", "logs", …).
+	WSDropped(channel string, n int)
 }
 
 // Mux upgrades requests and routes channel ops to factories.
@@ -70,6 +77,13 @@ func (m *Mux) Shutdown() {
 		c.close(websocket.StatusGoingAway, "server shutting down")
 	}
 	m.wg.Wait()
+}
+
+// Connections returns the number of open connections.
+func (m *Mux) Connections() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.conns)
 }
 
 func (m *Mux) shuttingDown() bool {
@@ -112,8 +126,9 @@ func (m *Mux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, stop := context.WithCancel(context.WithoutCancel(r.Context()))
 	c := &Conn{
 		mux: m, ws: wsConn, sess: sess, ctx: ctx, stop: stop, q: newQueue(QueueCapacity),
-		channels: map[int]Channel{}, opening: map[int][]item{}, visSubs: map[int]func(bool){},
+		channels: map[int]Channel{}, opening: map[int][]item{}, visSubs: map[int]func(bool){}, metrics: m.d.Metrics,
 	}
+	c.q.onDrop = c.reportDrop
 	c.lastPong.Store(m.d.Clock.Now().UnixNano())
 	m.mu.Lock()
 	m.conns[c] = struct{}{}
@@ -248,6 +263,7 @@ func (c *Conn) open(in In) {
 	}
 	c.opening[in.Ch] = nil
 	c.mu.Unlock()
+	c.kinds.Store(in.Ch, strings.TrimSuffix(in.Op, ".open"))
 
 	chn, err := f(c.ctx, c, in.Ch, in.D)
 
@@ -259,6 +275,7 @@ func (c *Conn) open(in In) {
 	}
 	c.mu.Unlock()
 	if err != nil {
+		c.kinds.Delete(in.Ch)
 		c.sendError(in.Ch, err)
 		return
 	}
