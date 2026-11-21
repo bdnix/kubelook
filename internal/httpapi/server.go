@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/cluster"
@@ -62,6 +64,8 @@ type Deps struct {
 	WS http.Handler
 	// VaultMonitor tracks Vault's reachability; nil → /api/v1/status reports Vault as not configured.
 	VaultMonitor *vault.Monitor
+	// Tracer makes one server span per request; nil → no spans.
+	Tracer trace.Tracer
 	// Telemetry serves GET /metrics and receives one observation per request; nil → neither.
 	Telemetry Telemetry
 	// KeyID identifies the encryption key; shown in /api/v1/me so the browser can tell when it changed.
@@ -108,12 +112,11 @@ func New(d Deps) http.Handler {
 	})
 	mux.Handle("/", webui.Handler(d.WebFS))
 
-	mws := []middleware{
-		recoverPanics(d.Log),
-		requestID(d.NewID),
-		accessLog(d.Log, d.Clock, d.Telemetry),
-		securityHeaders(d.Config.CookieSecure()),
+	mws := []middleware{recoverPanics(d.Log), requestID(d.NewID), withRoute()}
+	if d.Tracer != nil {
+		mws = append(mws, traceRequests(d.Tracer))
 	}
+	mws = append(mws, accessLog(d.Log, d.Clock, d.Telemetry), securityHeaders(d.Config.CookieSecure()))
 	if d.Sessions != nil {
 		fail := func(w http.ResponseWriter, r *http.Request, err error) { writeError(w, r, d.Log, err) }
 		mws = append(mws, d.Sessions.Require(fail), session.CSRF(fail))

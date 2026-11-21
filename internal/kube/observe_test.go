@@ -111,3 +111,24 @@ type wrappingSource struct {
 func (s *wrappingSource) RESTConfig(context.Context, session.Session, string) (*rest.Config, error) {
 	return &rest.Config{Host: "http://x", WrapTransport: s.wrap}, nil
 }
+
+func TestWrapTransport_TheCallerWrapsTheTransportOfEveryCluster(t *testing.T) {
+	clk := clock.NewFake(t0)
+	var wrappedBy []string
+	var got *rest.Config
+	clients := kube.NewClients(kube.Deps{
+		Config: &source{}, Clock: clk,
+		WrapTransport: func(rt http.RoundTripper) http.RoundTripper { wrappedBy = append(wrappedBy, "tracing"); return rt },
+		Observe:       func(string, string, time.Duration) { wrappedBy = append(wrappedBy, "observe") },
+		Build:         func(cfg *rest.Config) (kube.Built, error) { got = cfg; return kube.Built{}, nil },
+	})
+	_, err := clients.Dynamic(context.Background(), session.Session{Hash: "h"}, "c")
+	require.NoError(t, err)
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://k/api", nil)
+	require.NoError(t, err)
+	resp, err := got.WrapTransport(&upstream{clk: clk, status: 200}).RoundTrip(req) //nolint:bodyclose // http.NoBody
+	require.NoError(t, err)
+	assert.Equal(t, 200, resp.StatusCode)
+	assert.Equal(t, []string{"tracing", "observe"}, wrappedBy, "the caller's wrapper sits inside the observation, so the measured time includes it")
+}

@@ -9,11 +9,15 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/bdnix/kubelook/internal/audit"
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
+	"github.com/bdnix/kubelook/internal/telemetry"
 )
 
 const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
@@ -109,19 +113,58 @@ func recordRoute(next http.Handler) http.Handler {
 	})
 }
 
+// withRoute puts a holder in the request context for the route pattern the mux matches, so that the
+// middleware outside the mux (the trace and the access log) can name the route afterwards.
+func withRoute() middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), routeKey{}, &routeHolder{})))
+		})
+	}
+}
+
+// routeOf returns the pattern the mux matched, once the mux has run.
+func routeOf(r *http.Request) string {
+	if h, ok := r.Context().Value(routeKey{}).(*routeHolder); ok {
+		if p := h.pattern.Load(); p != nil {
+			return *p
+		}
+	}
+	return ""
+}
+
+// traceRequests makes one server span per request. It is named by the route pattern, and its attributes are the
+// route, the method and the status: never the path, the query string, a header or a body.
+func traceRequests(tracer trace.Tracer) middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, span := tracer.Start(r.Context(), r.Method, trace.WithSpanKind(trace.SpanKindServer))
+			defer span.End()
+			sw := &statusWriter{ResponseWriter: w}
+			next.ServeHTTP(sw, r.WithContext(ctx))
+			status := sw.status
+			if !sw.wrote {
+				status = http.StatusOK
+			}
+			route := routeOf(r)
+			span.SetName(route)
+			span.SetAttributes(telemetry.AttrRoute.String(route), telemetry.AttrMethod.String(r.Method), telemetry.AttrStatus.Int(status))
+			if status >= http.StatusInternalServerError {
+				span.SetStatus(codes.Error, http.StatusText(status))
+			}
+		})
+	}
+}
+
 // accessLog writes one record per request: method, route pattern, status, duration and
 // request ID. Neither the path nor the query string is logged. Each request is also observed for the metrics.
 func accessLog(log *slog.Logger, c clock.Clock, t Telemetry) middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := c.Now()
-			holder := &routeHolder{}
 			sw := &statusWriter{ResponseWriter: w}
-			next.ServeHTTP(sw, r.WithContext(context.WithValue(r.Context(), routeKey{}, holder)))
-			route := ""
-			if p := holder.pattern.Load(); p != nil {
-				route = *p
-			}
+			next.ServeHTTP(sw, r)
+			route := routeOf(r)
 			status := sw.status
 			if !sw.wrote {
 				status = http.StatusOK
@@ -129,7 +172,7 @@ func accessLog(log *slog.Logger, c clock.Clock, t Telemetry) middleware {
 			if t != nil {
 				t.ObserveHTTP(route, r.Method, status, c.Now().Sub(start))
 			}
-			log.Info("request",
+			log.InfoContext(r.Context(), "request",
 				"method", r.Method, "route", route, "status", status,
 				"durationMs", c.Now().Sub(start).Milliseconds(), "requestId", w.Header().Get("X-Request-Id"))
 		})

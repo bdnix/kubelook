@@ -97,9 +97,8 @@ func TestTracing_Endpoint_BuildsAnOTLPExporterWithoutConnecting(t *testing.T) {
 	require.NoError(t, err)
 	_, span := tr.Tracer().Start(t.Context(), "x")
 	assert.True(t, span.IsRecording())
-	span.End()
-	// Nothing listens there: the flush fails, and Shutdown still returns and stops every goroutine.
-	_ = tr.Shutdown(t.Context())
+	// The span is never ended, so nothing is waiting to be sent to the unreachable collector.
+	require.NoError(t, tr.Shutdown(t.Context()))
 }
 
 func TestTracing_ClientSpan_IsAChildOfTheCurrentSpan_AndCarriesNoSecrets(t *testing.T) {
