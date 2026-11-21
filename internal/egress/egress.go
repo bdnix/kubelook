@@ -75,8 +75,11 @@ func CheckURL(raw string, blocked bool) error {
 		return nil
 	}
 	u, err := url.Parse(raw)
-	if err != nil {
-		return nil //nolint:nilerr // not an address this check can judge
+	if err != nil || u.Host == "" {
+		// A bare "host:port", as a kubeconfig may give a server.
+		if u, err = url.Parse("//" + raw); err != nil {
+			return nil //nolint:nilerr // not an address this check can judge
+		}
 	}
 	if ip, err := netip.ParseAddr(u.Hostname()); err == nil && blockedAddr(ip) {
 		return ErrBlocked

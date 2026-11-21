@@ -17,6 +17,7 @@ import (
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
+	"github.com/bdnix/kubelook/internal/egress"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 	"github.com/bdnix/kubelook/internal/vault"
@@ -67,7 +68,11 @@ type OpenerDeps struct {
 	Audit       *audit.Recorder
 	Closers     *session.Registry
 	Log         *slog.Logger
-	HTTPClient  *http.Client // OIDC token endpoint calls; nil → a client with a 15 s timeout
+	// HTTPClient makes the OIDC token endpoint calls; nil → a client with a 15 s timeout that honours BlockLocal.
+	HTTPClient *http.Client
+	// BlockLocal refuses loopback, link-local and unspecified addresses in the kubeconfigs of users: the server of a
+	// cluster and its identity provider (egress.blockLocalAddresses). Vault clusters are never guarded.
+	BlockLocal bool
 }
 
 // source is where the credentials of a cluster come from.
@@ -111,7 +116,7 @@ type Opener struct {
 // NewOpener returns the opener.
 func NewOpener(d OpenerDeps) *Opener {
 	if d.HTTPClient == nil {
-		d.HTTPClient = &http.Client{Timeout: 15 * time.Second}
+		d.HTTPClient = &http.Client{Timeout: 15 * time.Second, Transport: egress.Transport(http.DefaultTransport.(*http.Transport), d.BlockLocal)}
 	}
 	o := &Opener{d: d, open: map[string]*entry{}}
 	o.vault = &vaultSource{o: o}
