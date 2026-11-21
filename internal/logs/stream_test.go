@@ -56,6 +56,14 @@ func (s *sink) CloseChannel(_ int, reason string) { s.closed <- reason }
 
 func (s *sink) next(t *testing.T) frame { t.Helper(); return testutil.Recv(t, s.frames) }
 
+// untilDropped reads frames up to and including the first "dropped" report.
+func (s *sink) untilDropped(t *testing.T) {
+	t.Helper()
+	for s.next(t).Typ != "dropped" {
+		continue
+	}
+}
+
 func linesOf(f frame) []map[string]any {
 	var out []map[string]any
 	for _, l := range f.D["lines"].([]any) {
@@ -493,8 +501,7 @@ func TestMetrics_DroppedLinesAreCounted_BothTheRateCapAndTheSlowBrowser(t *testi
 	e.src.rd.feed(t, chunk.String())
 	e.sink.backlog.Store(0)
 	e.clock.Advance(100 * time.Millisecond)
-	for f := e.sink.next(t); f.Typ != "dropped"; f = e.sink.next(t) { // the report follows the lines
-	}
+	e.sink.untilDropped(t) // the report follows the lines
 	assert.EqualValues(t, 500, m.dropped.Load(), "the oldest 500 of 2500 were pushed out of the 2000-line buffer")
 
 	e2 := newEnv(t, 1000)
@@ -504,7 +511,6 @@ func TestMetrics_DroppedLinesAreCounted_BothTheRateCapAndTheSlowBrowser(t *testi
 	require.NoError(t, err)
 	e2.src.rd.feed(t, strings.Repeat("2026-11-14T12:00:00Z x\n", 3000))
 	e2.clock.Advance(100 * time.Millisecond)
-	for f := e2.sink.next(t); f.Typ != "dropped"; f = e2.sink.next(t) {
-	}
+	e2.sink.untilDropped(t)
 	assert.GreaterOrEqual(t, int(m2.dropped.Load()), 1900, "the rate cap lets 1000 of the 3000 lines through; a refill tick may let a few more")
 }
