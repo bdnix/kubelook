@@ -47,8 +47,6 @@ type Sources struct {
 	Sessions      func() int
 	Watch         func() WatchStats
 	WSConnections func() int
-	LogStreams    func() int
-	ExecSessions  func() int
 	Jobs          func() []JobCount
 }
 
@@ -64,6 +62,8 @@ type Metrics struct {
 
 	wsDropped     *prometheus.CounterVec
 	logDropped    prometheus.Counter
+	logStreams    prometheus.Gauge
+	execSessions  prometheus.Gauge
 	refused       *prometheus.CounterVec
 	vaultDuration *prometheus.HistogramVec
 	kubeDuration  *prometheus.HistogramVec
@@ -82,6 +82,8 @@ func NewMetrics(reg *prometheus.Registry, d Deps) *Metrics {
 		logDropped: prometheus.NewCounter(prometheus.CounterOpts{
 			Name: "kubelook_log_lines_dropped_total", Help: "Log lines dropped because a client could not keep up.",
 		}),
+		logStreams:   prometheus.NewGauge(prometheus.GaugeOpts{Name: "kubelook_log_streams_active", Help: "Open log streams."}),
+		execSessions: prometheus.NewGauge(prometheus.GaugeOpts{Name: "kubelook_exec_sessions_active", Help: "Open shells and debug sessions."}),
 		refused: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "kubelook_refused_requests_total", Help: "Requests refused because the server was busy, by kind.",
 		}, []string{"kind"}),
@@ -98,7 +100,7 @@ func NewMetrics(reg *prometheus.Registry, d Deps) *Metrics {
 			Name: "kubelook_http_request_duration_seconds", Help: "Duration of HTTP requests, by route pattern.", Buckets: latency,
 		}, []string{"route"}),
 	}
-	reg.MustRegister(m.wsDropped, m.logDropped, m.refused, m.vaultDuration, m.kubeDuration, m.httpRequests, m.httpDuration,
+	reg.MustRegister(m.wsDropped, m.logDropped, m.logStreams, m.execSessions, m.refused, m.vaultDuration, m.kubeDuration, m.httpRequests, m.httpDuration,
 		collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 
 	info := prometheus.NewGauge(prometheus.GaugeOpts{
@@ -132,8 +134,6 @@ func NewMetrics(reg *prometheus.Registry, d Deps) *Metrics {
 		{"kubelook_watch_subscribers", "Views attached to the upstream watches.", func() float64 { return float64(watch().Subscribers) }},
 		{"kubelook_watch_cached_objects", "Objects held in the watch caches.", func() float64 { return float64(watch().CachedObjects) }},
 		{"kubelook_ws_connections", "Open WebSocket connections.", intFn(s.WSConnections)},
-		{"kubelook_log_streams_active", "Open log streams.", intFn(s.LogStreams)},
-		{"kubelook_exec_sessions_active", "Open shells and debug sessions.", intFn(s.ExecSessions)},
 	} {
 		reg.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: g.name, Help: g.help}, g.fn))
 	}
@@ -153,6 +153,18 @@ func (m *Metrics) WSDropped(channel string, n int) {
 
 // LogLinesDropped counts n dropped log lines.
 func (m *Metrics) LogLinesDropped(n int) { m.logDropped.Add(float64(n)) }
+
+// LogStreamOpened and LogStreamClosed keep the count of open log streams.
+func (m *Metrics) LogStreamOpened() { m.logStreams.Inc() }
+
+// LogStreamClosed see LogStreamOpened.
+func (m *Metrics) LogStreamClosed() { m.logStreams.Dec() }
+
+// ExecOpened and ExecClosed keep the count of open shells and debug sessions.
+func (m *Metrics) ExecOpened() { m.execSessions.Inc() }
+
+// ExecClosed see ExecOpened.
+func (m *Metrics) ExecClosed() { m.execSessions.Dec() }
 
 // Refused counts one request refused because the server was busy.
 func (m *Metrics) Refused(kind string) { m.refused.WithLabelValues(bound(refusedKinds, kind)).Inc() }

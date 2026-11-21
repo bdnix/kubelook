@@ -76,8 +76,6 @@ func TestMetrics_ScrapeTimeGauges_ReadTheirSources(t *testing.T) {
 			return telemetry.WatchStats{Watches: 5, Subscribers: 9, CachedObjects: 1234, PerUser: []int{1, 3, 12}}
 		},
 		WSConnections: func() int { return 4 },
-		LogStreams:    func() int { return 2 },
-		ExecSessions:  func() int { return 3 },
 		Jobs: func() []telemetry.JobCount {
 			return []telemetry.JobCount{{Type: "helm.install", Status: "running", Count: 2}, {Type: "node.drain", Status: "failed", Count: 1}}
 		},
@@ -88,8 +86,6 @@ func TestMetrics_ScrapeTimeGauges_ReadTheirSources(t *testing.T) {
 		"kubelook_watch_subscribers":    9,
 		"kubelook_watch_cached_objects": 1234,
 		"kubelook_ws_connections":       4,
-		"kubelook_log_streams_active":   2,
-		"kubelook_exec_sessions_active": 3,
 	} {
 		assert.InDelta(t, want, family(t, reg, name).GetMetric()[0].GetGauge().GetValue(), 0, name)
 	}
@@ -181,4 +177,17 @@ func TestMetrics_Handler_ServesTheExpositionFormat(t *testing.T) {
 	body := rec.Body.String()
 	assert.Contains(t, body, "kubelook_build_info{")
 	assert.True(t, strings.Contains(body, "kubelook_sessions_active 1"), body)
+}
+
+func TestMetrics_LogStreamsAndExecSessions_AreCountedUpAndDown(t *testing.T) {
+	m, reg := newMetrics(t, telemetry.Sources{})
+	m.LogStreamOpened()
+	m.LogStreamOpened()
+	m.LogStreamClosed()
+	m.ExecOpened()
+
+	assert.InDelta(t, 1, family(t, reg, "kubelook_log_streams_active").GetMetric()[0].GetGauge().GetValue(), 0)
+	assert.InDelta(t, 1, family(t, reg, "kubelook_exec_sessions_active").GetMetric()[0].GetGauge().GetValue(), 0)
+	m.ExecClosed()
+	assert.InDelta(t, 0, family(t, reg, "kubelook_exec_sessions_active").GetMetric()[0].GetGauge().GetValue(), 0)
 }
