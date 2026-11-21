@@ -1,6 +1,7 @@
 package store_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -178,4 +179,24 @@ func TestJobs_DeleteForSession_RemovesNothingButIsNotNeeded(t *testing.T) {
 	require.NoError(t, store.NewSessions(db).Delete(t.Context(), "h"))
 	_, err = j.Get(t.Context(), "j")
 	assert.NoError(t, err)
+}
+
+func TestJobs_CountByTypeStatus_GroupsEveryJob(t *testing.T) {
+	j := newJobs(t)
+	got, err := j.CountByTypeStatus(t.Context())
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	for i, spec := range []struct{ typ, status string }{
+		{"bulk", store.JobQueued}, {"bulk", store.JobQueued}, {"bulk", store.JobFailed}, {"drain", store.JobRunning},
+	} {
+		r := jobRow(fmt.Sprintf("j%d", i), "u1", t0)
+		r.Type, r.Status = spec.typ, spec.status
+		require.NoError(t, j.Insert(t.Context(), r))
+	}
+	got, err = j.CountByTypeStatus(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, map[store.JobCountKey]int{
+		{Type: "bulk", Status: store.JobQueued}: 2, {Type: "bulk", Status: store.JobFailed}: 1, {Type: "drain", Status: store.JobRunning}: 1,
+	}, got)
 }

@@ -302,3 +302,26 @@ func TestServe_VaultConfigured_StartsAndKeepsAPIProtected(t *testing.T) {
 	code, _ = get(t, "http://"+r.addr+"/api/v1/me")
 	assert.Equal(t, http.StatusUnauthorized, code)
 }
+
+func TestServe_MetricsEndpoint_PublicWithTheListedSeries(t *testing.T) {
+	r := start(t, loadConfig(t, ""), true)
+	status, body := get(t, "http://"+r.addr+"/metrics")
+	assert.Equal(t, http.StatusOK, status)
+	n := 0
+	for _, line := range strings.Split(body, "\n") {
+		if strings.HasPrefix(line, "kubelook_") {
+			n++
+		}
+	}
+	assert.GreaterOrEqual(t, n, 10, body)
+	for _, name := range []string{
+		"kubelook_build_info", "kubelook_sessions_active", "kubelook_watches_active", "kubelook_watch_subscribers",
+		"kubelook_watch_cached_objects", "kubelook_ws_connections", "kubelook_log_streams_active", "kubelook_exec_sessions_active",
+	} {
+		assert.Contains(t, body, name+" ", name)
+	}
+	assert.Contains(t, body, `kubelook_build_info{commit="unknown",version="dev"} 1`)
+	_, _ = get(t, "http://"+r.addr+"/healthz")
+	_, body = get(t, "http://"+r.addr+"/metrics")
+	assert.Contains(t, body, `kubelook_http_requests_total{method="GET",route="/healthz",status="200"} 1`)
+}

@@ -445,3 +445,38 @@ func TestNewKubeSource_ReadsThroughTheTypedClient(t *testing.T) {
 	_, err = logs.NewKubeSource(fk).Stream(t.Context(), session.Session{}, "c", "ns", "web-1", &corev1.PodLogOptions{})
 	require.ErrorIs(t, err, apperr.ErrClusterUnavailable)
 }
+
+type logCounts struct {
+	started, ended, dropped atomic.Int32
+}
+
+func (l *logCounts) StreamStarted()     { l.started.Add(1) }
+func (l *logCounts) StreamEnded()       { l.ended.Add(1) }
+func (l *logCounts) LinesDropped(n int) { l.dropped.Add(int32(n)) }
+
+func TestMetrics_StreamStartsAndEndsOnceAndDroppedLinesMatchWhatTheBrowserIsTold(t *testing.T) {
+	m := &logCounts{}
+	e := newEnv(t, 1000)
+	e.deps.Metrics = m
+	ch, err := e.open(t, baseReq)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, m.started.Load())
+	assert.EqualValues(t, 0, m.ended.Load())
+
+	e.src.rd.feed(t, strings.Repeat("2026-11-14T12:00:00Z x\n", 1500)) // 500 over the rate cap
+	assert.Len(t, linesOf(e.sink.next(t)), 500)
+	assert.Len(t, linesOf(e.sink.next(t)), 500)
+	told, late := 0, 0
+	for told+late < 500 {
+		e.clock.Advance(100 * time.Millisecond)
+		f := e.sink.next(t)
+		if f.Typ == "dropped" {
+			told += int(f.D["count"].(float64))
+		} else {
+			late += len(linesOf(f))
+		}
+	}
+	assert.EqualValues(t, told, m.dropped.Load())
+	ch.Close()
+	assert.EqualValues(t, 1, m.ended.Load())
+}

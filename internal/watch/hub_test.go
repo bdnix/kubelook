@@ -187,6 +187,7 @@ type hubEnv struct {
 	watchErr  func() error
 	idleSecs  int
 	maxPerUsr int
+	metrics   watch.Metrics
 }
 
 func pod(name string) *unstructured.Unstructured { return fakekube.Pod("ns1", name, nil) }
@@ -226,7 +227,7 @@ func newHubEnv(t *testing.T, mutate ...func(*hubEnv)) *hubEnv {
 		return true, w, nil
 	})
 	e.hub = watch.NewHub(watch.Deps{
-		Clients: e.spy, Clock: e.clock, Log: slog.New(slog.DiscardHandler), Closers: e.closers, MaxPerUser: e.maxPerUsr,
+		Clients: e.spy, Clock: e.clock, Log: slog.New(slog.DiscardHandler), Closers: e.closers, MaxPerUser: e.maxPerUsr, Metrics: e.metrics,
 		IdleSeconds: func(context.Context, string) int { return e.idleSecs },
 	})
 	t.Cleanup(e.hub.Close)
@@ -652,4 +653,22 @@ func TestHub_ListFailureThatIsTransient_RetriesAfterTheBackoff(t *testing.T) {
 	e.mu.Unlock()
 	e.clock.Advance(time.Second)
 	assert.Equal(t, "snapshot rv=100 [a b]", r.next(t))
+}
+
+type watchCounts struct {
+	mu   sync.Mutex
+	seen []int
+}
+
+func (w *watchCounts) WatchOpened(n int) { w.mu.Lock(); w.seen = append(w.seen, n); w.mu.Unlock() }
+func (w *watchCounts) get() []int        { w.mu.Lock(); defer w.mu.Unlock(); return append([]int(nil), w.seen...) }
+
+func TestHub_Metrics_ReportsHowManyWatchesTheUserHoldsWhenOneOpens(t *testing.T) {
+	m := &watchCounts{}
+	e := newHubEnv(t, func(e *hubEnv) { e.metrics = m })
+	e.subscribe(t, sessA, "", newRec())
+	e.subscribe(t, sessA2, "", newRec())   // shares the upstream: nothing new opens
+	e.subscribe(t, sessA, "ns1", newRec()) // a second watch of the same user
+	e.subscribe(t, sessB, "", newRec())    // another user starts at one
+	assert.Equal(t, []int{1, 2, 1}, m.get())
 }

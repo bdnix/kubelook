@@ -73,3 +73,27 @@ func TestConn_Send_FullQueue_EvictsADroppableFrameOfAnyChannel(t *testing.T) {
 	assert.Equal(t, []string{"1:a", "1:b"}, types(c))
 	assert.Equal(t, 1, c.Dropped(2))
 }
+
+type dropCounts struct{ got map[string]int }
+
+func (d *dropCounts) WSDropped(channel string, n int) { d.got[channel] += n }
+
+func TestConn_Drops_AreReportedPerChannelKind(t *testing.T) {
+	m := &dropCounts{got: map[string]int{}}
+	c := ws.DetachedConnWithMetrics(2, m)
+	c.SetKind(1, "logs.open")
+	c.SetKind(2, "watch.open")
+	c.SendDroppable(1, "lines", nil)
+	c.SendDroppable(1, "lines", nil)
+	c.SendDroppable(1, "lines", nil) // evicts the oldest of channel 1
+	c.SendDroppable(2, "event", nil) // nothing of channel 2 to evict: the new frame is dropped
+	c.SendDroppable(9, "event", nil) // a channel that was never opened
+	assert.Equal(t, map[string]int{"logs": 1, "watch": 1, "other": 1}, m.got)
+}
+
+func TestConn_Drops_WithoutMetricsStillCount(t *testing.T) {
+	c := ws.DetachedConn(1)
+	c.SendDroppable(1, "lines", nil)
+	c.SendDroppable(1, "lines", nil)
+	assert.Equal(t, 1, c.Dropped(1))
+}

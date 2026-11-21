@@ -401,3 +401,15 @@ func TestErrorBody_MapsSentinelsAndAPIErrors(t *testing.T) {
 	assert.Equal(t, map[string]string{"code": "vault_unreachable", "message": "down"}, body)
 	assert.Equal(t, map[string]string{"code": "internal", "message": "internal error"}, ws.ErrorBody(errors.New("secret detail")))
 }
+
+func TestMux_Connections_CountsOpenConnections(t *testing.T) {
+	e := newEnv(t)
+	assert.Zero(t, e.mux.Connections())
+	c1 := e.connect(t)
+	c2 := e.connect(t)
+	send(t, c1, "echo.open", 1, nil) // a round trip, so the server has registered both
+	send(t, c2, "echo.open", 1, nil)
+	recv(t, c1)
+	recv(t, c2)
+	assert.Equal(t, 2, e.mux.Connections())
+}

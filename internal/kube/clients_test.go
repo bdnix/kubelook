@@ -2,6 +2,7 @@ package kube_test
 
 import (
 	"context"
+	"net/http"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -172,4 +173,27 @@ func TestClients_DefaultBuilder_BadConfigFails(t *testing.T) {
 	c := kube.NewClients(kube.Deps{Config: badSource{}, Clock: clock.NewFake(t0)})
 	_, err := c.Typed(t.Context(), sessA, "v:prod")
 	require.Error(t, err)
+}
+
+func TestClients_WrapTransport_AppliesToTheBuiltClientsOnly(t *testing.T) {
+	var built *rest.Config
+	wrapped := 0
+	clients := kube.NewClients(kube.Deps{
+		Config: &source{}, Clock: clock.NewFake(t0),
+		WrapTransport: func(rt http.RoundTripper) http.RoundTripper { wrapped++; return rt },
+		Build: func(cfg *rest.Config) (kube.Built, error) {
+			built = cfg
+			return kube.Built{Dynamic: fakekube.New().Dyn}, nil
+		},
+	})
+	sess := session.Session{Hash: "h", UserID: "u"}
+	_, err := clients.Dynamic(t.Context(), sess, "c1")
+	require.NoError(t, err)
+	require.NotNil(t, built.WrapTransport, "the clients are built with the wrapper")
+	built.WrapTransport(http.DefaultTransport)
+	assert.Equal(t, 1, wrapped)
+
+	cfg, err := clients.REST(t.Context(), sess, "c1")
+	require.NoError(t, err)
+	assert.Nil(t, cfg.WrapTransport, "the config handed to other users of it stays as the opener made it")
 }

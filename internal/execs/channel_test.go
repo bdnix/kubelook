@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -438,4 +439,33 @@ func TestStdinQueue_RefusesToBufferWithoutLimit(t *testing.T) {
 	require.NoError(t, ch.Handle(t.Context(), "exec.stdin", stdin(big)))
 	assert.ErrorIs(t, ch.Handle(t.Context(), "exec.stdin", stdin(big)), apperr.ErrBusy)
 	close(hold)
+}
+
+type execCounts struct{ started, ended atomic.Int32 }
+
+func (e *execCounts) ExecStarted() { e.started.Add(1) }
+func (e *execCounts) ExecEnded()   { e.ended.Add(1) }
+
+func TestShell_Metrics_CountedFromOpenToClose(t *testing.T) {
+	m := &execCounts{}
+	e := newEnv(t)
+	e.deps.Metrics = m
+	ch, err := e.open(80, 24)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, m.started.Load())
+	assert.EqualValues(t, 0, m.ended.Load())
+	ch.Close()
+	ch.Close() // idempotent
+	assert.EqualValues(t, 1, m.ended.Load())
+}
+
+func TestShell_Metrics_ARefusedOpenIsNotCounted(t *testing.T) {
+	m := &execCounts{}
+	e := newEnv(t)
+	e.deps.Metrics = m
+	e.deps.Guard = busy{}
+	_, err := e.open(80, 24)
+	require.ErrorIs(t, err, apperr.ErrBusy)
+	assert.Zero(t, m.started.Load())
+	assert.Zero(t, m.ended.Load())
 }

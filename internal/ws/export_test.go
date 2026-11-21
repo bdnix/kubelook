@@ -30,3 +30,17 @@ func (c *Conn) Pending() []map[string]any {
 	}
 	return out
 }
+
+// DetachedConnWithMetrics is a DetachedConn whose mux reports to m.
+func DetachedConnWithMetrics(capacity int, m Metrics) *Conn {
+	c := DetachedConn(capacity)
+	c.mux = &Mux{d: Deps{Metrics: m}, conns: map[*Conn]struct{}{}}
+	c.q.onDrop = c.noteDrop
+	return c
+}
+
+// SetKind records what kind of channel ch is, as the mux does when it opens one.
+func (c *Conn) SetKind(ch int, op string) { c.kinds.Store(ch, kindOf(op)) }
+
+// Connections returns the number of open connections of the mux.
+func (m *Mux) Connections() int { return m.connectionCount() }
