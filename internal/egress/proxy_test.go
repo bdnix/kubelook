@@ -37,6 +37,7 @@ func connect(t *testing.T, p *egress.Proxy, target, credential string) (net.Conn
 	require.NoError(t, err)
 	resp, err := http.ReadResponse(bufio.NewReader(conn), &http.Request{Method: http.MethodConnect})
 	require.NoError(t, err)
+	_ = resp.Body.Close()
 	reason := resp.Status[len("000 "):]
 	return conn, reason, resp.StatusCode
 }
