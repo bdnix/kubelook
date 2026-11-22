@@ -179,6 +179,10 @@ jobs:
           for c in $(docker ps -a --format '{{.Names}}' | grep kubelook-it); do docker logs "$c" > "it-logs/$c.log" 2>&1 || true; done
           bin/kind export logs it-logs/kind-alpha --name kubelook-it-alpha || true
           bin/kind export logs it-logs/kind-beta --name kubelook-it-beta || true
+          echo "--- last lines of the Kubelook container log (without audit records and request lines)"
+          grep -v '"audit":true' it-logs/kubelook-it-app.log | grep -v '"msg":"request"' | tail -60 || true
+          echo "--- requests of the container that answered 401"
+          grep '"msg":"request"' it-logs/kubelook-it-app.log | grep '"status":401' | tail -20 || true
       - name: Upload logs
         if: ${{ failure() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
