@@ -3,6 +3,7 @@ package vault_test
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -79,6 +80,23 @@ func tick(t *testing.T, fc *clock.Fake, p *prober) {
 	testutil.Recv(t, p.calls)
 }
 
+// settled waits until the monitor has recorded the result of the last probe: the prober reports that it was called
+// before the monitor's loop has stored what it returned.
+func settled(t *testing.T, m *vault.Monitor, done func(vault.Status) bool) vault.Status {
+	t.Helper()
+	rc := clock.Real()
+	deadline := rc.Now().Add(5 * time.Second)
+	for {
+		if st := m.Status(); done(st) {
+			return st
+		}
+		if rc.Now().After(deadline) {
+			t.Fatal("the monitor did not record the probe in time")
+		}
+		runtime.Gosched()
+	}
+}
+
 func TestMonitor_FlipsAfterTwoConsecutiveFailuresAndBackAfterOneSuccess(t *testing.T) {
 	m, p, fc := runMonitor(t)
 	assert.True(t, m.Status().Reachable)
@@ -86,7 +104,7 @@ func TestMonitor_FlipsAfterTwoConsecutiveFailuresAndBackAfterOneSuccess(t *testi
 	tick(t, fc, p)
 	assert.True(t, m.Status().Reachable, "one failure is not enough")
 	tick(t, fc, p)
-	st := m.Status()
+	st := settled(t, m, func(s vault.Status) bool { return !s.Reachable })
 	assert.False(t, st.Reachable)
 	assert.True(t, st.Configured)
 	require.NotNil(t, st.Since)
@@ -94,8 +112,9 @@ func TestMonitor_FlipsAfterTwoConsecutiveFailuresAndBackAfterOneSuccess(t *testi
 
 	p.set(nil)
 	tick(t, fc, p)
-	assert.True(t, m.Status().Reachable, "one success is enough")
-	assert.Equal(t, t0.Add(45*time.Second), *m.Status().Since)
+	back := settled(t, m, func(s vault.Status) bool { return s.Reachable })
+	assert.True(t, back.Reachable, "one success is enough")
+	assert.Equal(t, t0.Add(45*time.Second), *back.Since)
 }
 
 func TestMonitor_ASuccessBetweenFailuresResetsTheCount(t *testing.T) {
