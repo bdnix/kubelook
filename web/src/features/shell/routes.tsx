@@ -23,6 +23,7 @@ import { useRestore, type RestoreState } from '../credentials/useRestore';
 import { openVaultStore } from '../credentials/vaultStore';
 import { Banners } from './Banners';
 import { Layout } from './Layout';
+import { SignOutButton } from './SignOutButton';
 import { ResourceSidebar } from './Sidebar';
 
 function Home({
@@ -109,6 +110,7 @@ function SignedIn({ me }: { me: Me }) {
       }
     >
       <SmallScreenBanner />
+      <SignOutButton />
       <CommandPalette />
       <HotkeyHost />
       <Banners
