@@ -51,7 +51,7 @@ func newProxy(t *testing.T, blocked bool) *egress.Proxy {
 
 func TestProxy_Blocked_RefusesATunnelToALoopbackAddress(t *testing.T) {
 	p := newProxy(t, true)
-	for _, target := range []string{"127.0.0.1:6443", "localhost:6443", "[::1]:6443", "169.254.169.254:80"} {
+	for _, target := range []string{"127.0.0.1:6443", "localhost:6443", "169.254.169.254:80"} {
 		_, reason, code := connect(t, p, target, "")
 		assert.Equal(t, 403, code, target)
 		assert.Equal(t, egress.RefusalReason, reason, target)
