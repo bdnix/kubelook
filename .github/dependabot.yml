@@ -26,3 +26,6 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+  - package-ecosystem: docker
+    directory: /build/netshoot
+    schedule: { interval: weekly }
