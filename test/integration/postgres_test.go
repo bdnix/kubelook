@@ -30,7 +30,8 @@ const pgHost = "127.0.0.1:15432"
 // pgConn connects to the integration database as a role.
 func pgConn(t *testing.T, user, password string) *pgx.Conn {
 	t.Helper()
-	conn, err := pgx.Connect(t.Context(), "postgres://"+user+":"+password+"@"+pgHost+"/kubelook")
+	// not t.Context(): the connections are also made in cleanups, when the context of the test is already cancelled
+	conn, err := pgx.Connect(context.Background(), "postgres://"+user+":"+password+"@"+pgHost+"/kubelook")
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = conn.Close(context.Background()) })
 	return conn
@@ -250,10 +251,11 @@ func TestPostgres_ChangingTheEncryptionKey_EndsOldSessionsAndSavedCopiesWithoutL
 	t.Cleanup(func() { it.PG(t, "replicas") }) // back to the key of .it/app.env
 	it.PG(t, "replicas", newKey)
 
-	status, _, apiErr := open(t, c, "v:beta", "devops-role")
-	assert.Equal(t, http.StatusUnauthorized, status)
-	assert.Equal(t, "key_changed", apiErr.Error.Code)
-	assert.Contains(t, apiErr.Error.Message, "encryption key was changed")
+	// the cluster list is the first thing the app asks for; it reads the session's Vault token, which the new key cannot open
+	var listed it.APIError
+	assert.Equal(t, http.StatusUnauthorized, c.JSON(http.MethodGet, "/api/v1/clusters", nil, &listed))
+	assert.Equal(t, "key_changed", listed.Error.Code)
+	assert.Contains(t, listed.Error.Message, "encryption key was changed")
 
 	again := it.NewClient(t)
 	again.Base = it.Replica1URL
