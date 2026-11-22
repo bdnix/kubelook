@@ -39,6 +39,10 @@ type Client struct {
 	t    testing.TB
 	HC   *http.Client
 	CSRF string // set by SignIn* when the session is valid
+	// Base is the address requests go to; empty means BaseURL(). Origin is what a WebSocket announces as its
+	// origin; empty means Base. Both differ from the default only for a Client made by On.
+	Base   string
+	Origin string
 
 	mu         sync.Mutex
 	setCookies []*http.Cookie // every Set-Cookie the server sent, in order, for attribute checks
@@ -70,6 +74,29 @@ func (c *Client) SetCookie(name string) *http.Cookie {
 		}
 	}
 	return nil
+}
+
+// base is the address this client talks to.
+func (c *Client) base() string {
+	if c.Base != "" {
+		return c.Base
+	}
+	return BaseURL()
+}
+
+// origin is the Origin header of this client's WebSocket upgrades.
+func (c *Client) origin() string {
+	if c.Origin != "" {
+		return c.Origin
+	}
+	return c.base()
+}
+
+// On returns a client with the same cookies and CSRF token that talks to another replica. Its WebSocket
+// upgrades still announce this client's origin: the replicas stand behind one public name in production,
+// so each of them accepts only that one.
+func (c *Client) On(base string) *Client {
+	return &Client{t: c.t, HC: c.HC, CSRF: c.CSRF, Base: strings.TrimRight(base, "/"), Origin: c.origin()}
 }
 
 // NoFollow returns a client that shares the cookie jar and transport but does not follow redirects.
@@ -124,7 +151,7 @@ func (c *Client) Announce(acct Account) {
 func (c *Client) signIn(provider string, acct Account) *url.URL {
 	c.t.Helper()
 	c.Announce(acct)
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, BaseURL()+"/auth/"+provider+"/login", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, c.base()+"/auth/"+provider+"/login", nil)
 	if err != nil {
 		c.t.Fatal(err)
 	}
@@ -159,7 +186,7 @@ func (c *Client) loadCSRF() {
 // Do sends a request with the CSRF token (when known) and returns status and body.
 func (c *Client) Do(method, path string, body []byte, headers map[string]string) (int, []byte) {
 	c.t.Helper()
-	req, err := http.NewRequestWithContext(context.Background(), method, BaseURL()+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(context.Background(), method, c.base()+path, bytes.NewReader(body))
 	if err != nil {
 		c.t.Fatal(err)
 	}
