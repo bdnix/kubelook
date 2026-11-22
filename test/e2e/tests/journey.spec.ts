@@ -153,7 +153,7 @@ test.describe("the real stack in a browser", () => {
       await page.keyboard.press("End");
       await page.keyboard.press("Shift+Home");
       await page.keyboard.type("mode: changed-by-e2e");
-      await page.keyboard.press("Escape");
+      // no Escape to close the completion popup: the drawer closes on Escape
 
       await drawer.getByRole("button", { name: "Preview" }).click();
       await expect(drawer.getByLabel("Preview of the change")).toContainText(
