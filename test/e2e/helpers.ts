@@ -111,6 +111,10 @@ export function guardPage(page: Page): string[] {
     log.push(`pageerror: ${e.message}`);
     if (e.message !== "Canceled") problems.push(`page error: ${e.message}`);
   });
+  page.on("response", (r) => {
+    if (r.status() >= 400)
+      log.push(`response ${r.status()} ${r.request().method()} ${r.url()}`);
+  });
   page.on("console", (m) => {
     log.push(`console.${m.type()}: ${m.text()}`);
     if (m.text().includes("Content Security Policy"))
