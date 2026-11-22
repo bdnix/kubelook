@@ -239,7 +239,7 @@ func TestPostgres_RolesScript_CoversALaterMigrationAndChangesTheRetentionPeriod(
 }
 
 // This test replaces the key of both replicas, so it stays last in the file.
-func TestPostgres_ChangingTheEncryptionKey_EndsOldSessionsAndSavedCopiesWithoutLeakingAKey(t *testing.T) {
+func TestPostgres_ChangingTheEncryptionKey_SignsUsersOutAndDiscardsSavedCopiesWithoutLeakingAKey(t *testing.T) {
 	c := pgSignedIn(t, "pg-key")
 	sealed := c.AddVaultToken(it.Token("BOB_TOKEN"))
 	oldKey := it.AppKey()
@@ -251,11 +251,12 @@ func TestPostgres_ChangingTheEncryptionKey_EndsOldSessionsAndSavedCopiesWithoutL
 	t.Cleanup(func() { it.PG(t, "replicas") }) // back to the key of .it/app.env
 	it.PG(t, "replicas", newKey)
 
-	// the cluster list is the first thing the app asks for; it reads the session's Vault token, which the new key cannot open
-	var listed it.APIError
-	assert.Equal(t, http.StatusUnauthorized, c.JSON(http.MethodGet, "/api/v1/clusters", nil, &listed))
-	assert.Equal(t, "key_changed", listed.Error.Code)
-	assert.Contains(t, listed.Error.Message, "encryption key was changed")
+	// The spec: active-session credentials become unreadable, so every signed-in user is signed out. The first request
+	// that reads the session's credential ends the session; after that the cookie is refused.
+	it.Eventually(t, 30*time.Second, func() bool {
+		return c.JSON(http.MethodGet, "/api/v1/clusters", nil, nil) == http.StatusUnauthorized
+	}, "the old session is ended once the key changed")
+	assert.Equal(t, http.StatusUnauthorized, c.JSON(http.MethodGet, "/api/v1/me", nil, nil))
 
 	again := it.NewClient(t)
 	again.Base = it.Replica1URL
