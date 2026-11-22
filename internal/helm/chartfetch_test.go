@@ -6,12 +6,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/bdnix/kubelook/internal/apperr"
+	"github.com/bdnix/kubelook/internal/egress"
 	"github.com/bdnix/kubelook/internal/helm"
 	"github.com/bdnix/kubelook/internal/testutil/helmtest"
 )
@@ -176,4 +178,29 @@ func TestFetch_BadRepositories(t *testing.T) {
 	assert.Error(t, err, "the archive is not there")
 	_, err = f.Fetch(t.Context(), helm.Repository{URL: missing}, "web", "", "/does/not/exist")
 	assert.Error(t, err, "the job directory is missing")
+}
+
+func TestFetch_SessionRepositoryOnALocalAddress_IsRefusedByTheGuardedClient(t *testing.T) {
+	var reached atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached.Store(true) }))
+	t.Cleanup(srv.Close)
+	guarded := &http.Client{Transport: egress.Transport(http.DefaultTransport.(*http.Transport), true)}
+	f := &helm.Fetcher{MaxBytes: 1 << 20, GuardedHTTP: guarded}
+
+	_, err := f.Fetch(t.Context(), helm.Repository{Name: "mine", URL: srv.URL, Session: true}, "web", "", t.TempDir())
+
+	require.ErrorIs(t, err, egress.ErrBlocked)
+	assert.False(t, reached.Load())
+}
+
+func TestFetch_OrganisationRepositoryOnALocalAddress_IsNotGuarded(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { http.NotFound(w, nil) }))
+	t.Cleanup(srv.Close)
+	guarded := &http.Client{Transport: egress.Transport(http.DefaultTransport.(*http.Transport), true)}
+	f := &helm.Fetcher{MaxBytes: 1 << 20, GuardedHTTP: guarded}
+
+	_, err := f.Fetch(t.Context(), helm.Repository{Name: "org", URL: srv.URL}, "web", "", t.TempDir())
+
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, egress.ErrBlocked, "the server was reached; it just has no index")
 }

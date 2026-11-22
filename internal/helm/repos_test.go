@@ -13,6 +13,7 @@ import (
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
+	"github.com/bdnix/kubelook/internal/egress"
 	"github.com/bdnix/kubelook/internal/helm"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
@@ -132,4 +133,30 @@ func TestRepos_ACorruptEntryIsAnError(t *testing.T) {
 	assert.Error(t, err)
 	_, err = r.Resolve(t.Context(), w.session("h1"), "mine")
 	assert.Error(t, err)
+}
+
+func TestRepos_Add_AddressOnALocalAddress_IsRefusedWhenTheGuardIsOn(t *testing.T) {
+	w := newWorld(t)
+	r := w.repos()
+	r.BlockLocal = true
+	for _, addr := range []string{"http://127.0.0.1:8080", "https://169.254.169.254/charts", "http://[::1]/x"} {
+		err := r.Add(t.Context(), w.session("h1"), "mine", addr, "", "")
+		require.ErrorIs(t, err, egress.ErrBlocked, addr)
+	}
+	require.NoError(t, r.Add(t.Context(), w.session("h1"), "mine", "http://10.0.0.1:8080", "", ""))
+	r.BlockLocal = false
+	require.NoError(t, r.Add(t.Context(), w.session("h1"), "local", "http://127.0.0.1:8080", "", ""))
+}
+
+func TestRepos_Resolve_MarksSessionRepositoriesOnly(t *testing.T) {
+	w := newWorld(t)
+	r := w.repos(config.HelmRepo{Name: "bitnami", URL: "https://charts.example.org"})
+	require.NoError(t, r.Add(t.Context(), w.session("h1"), "mine", "https://charts.internal", "", ""))
+
+	org, err := r.Resolve(t.Context(), w.session("h1"), "bitnami")
+	require.NoError(t, err)
+	assert.False(t, org.Session)
+	mine, err := r.Resolve(t.Context(), w.session("h1"), "mine")
+	require.NoError(t, err)
+	assert.True(t, mine.Session)
 }
