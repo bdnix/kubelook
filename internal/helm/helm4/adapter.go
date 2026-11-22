@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 
@@ -29,6 +30,8 @@ type Adapter struct {
 	open    ConfigFunc
 	workDir string
 	locate  Locator
+	// registryHTTP is the HTTP client of OCI pulls; nil → the SDK's own.
+	registryHTTP *http.Client
 }
 
 // New returns an adapter over the configurations `open` produces.
@@ -37,6 +40,12 @@ func New(open ConfigFunc) *Adapter { return &Adapter{open: open, locate: default
 // WithWorkDir sets the directory the adapter may write to (chart downloads, registry and repository files).
 func (a *Adapter) WithWorkDir(dir string) *Adapter {
 	a.workDir = dir
+	return a
+}
+
+// WithRegistryHTTP sets the HTTP client OCI pulls use (the egress guard's).
+func (a *Adapter) WithRegistryHTTP(c *http.Client) *Adapter {
+	a.registryHTTP = c
 	return a
 }
 

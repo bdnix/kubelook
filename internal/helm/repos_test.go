@@ -83,7 +83,7 @@ func TestRepos_Resolve_HasTheCredentials(t *testing.T) {
 	require.NoError(t, r.Add(t.Context(), w.session("h1"), "mine", "https://charts.internal", "alice", "s3cret"))
 	mine, err := r.Resolve(t.Context(), w.session("h1"), "mine")
 	require.NoError(t, err)
-	assert.Equal(t, helm.Repository{Name: "mine", URL: "https://charts.internal", Username: "alice", Password: "s3cret"}, mine)
+	assert.Equal(t, helm.Repository{Name: "mine", URL: "https://charts.internal", Username: "alice", Password: "s3cret", Session: true}, mine)
 	org, err := r.Resolve(t.Context(), w.session("h1"), "bitnami")
 	require.NoError(t, err)
 	assert.Equal(t, helm.Repository{Name: "bitnami", URL: "https://charts.example.org"}, org)

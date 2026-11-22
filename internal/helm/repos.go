@@ -14,6 +14,7 @@ import (
 	"github.com/bdnix/kubelook/internal/clock"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
+	"github.com/bdnix/kubelook/internal/egress"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
 )
@@ -36,6 +37,9 @@ type Repos struct {
 	Sessions *store.Sessions
 	Sealer   *crypto.Sealer
 	Clock    clock.Clock
+	// BlockLocal refuses a session repository whose address is a loopback, link-local or unspecified IP
+	// (egress.blockLocalAddresses). Names are checked when the repository is contacted.
+	BlockLocal bool
 }
 
 type repoSecret struct {
@@ -95,6 +99,9 @@ func (r *Repos) Add(ctx context.Context, sess session.Session, name, address, us
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return fmt.Errorf("the repository address must be an http or https URL: %w", apperr.ErrInvalid)
 	}
+	if err := egress.CheckURL(address, r.BlockLocal); err != nil {
+		return err
+	}
 	if _, taken := r.org(name); taken {
 		return fmt.Errorf("the name %q is used by a repository of the organisation: %w", name, apperr.ErrConflict)
 	}
@@ -139,5 +146,5 @@ func (r *Repos) Resolve(ctx context.Context, sess session.Session, name string) 
 	if err != nil {
 		return Repository{}, err
 	}
-	return Repository{Name: name, URL: s.URL, Username: s.Username, Password: s.Password}, nil
+	return Repository{Name: name, URL: s.URL, Username: s.Username, Password: s.Password, Session: true}, nil
 }

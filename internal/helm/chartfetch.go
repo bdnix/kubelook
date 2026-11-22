@@ -25,11 +25,16 @@ var chartName = regexp.MustCompile(`^[a-z0-9]([-a-z0-9._]*[a-z0-9])?$`)
 // Repository is a chart repository with the credentials of its entry.
 type Repository struct {
 	Name, URL, Username, Password string
+	// Session is set for a repository the user added to the session: its address is the user's, so the download
+	// goes through the Fetcher's guarded client.
+	Session bool
 }
 
 // Fetcher downloads charts from HTTP repositories. It writes only into the directory it is given.
 type Fetcher struct {
 	HTTP *http.Client
+	// GuardedHTTP downloads from the repositories of the session (egress guard); nil → HTTP is used for them too.
+	GuardedHTTP *http.Client
 	// MaxBytes is `helm.maxChartBytes`.
 	MaxBytes int64
 }
@@ -41,7 +46,10 @@ type index struct {
 	} `json:"entries"`
 }
 
-func (f *Fetcher) client() *http.Client {
+func (f *Fetcher) client(repo Repository) *http.Client {
+	if repo.Session && f.GuardedHTTP != nil {
+		return f.GuardedHTTP
+	}
 	if f.HTTP != nil {
 		return f.HTTP
 	}
@@ -58,7 +66,7 @@ func (f *Fetcher) get(ctx context.Context, repo Repository, target *url.URL) (*h
 	if repo.Username != "" && base != nil && base.Host == target.Host {
 		req.SetBasicAuth(repo.Username, repo.Password)
 	}
-	resp, err := f.client().Do(req)
+	resp, err := f.client(repo).Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("contacting the repository: %w", err)
 	}
