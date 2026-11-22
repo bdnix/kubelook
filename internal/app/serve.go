@@ -23,6 +23,7 @@ import (
 	"github.com/bdnix/kubelook/internal/cluster"
 	"github.com/bdnix/kubelook/internal/config"
 	"github.com/bdnix/kubelook/internal/crypto"
+	"github.com/bdnix/kubelook/internal/egress"
 	"github.com/bdnix/kubelook/internal/execs"
 	"github.com/bdnix/kubelook/internal/files"
 	"github.com/bdnix/kubelook/internal/flux"
@@ -85,6 +86,7 @@ type components struct {
 	vaultMonitor *vault.Monitor
 	metrics      *telemetry.Metrics
 	tracing      *telemetry.Tracing
+	egressProxy  *egress.Proxy // the guarded tunnel of exec; nil when the guard is off
 	hub          *watch.Hub
 	jobs         *jobs.Runner
 	handler      http.Handler
@@ -119,10 +121,20 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	if err != nil {
 		return nil, err
 	}
+	var tunnel *egress.Proxy // started below when the egress guard is on
 	fail := func(err error) (*components, error) {
 		_ = db.Close()
 		_ = tracing.Shutdown(context.WithoutCancel(ctx))
+		if tunnel != nil {
+			_ = tunnel.Close()
+		}
 		return nil, err
+	}
+	block := cfg.Egress.Blocks()
+	if block {
+		if tunnel, err = egress.NewProxy(true); err != nil {
+			return fail(err)
+		}
 	}
 
 	if cfg.Database.MigrateOnStart() {
@@ -148,7 +160,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		IdleTimeout: cfg.Session.IdleTimeout.D(), MaxLifetime: cfg.Session.MaxLifetime.D(), CookieSecure: cfg.CookieSecure(),
 	})
 	c := &components{
-		log: log, db: db, sealer: sealer, sessions: mgr,
+		log: log, db: db, sealer: sealer, sessions: mgr, egressProxy: tunnel,
 		users: store.NewUsers(db, o.Clock, store.NewID),
 		audit: audit.NewRecorder(db, o.Clock, o.Stdout, store.NewID),
 	}
@@ -177,6 +189,7 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	opener := cluster.NewOpener(cluster.OpenerDeps{
 		Registry: clusters, Credentials: creds, Sessions: store.NewSessions(db), Sealer: sealer, Vault: vaultClient,
 		Clock: o.Clock, Config: cfg, Audit: c.audit, Closers: mgr.Registry(), Log: log,
+		BlockLocal: block,
 	})
 	clusters.SetStates(opener.StateOf)
 	c.opener = opener
@@ -214,10 +227,14 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 	actionDeps := actions.Deps{Clients: kubeClients, Clock: o.Clock, Audit: c.audit}
 	c.jobs.Register(actions.NewBulkHandler(actionDeps))
 	c.jobs.Register(actions.NewDrainHandler(actionDeps))
+	var guardedClient *http.Client // for what users address: session Helm repositories and OCI registries
+	if block {
+		guardedClient = &http.Client{Transport: egress.Transport(http.DefaultTransport.(*http.Transport), true)}
+	}
 	helmService := &helm.Service{
-		Factory: &helm4.Factory{Clients: kubeClients},
-		Repos:   &helm.Repos{Org: cfg.Helm.Repositories, Sessions: store.NewSessions(db), Sealer: sealer, Clock: o.Clock},
-		Fetcher: &helm.Fetcher{MaxBytes: cfg.Helm.MaxChartBytes},
+		Factory: &helm4.Factory{Clients: kubeClients, RegistryHTTP: guardedClient},
+		Repos:   &helm.Repos{Org: cfg.Helm.Repositories, Sessions: store.NewSessions(db), Sealer: sealer, Clock: o.Clock, BlockLocal: block},
+		Fetcher: &helm.Fetcher{MaxBytes: cfg.Helm.MaxChartBytes, GuardedHTTP: guardedClient},
 		Audit:   c.audit,
 		Guard:   guard, Refusals: c.metrics,
 	}
@@ -233,11 +250,11 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		KeepAlive: mgr.KeepAlive, Metrics: c.metrics,
 	}))
 	c.ws.Register("exec.open", execs.NewFactory(execs.Deps{
-		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit,
+		Executor: newExecutor(kubeClients, tunnel), Clock: o.Clock, Audit: c.audit,
 		IdleTimeout: time.Duration(cfg.Shell.IdleTimeout), KeepAlive: mgr.KeepAlive, NodeShell: cfg.NodeShell.IsEnabled(), Log: log, Metrics: c.metrics, Guard: guard, Refusals: c.metrics,
 	}))
 	c.ws.Register("file.open", files.NewFactory(files.Deps{
-		Executor: execs.NewKubeExecutor(kubeClients), Clock: o.Clock, Audit: c.audit, Enabled: cfg.FileBrowser.IsEnabled(),
+		Executor: newExecutor(kubeClients, tunnel), Clock: o.Clock, Audit: c.audit, Enabled: cfg.FileBrowser.IsEnabled(),
 		MaxTransferBytes: cfg.FileBrowser.MaxTransferBytes, KeepAlive: mgr.KeepAlive,
 	}))
 	c.handler = httpapi.New(httpapi.Deps{
@@ -249,6 +266,14 @@ func build(ctx context.Context, cfg *config.Config, o ServeOptions) (*components
 		Telemetry: c.metrics, Tracer: tracing.Tracer(),
 	})
 	return c, nil
+}
+
+// newExecutor is the exec executor: through the guarded tunnel when the egress guard is on.
+func newExecutor(c kube.Clients, tunnel *egress.Proxy) execs.Executor {
+	if tunnel == nil {
+		return execs.NewKubeExecutor(c)
+	}
+	return execs.NewGuardedKubeExecutor(c, tunnel)
 }
 
 // metricSourceTimeout bounds the database reads of one scrape.
@@ -327,6 +352,9 @@ func Serve(ctx context.Context, cfg *config.Config, o ServeOptions) error {
 		return err
 	}
 	defer func() { _ = c.db.Close() }()
+	if c.egressProxy != nil {
+		defer func() { _ = c.egressProxy.Close() }()
+	}
 	defer func() { // after the server has stopped, so the last spans are sent
 		flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), shutdownTimeout)
 		defer cancel()
