@@ -95,15 +95,33 @@ export async function openAlpha(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/c\/v(:|%3A)alpha/);
 }
 
-/** Collects what a page must never do: uncaught errors and Content Security Policy violations. */
+/** Console messages of the page, kept to print when a test fails. */
+const consoleLog = new WeakMap<Page, string[]>();
+
+/**
+ * Collects what a page must never do: uncaught errors and Content Security Policy violations.
+ * Monaco rejects a promise with the message "Canceled" whenever it abandons a pending request (a keystroke
+ * cancels the validation of the text before it); that is its normal way of cancelling and is not collected.
+ */
 export function guardPage(page: Page): string[] {
   const problems: string[] = [];
-  page.on("pageerror", (e) => problems.push(`page error: ${e.message}`));
+  const log: string[] = [];
+  consoleLog.set(page, log);
+  page.on("pageerror", (e) => {
+    log.push(`pageerror: ${e.message}`);
+    if (e.message !== "Canceled") problems.push(`page error: ${e.message}`);
+  });
   page.on("console", (m) => {
+    log.push(`console.${m.type()}: ${m.text()}`);
     if (m.text().includes("Content Security Policy"))
       problems.push(`console: ${m.text()}`);
   });
   return problems;
+}
+
+/** What the page logged, for the report of a failed test. */
+export function pageLog(page: Page): string {
+  return (consoleLog.get(page) ?? []).slice(-60).join("\n");
 }
 
 /** The text of the Monaco editor on the page (it draws text in `.view-line` elements, which have no role). */

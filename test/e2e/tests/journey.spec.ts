@@ -3,6 +3,7 @@ import {
   clusterRail,
   editorText,
   guardPage,
+  pageLog,
   kubectl,
   openAlpha,
   podOf,
@@ -16,7 +17,20 @@ test.describe("the real stack in a browser", () => {
     problems = guardPage(page);
   });
   // (9) no page of any test has a Content Security Policy violation or an uncaught error
-  test.afterEach(() => {
+  test.afterEach(async ({ page }, testInfo) => {
+    if (testInfo.status !== testInfo.expectedStatus) {
+      // what the page said and drew, for the CI log (the trace is an artifact only)
+      console.log(`--- page log of "${testInfo.title}"\n${pageLog(page)}`);
+      const drawer = await page
+        .evaluate(
+          () =>
+            document
+              .querySelector("aside[aria-label=Details]")
+              ?.outerHTML.slice(0, 4000) ?? "no details drawer",
+        )
+        .catch((e: unknown) => `no page: ${String(e)}`);
+      console.log(`--- details drawer\n${drawer}`);
+    }
     expect(
       problems,
       "page errors and Content Security Policy violations",
