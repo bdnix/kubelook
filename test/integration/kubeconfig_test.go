@@ -156,3 +156,35 @@ func TestKubeconfig_KeepsWorkingWhileVaultIsDown_AndRestoresFromTheSealedCopy(t 
 		return s == http.StatusOK
 	}, "the restored kubeconfig's cluster opens")
 }
+
+func TestKubeconfig_ServerOnALoopbackAddress_UploadsButOpeningIsRefused(t *testing.T) {
+	c := signedIn(t, "kc-loopback")
+	c.UploadKubeconfig("loop", []byte(`apiVersion: v1
+kind: Config
+clusters:
+  - name: loop
+    cluster:
+      server: https://127.0.0.1:6443
+      insecure-skip-tls-verify: true
+users:
+  - name: loop
+    user:
+      token: not-a-real-token
+contexts:
+  - name: loop
+    context: {cluster: loop, user: loop}
+current-context: loop
+`))
+
+	status, _, apiErr := open(t, c, "k:loop/loop", "")
+
+	require.Equal(t, http.StatusUnprocessableEntity, status)
+	assert.Equal(t, "unprocessable", apiErr.Error.Code)
+	assert.Equal(t, "This address isn't allowed: Kubelook doesn't connect to local or link-local addresses from a kubeconfig.", apiErr.Error.Message)
+
+	// the --internal kubeconfig of the kind clusters is on a private address and still works
+	c.UploadKubeconfig("alpha-kc", alphaKubeconfig(t))
+	status, st, apiErr := open(t, c, alphaKCCluster, "")
+	require.Equal(t, http.StatusOK, status, "%+v", apiErr)
+	assert.Equal(t, "open", st.State)
+}

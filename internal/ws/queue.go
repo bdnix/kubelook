@@ -21,6 +21,7 @@ type queue struct {
 	drops  map[int]int
 	closed bool
 	wake   chan struct{}
+	onDrop func(ch int) // called for every dropped frame; must not block; nil → ignored
 }
 
 func newQueue(capacity int) *queue {
@@ -41,11 +42,19 @@ func (q *queue) evict(ch int) bool {
 		it := e.Value.(item)
 		if it.droppable && (ch < 0 || it.ch == ch) {
 			q.items.Remove(e)
-			q.drops[it.ch]++
+			q.dropOne(it.ch)
 			return true
 		}
 	}
 	return false
+}
+
+// dropOne counts a dropped frame of channel ch. Callers hold q.mu.
+func (q *queue) dropOne(ch int) {
+	q.drops[ch]++
+	if q.onDrop != nil {
+		q.onDrop(ch)
+	}
 }
 
 // push adds a frame that must be delivered. When the queue is full it makes room by evicting the
@@ -74,7 +83,7 @@ func (q *queue) pushDroppable(it item) {
 		return
 	}
 	if q.items.Len() >= q.cap && !q.evict(it.ch) {
-		q.drops[it.ch]++
+		q.dropOne(it.ch)
 		return
 	}
 	q.items.PushBack(it)

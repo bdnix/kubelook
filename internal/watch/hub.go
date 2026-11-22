@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -54,6 +55,12 @@ type Stats struct {
 	Watches, Subscribers, CachedObjects int
 }
 
+// Guard says whether the server refuses new work (the memory guard).
+type Guard interface{ Busy() bool }
+
+// Refusals counts the requests refused because the server was busy.
+type Refusals interface{ Refused(kind string) }
+
 // Deps are the dependencies of Hub.
 type Deps struct {
 	Clients     kube.Clients
@@ -62,6 +69,8 @@ type Deps struct {
 	IdleSeconds func(ctx context.Context, userID string) int // the user's WatchIdleSeconds; nil or ≤ 0 → 30
 	MaxPerUser  int                                          // ≤ 0 → 50
 	Closers     *session.Registry                            // nil → upstreams are not tied to the session
+	Guard       Guard                                        // nil → new watches are never refused
+	Refusals    Refusals                                     // nil → refusals are not counted
 }
 
 // ukey is what the hub indexes upstreams by: the Key, plus for a kubeconfig cluster a fingerprint of
@@ -282,6 +291,22 @@ func (h *Hub) Stats() Stats {
 		st.CachedObjects += int(u.cached.Load())
 	}
 	return st
+}
+
+// WatchesPerUser returns, for every user that holds any upstream, how many it holds; the counts are sorted.
+func (h *Hub) WatchesPerUser() []int {
+	h.mu.Lock()
+	perUser := map[string]int{}
+	for _, u := range h.order {
+		perUser[u.key.UserID]++
+	}
+	h.mu.Unlock()
+	out := make([]int, 0, len(perUser))
+	for _, n := range perUser {
+		out = append(out, n)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // Close stops every upstream and waits for them.

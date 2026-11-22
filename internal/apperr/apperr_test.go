@@ -35,3 +35,9 @@ func TestErrClusterUnavailable_SaysWhatToDoAndMatchesNotFound(t *testing.T) {
 	assert.ErrorIs(t, apperr.ErrClusterUnavailable, apperr.ErrNotFound)
 	assert.NotErrorIs(t, apperr.ErrClusterUnavailable, apperr.ErrConflict)
 }
+
+func TestErrServerBusy_SaysTryAgainShortly_AndIsErrBusy(t *testing.T) {
+	assert.Equal(t, "The server is busy. Try again shortly.", apperr.ErrServerBusy.Error())
+	assert.ErrorIs(t, apperr.ErrServerBusy, apperr.ErrBusy)
+	assert.ErrorIs(t, fmt.Errorf("opening: %w", apperr.ErrServerBusy), apperr.ErrBusy)
+}

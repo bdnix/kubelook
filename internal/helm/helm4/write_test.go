@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -17,6 +18,7 @@ import (
 	"helm.sh/helm/v4/pkg/storage"
 
 	"github.com/bdnix/kubelook/internal/apperr"
+	"github.com/bdnix/kubelook/internal/egress"
 	"github.com/bdnix/kubelook/internal/helm"
 	"github.com/bdnix/kubelook/internal/helm/helm4"
 	"github.com/bdnix/kubelook/internal/testutil/helmtest"
@@ -320,4 +322,16 @@ func TestStorageFailures_AreReturned_NotMistakenForAMissingRelease(t *testing.T)
 	assert.ErrorIs(t, err, boom, "a storage failure is not read as 'the name is free'")
 	_, err = d.Upgrade(ctx, helm.UpgradeOptions{Namespace: "n", Name: "web", Chart: local})
 	assert.ErrorIs(t, err, boom)
+}
+
+func TestOCIReference_OnALocalAddress_IsRefusedByTheGuardedRegistryClient(t *testing.T) {
+	r := newRig(t)
+	guarded := &http.Client{Transport: egress.Transport(http.DefaultTransport.(*http.Transport), true)}
+	d := helm4.New(r.Open).WithWorkDir(t.TempDir()).WithRegistryHTTP(guarded)
+
+	_, err := d.Install(context.Background(), helm.InstallOptions{
+		Namespace: "n", Name: "web", Chart: helm.ChartSource{OCI: "oci://127.0.0.1:1/charts/web", Version: "1.0.0"},
+	})
+
+	require.ErrorIs(t, err, egress.ErrBlocked)
 }

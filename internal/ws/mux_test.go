@@ -401,3 +401,14 @@ func TestErrorBody_MapsSentinelsAndAPIErrors(t *testing.T) {
 	assert.Equal(t, map[string]string{"code": "vault_unreachable", "message": "down"}, body)
 	assert.Equal(t, map[string]string{"code": "internal", "message": "internal error"}, ws.ErrorBody(errors.New("secret detail")))
 }
+
+func TestMux_Connections_CountsTheOpenConnections(t *testing.T) {
+	e := newEnv(t)
+	assert.Equal(t, 0, e.mux.Connections())
+
+	c := e.connect(t)
+	send(t, c, "echo.open", 1, nil)
+	require.Equal(t, "opened", recv(t, c).T)
+
+	assert.Equal(t, 1, e.mux.Connections())
+}

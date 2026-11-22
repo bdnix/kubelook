@@ -165,3 +165,30 @@ func scanJob(r scanner) (JobRow, error) {
 	}
 	return j, nil
 }
+
+// JobCount is the number of jobs of one type in one status.
+type JobCount struct {
+	Type, Status string
+	Count        int
+}
+
+// CountByTypeAndStatus counts every user's jobs, ordered by type and status.
+func (j *Jobs) CountByTypeAndStatus(ctx context.Context) ([]JobCount, error) {
+	rows, err := j.db.Query(ctx, "SELECT type, status, COUNT(*) FROM jobs GROUP BY type, status ORDER BY type, status")
+	if err != nil {
+		return nil, fmt.Errorf("counting jobs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var out []JobCount
+	for rows.Next() {
+		var c JobCount
+		if err := rows.Scan(&c.Type, &c.Status, &c.Count); err != nil {
+			return nil, fmt.Errorf("reading job counts: %w", err)
+		}
+		out = append(out, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("reading job counts: %w", err)
+	}
+	return out, nil
+}

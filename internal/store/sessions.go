@@ -65,6 +65,15 @@ func (s *Sessions) Get(ctx context.Context, hash string) (SessionRow, error) {
 	return r, nil
 }
 
+// Count returns the number of stored sessions.
+func (s *Sessions) Count(ctx context.Context) (int, error) {
+	var n int
+	if err := s.db.QueryRow(ctx, "SELECT COUNT(*) FROM sessions").Scan(&n); err != nil {
+		return 0, fmt.Errorf("counting sessions: %w", err)
+	}
+	return n, nil
+}
+
 // Touch records activity. It returns ErrNotFound when the session is gone.
 func (s *Sessions) Touch(ctx context.Context, hash string, now time.Time) error {
 	res, err := s.db.Exec(ctx, "UPDATE sessions SET last_seen_at = ? WHERE id_hash = ?", ms(now), hash)

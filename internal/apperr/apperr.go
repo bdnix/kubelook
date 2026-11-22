@@ -18,6 +18,16 @@ var (
 	ErrDryRunUnsupported = errors.New("dry run unsupported")
 )
 
+// ErrServerBusy is what the memory guard answers while it refuses new work. It matches ErrBusy with errors.Is,
+// so it is answered with 503 and the code server_busy, and its text is the message the user sees.
+var ErrServerBusy error = serverBusy{}
+
+type serverBusy struct{}
+
+func (serverBusy) Error() string { return "The server is busy. Try again shortly." }
+
+func (serverBusy) Is(target error) bool { return target == ErrBusy }
+
 // APIError is an error that carries its own HTTP status, machine code and user-facing message.
 type APIError struct {
 	Status  int

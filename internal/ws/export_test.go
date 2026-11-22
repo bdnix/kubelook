@@ -11,6 +11,17 @@ func DetachedConn(capacity int) *Conn {
 	return &Conn{ctx: ctx, stop: stop, q: newQueue(capacity), channels: map[int]Channel{}, opening: map[int][]item{}, visSubs: map[int]func(bool){}}
 }
 
+// DetachedConnWithMetrics is DetachedConn that reports dropped frames to m.
+func DetachedConnWithMetrics(capacity int, m Metrics) *Conn {
+	c := DetachedConn(capacity)
+	c.metrics = m
+	c.q.onDrop = c.reportDrop
+	return c
+}
+
+// SetKind names the kind of a channel, as opening it with "<kind>.open" does.
+func (c *Conn) SetKind(ch int, kind string) { c.kinds.Store(ch, kind) }
+
 // AddChannel registers a channel on a detached connection.
 func (c *Conn) AddChannel(ch int, chn Channel) {
 	c.mu.Lock()

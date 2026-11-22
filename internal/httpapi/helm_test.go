@@ -305,3 +305,26 @@ func TestHelm_Releases_ForAClusterWhoseDiscoveryFails(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, e.post("/api/v1/clusters/v:nope/helm/releases/a/b/values/reveal", `{}`).Code)
 	assert.Equal(t, http.StatusNotFound, e.get("/api/v1/clusters/v:nope/helm/releases/a/b").Code)
 }
+
+type busyGuard struct{}
+
+func (busyGuard) Busy() bool { return true }
+
+type refusalLog struct{ kinds []string }
+
+func (r *refusalLog) Refused(kind string) { r.kinds = append(r.kinds, kind) }
+
+func TestHelm_Jobs_BusyServer_503_NothingIsStarted(t *testing.T) {
+	e := newHelmEnv(t)
+	refusals := &refusalLog{}
+	e.deps.Helm.Guard, e.deps.Helm.Refusals = busyGuard{}, refusals
+
+	rec := e.post(helmBase+"/jobs", `{"action":"uninstall","namespace":"team-a","name":"web"}`)
+
+	assert.Equal(t, http.StatusServiceUnavailable, rec.Code)
+	assert.Equal(t, "server_busy", errorCode(t, rec))
+	assert.Contains(t, rec.Body.String(), "The server is busy. Try again shortly.")
+	assert.Equal(t, []string{"helm"}, refusals.kinds)
+	jobsList := e.get("/api/v1/jobs")
+	assert.NotContains(t, jobsList.Body.String(), "uninstall")
+}

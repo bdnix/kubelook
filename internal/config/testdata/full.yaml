@@ -75,3 +75,5 @@ prometheus:
       url: https://prom.example.org
 telemetry:
   otlpEndpoint: otel.example.org:4317
+egress:
+  blockLocalAddresses: false

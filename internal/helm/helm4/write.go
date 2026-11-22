@@ -78,7 +78,11 @@ func (a *Adapter) loadChart(namespace string, src helm.ChartSource) (*chart.Char
 // the working directory.
 func (a *Adapter) fetchOCI(namespace string, src helm.ChartSource) (string, error) {
 	settings := a.settings()
-	client, err := registry.NewClient(registry.ClientOptCredentialsFile(settings.RegistryConfig))
+	opts := []registry.ClientOption{registry.ClientOptCredentialsFile(settings.RegistryConfig)}
+	if a.registryHTTP != nil {
+		opts = append(opts, registry.ClientOptHTTPClient(a.registryHTTP))
+	}
+	client, err := registry.NewClient(opts...)
 	if err != nil {
 		return "", fmt.Errorf("creating the registry client: %w", err)
 	}

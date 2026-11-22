@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -341,12 +342,20 @@ type busy struct{}
 
 func (busy) Busy() bool { return true }
 
+type refusalCounter struct{ kinds []string }
+
+func (r *refusalCounter) Refused(kind string) { r.kinds = append(r.kinds, kind) }
+
 func TestShell_BusyServerRefusesNewShells(t *testing.T) {
 	e := newEnv(t)
 	e.deps.Guard = busy{}
+	refusals := &refusalCounter{}
+	e.deps.Refusals = refusals
 	_, err := e.open(80, 24)
 	assert.ErrorIs(t, err, apperr.ErrBusy)
+	assert.Equal(t, "The server is busy. Try again shortly.", err.Error())
 	assert.Empty(t, e.exec.commands())
+	assert.Equal(t, []string{"exec"}, refusals.kinds)
 }
 
 func TestShell_CloseCancelsTheStreamAndIsIdempotent(t *testing.T) {
@@ -438,4 +447,34 @@ func TestStdinQueue_RefusesToBufferWithoutLimit(t *testing.T) {
 	require.NoError(t, ch.Handle(t.Context(), "exec.stdin", stdin(big)))
 	assert.ErrorIs(t, ch.Handle(t.Context(), "exec.stdin", stdin(big)), apperr.ErrBusy)
 	close(hold)
+}
+
+type shellCounter struct{ opened, closed atomic.Int32 }
+
+func (c *shellCounter) ExecOpened() { c.opened.Add(1) }
+func (c *shellCounter) ExecClosed() { c.closed.Add(1) }
+
+func TestMetrics_OpenShellIsCountedUntilTheChannelCloses(t *testing.T) {
+	e := newEnv(t)
+	m := &shellCounter{}
+	e.deps.Metrics = m
+	ch, err := e.open(80, 24)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, m.opened.Load())
+	assert.EqualValues(t, 0, m.closed.Load())
+
+	ch.Close()
+	ch.Close()
+	assert.EqualValues(t, 1, m.closed.Load(), "a second close does not count twice")
+}
+
+func TestMetrics_RefusedShellIsNotCounted(t *testing.T) {
+	e := newEnv(t)
+	m := &shellCounter{}
+	e.deps.Metrics = m
+	e.deps.Guard = busy{}
+	_, err := e.open(80, 24)
+	require.ErrorIs(t, err, apperr.ErrBusy)
+	assert.EqualValues(t, 0, m.opened.Load())
+	assert.EqualValues(t, 0, m.closed.Load())
 }

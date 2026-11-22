@@ -7,13 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 	utilexec "k8s.io/client-go/util/exec"
 
+	"github.com/bdnix/kubelook/internal/egress"
 	"github.com/bdnix/kubelook/internal/kube"
 	"github.com/bdnix/kubelook/internal/session"
 )
@@ -48,10 +51,25 @@ type Executor interface {
 	Stream(ctx context.Context, sess session.Session, clusterID string, r ExecRequest, sio StreamIO) error
 }
 
-type kubeExecutor struct{ clients kube.Clients }
+type kubeExecutor struct {
+	clients kube.Clients
+	tunnel  *egress.Proxy
+}
 
-// NewKubeExecutor returns the executor that talks to the cluster over WebSocket exec (v5 channel protocol).
+// NewKubeExecutor returns the executor that talks to the cluster over WebSocket exec (v5 channel protocol). It
+// refuses to exec through a cluster that is under the egress guard: use NewGuardedKubeExecutor for that.
 func NewKubeExecutor(c kube.Clients) Executor { return &kubeExecutor{clients: c} }
+
+// NewGuardedKubeExecutor is NewKubeExecutor for a server whose kubeconfig clusters are under the egress guard.
+// client-go's WebSocket exec does not dial through rest.Config.Dial, so the connections of such a cluster go
+// through the tunnel, which dials through the guard.
+func NewGuardedKubeExecutor(c kube.Clients, tunnel *egress.Proxy) Executor {
+	return &kubeExecutor{clients: c, tunnel: tunnel}
+}
+
+// errNoTunnel is the answer for a guarded cluster when the executor has no tunnel: failing closed beats
+// connecting unguarded.
+var errNoTunnel = errors.New("this cluster is under the egress guard and the executor has no guarded tunnel")
 
 type sizeQueue struct {
 	ctx context.Context
@@ -84,7 +102,16 @@ func (k *kubeExecutor) Stream(ctx context.Context, sess session.Session, cluster
 		VersionedParams(&corev1.PodExecOptions{
 			Container: r.Container, Command: r.Command, Stdin: r.Stdin, Stdout: true, Stderr: !r.TTY, TTY: r.TTY,
 		}, scheme.ParameterCodec)
-	exec, err := remotecommand.NewWebSocketExecutor(cfg, "GET", req.URL().String())
+	wsCfg := cfg
+	if cfg.Dial != nil { // the egress guard is on for this cluster
+		if k.tunnel == nil {
+			return errNoTunnel
+		}
+		wsCfg = rest.CopyConfig(cfg)
+		wsCfg.Dial = nil // the tunnel dials; the proxy must be reachable from here
+		wsCfg.Proxy = k.tunnel.ProxyFunc()
+	}
+	exec, err := remotecommand.NewWebSocketExecutor(wsCfg, "GET", req.URL().String())
 	if err != nil {
 		return fmt.Errorf("preparing the exec request: %w", err)
 	}
@@ -99,6 +126,9 @@ func (k *kubeExecutor) Stream(ctx context.Context, sess session.Session, cluster
 		opts.TerminalSizeQueue = sizeQueue{ctx: ctx, ch: sio.Resize}
 	}
 	err = exec.StreamWithContext(ctx, opts)
+	if err != nil && strings.Contains(err.Error(), egress.RefusalReason) {
+		return egress.ErrBlocked
+	}
 	var code utilexec.CodeExitError
 	if errors.As(err, &code) {
 		return &ExitError{Code: code.Code, Message: err.Error()}

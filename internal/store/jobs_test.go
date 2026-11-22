@@ -179,3 +179,29 @@ func TestJobs_DeleteForSession_RemovesNothingButIsNotNeeded(t *testing.T) {
 	_, err = j.Get(t.Context(), "j")
 	assert.NoError(t, err)
 }
+
+func TestJobs_CountByTypeAndStatus_GroupsEveryUsersJobs(t *testing.T) {
+	ctx := t.Context()
+	j := newJobs(t)
+	got, err := j.CountByTypeAndStatus(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, got)
+
+	for i, id := range []string{"a", "b", "c"} {
+		require.NoError(t, j.Insert(ctx, jobRow(id, "u1", t0.Add(time.Duration(i)*time.Minute)))) // type "bulk", queued
+	}
+	other := jobRow("d", "u2", t0)
+	other.Type = "helm.install"
+	require.NoError(t, j.Insert(ctx, other))
+	ok, err := j.Start(ctx, "b", "r1", t0.Add(time.Hour), t0)
+	require.NoError(t, err)
+	require.True(t, ok)
+
+	got, err = j.CountByTypeAndStatus(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, []store.JobCount{
+		{Type: "bulk", Status: "queued", Count: 2},
+		{Type: "bulk", Status: "running", Count: 1},
+		{Type: "helm.install", Status: "queued", Count: 1},
+	}, got)
+}

@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/rest"
 
 	"github.com/bdnix/kubelook/internal/apperr"
+	"github.com/bdnix/kubelook/internal/egress"
 	"github.com/bdnix/kubelook/internal/kubeconfig"
 	"github.com/bdnix/kubelook/internal/session"
 	"github.com/bdnix/kubelook/internal/store"
@@ -53,6 +54,9 @@ func (s *kubeSource) open(ctx context.Context, sess session.Session, ref Ref, _ 
 		if err != nil {
 			return nil, err
 		}
+		if err := egress.CheckURL(cfg.Host, s.o.d.BlockLocal); err != nil {
+			return nil, err
+		}
 		ks := &kubeState{file: f, label: f.Label, context: ref.Context}
 		e := &entry{kube: ks, server: cfg.Host}
 		if oc, ok := f.OIDC(ref.Context); ok {
@@ -79,7 +83,20 @@ func (s *kubeSource) restConfig(e *entry) (*rest.Config, error) {
 	if ks.oidc {
 		cfg.BearerToken = "" // attached per request, refreshed when needed
 	}
-	return cfg, nil
+	return guardedRESTConfig(cfg, s.o.d.BlockLocal), nil
+}
+
+// guardedRESTConfig makes every connection of cfg go through the egress guard. The address of a kubeconfig is
+// the user's, so connections to local and link-local addresses are refused when they are made, whatever name they
+// were reached by, and a proxy of the environment or of the kubeconfig cannot move them elsewhere. This covers
+// the WebSocket exec dialer of client-go too, which dials through cfg.Dial.
+func guardedRESTConfig(cfg *rest.Config, blocked bool) *rest.Config {
+	if !blocked {
+		return cfg
+	}
+	cfg.Dial = egress.DialContext(true)
+	cfg.Proxy = func(*http.Request) (*url.URL, error) { return nil, nil } //nolint:nilnil // "no proxy" in net/http's convention
+	return cfg
 }
 
 func (s *kubeSource) due(e *entry) bool {
@@ -169,6 +186,8 @@ func (s *kubeSource) exchange(ctx context.Context, oc kubeconfig.OIDCSettings) (
 	}
 	status, err := postForm(ctx, hc, endpoint, form, &out)
 	switch {
+	case errors.Is(err, egress.ErrBlocked):
+		return "", "", egress.ErrBlocked
 	case err != nil:
 		return "", "", fmt.Errorf("the identity provider is unreachable: %w", apperr.ErrBusy)
 	case status == http.StatusBadRequest || status == http.StatusUnauthorized:
@@ -187,7 +206,7 @@ func (s *kubeSource) httpClient(oc kubeconfig.OIDCSettings) (*http.Client, error
 	if !pool.AppendCertsFromPEM(oc.IDPCAData) {
 		return nil, fmt.Errorf("idp-certificate-authority-data holds no certificate: %w", apperr.ErrInvalid)
 	}
-	tr := http.DefaultTransport.(*http.Transport).Clone()
+	tr := egress.Transport(http.DefaultTransport.(*http.Transport), s.o.d.BlockLocal)
 	tr.TLSClientConfig.RootCAs = pool
 	return &http.Client{Transport: tr, Timeout: s.o.d.HTTPClient.Timeout}, nil
 }
@@ -199,6 +218,9 @@ func tokenEndpoint(ctx context.Context, hc *http.Client, issuer string) (string,
 		return "", fmt.Errorf("building discovery request: %w", err)
 	}
 	resp, err := hc.Do(req)
+	if errors.Is(err, egress.ErrBlocked) {
+		return "", egress.ErrBlocked
+	}
 	if err != nil {
 		return "", fmt.Errorf("the identity provider is unreachable: %w", apperr.ErrBusy)
 	}

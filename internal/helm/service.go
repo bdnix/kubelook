@@ -19,7 +19,15 @@ type Service struct {
 	Fetcher  *Fetcher
 	Audit    *audit.Recorder
 	TempRoot string
+	Guard    Guard    // nil → jobs are never refused
+	Refusals Refusals // nil → refusals are not counted
 }
+
+// Guard says whether the server refuses new work (the memory guard).
+type Guard interface{ Busy() bool }
+
+// Refusals counts the requests refused because the server was busy.
+type Refusals interface{ Refused(kind string) }
 
 // JobDeps are the dependencies of the job handlers of this service.
 func (s *Service) JobDeps() JobDeps {
@@ -113,6 +121,12 @@ func (s *Service) Preview(ctx context.Context, sess session.Session, cluster, ac
 // Submit starts a Helm job. It records the revision the release is at, so recovery can tell whether the job
 // changed anything. An action on a release that does not exist is refused, except an install.
 func (s *Service) Submit(ctx context.Context, runner *jobs.Runner, sess session.Session, cluster, action string, req JobRequest) (string, error) {
+	if s.Guard != nil && s.Guard.Busy() {
+		if s.Refusals != nil {
+			s.Refusals.Refused("helm")
+		}
+		return "", apperr.ErrServerBusy
+	}
 	if !validAction(action) {
 		return "", fmt.Errorf("%q is not a Helm action: %w", action, apperr.ErrInvalid)
 	}

@@ -163,3 +163,16 @@ func TestSessions_CredentialKindConstants(t *testing.T) {
 	assert.Equal(t, "cluster_role", store.CredClusterRole)
 	assert.Equal(t, "helm_repo", store.CredHelmRepo)
 }
+
+func TestSessions_Count_CountsEveryStoredSession(t *testing.T) {
+	e := newSessions(t)
+	got, err := e.sessions.Count(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 0, got)
+
+	e.create(t, "h1", t0.Add(time.Hour))
+	e.create(t, "h2", t0.Add(time.Hour))
+	got, err = e.sessions.Count(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, 2, got)
+}

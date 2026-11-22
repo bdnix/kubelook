@@ -87,6 +87,7 @@ func TestLoad_Minimal_AppliesEveryDefault(t *testing.T) {
 	}
 	assert.Empty(t, c.Prometheus.Clusters)
 	assert.Equal(t, "", c.Telemetry.OTLPEndpoint)
+	assert.True(t, c.Egress.Blocks(), "local addresses are refused unless the file says otherwise")
 	assert.Equal(t, make([]byte, 32), c.EncryptionKey)
 }
 
@@ -143,6 +144,7 @@ func TestLoad_Full_EveryFieldEqualsFileValue(t *testing.T) {
 	assert.Equal(t, "auto", c.Modules["trivy"].Enabled)
 	assert.Equal(t, "https://prom.example.org", c.Prometheus.Clusters["v:prod"].URL)
 	assert.Equal(t, "otel.example.org:4317", c.Telemetry.OTLPEndpoint)
+	assert.False(t, c.Egress.Blocks())
 	assert.Equal(t, "postgres://u:p@h/db", c.DatabaseURL)
 	assert.Equal(t, "gs", c.GoogleSecret)
 	assert.Equal(t, "ghs", c.GitHubSecret)

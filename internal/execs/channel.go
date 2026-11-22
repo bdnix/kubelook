@@ -34,6 +34,20 @@ type neverBusy struct{}
 
 func (neverBusy) Busy() bool { return false }
 
+// Metrics receives what the metrics need from the shells.
+type Metrics interface {
+	ExecOpened()
+	ExecClosed()
+}
+
+type noMetrics struct{}
+
+func (noMetrics) ExecOpened() {}
+func (noMetrics) ExecClosed() {}
+
+// Refusals counts the requests refused because the server was busy.
+type Refusals interface{ Refused(kind string) }
+
 // Sink is where a shell sends frames; *ws.Conn implements it.
 type Sink interface {
 	Send(ch int, typ string, d any) error
@@ -48,8 +62,10 @@ type Deps struct {
 	IdleTimeout time.Duration                                 // ≤ 0 → DefaultIdleTimeout
 	KeepAlive   func(ctx context.Context, sessionHash string) // counts an open shell as activity; nil → none
 	Guard       Guard                                         // nil → never refuses
+	Refusals    Refusals                                      // nil → refusals are not counted
 	NodeShell   bool                                          // allow {nodeShell: true} opens
 	Log         *slog.Logger                                  // nil → the unexpected end of a shell is not logged
+	Metrics     Metrics                                       // nil → nothing is reported
 }
 
 type openRequest struct {
@@ -74,6 +90,9 @@ func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, 
 	if d.Guard == nil {
 		d.Guard = neverBusy{}
 	}
+	if d.Metrics == nil {
+		d.Metrics = noMetrics{}
+	}
 	if d.IdleTimeout <= 0 {
 		d.IdleTimeout = DefaultIdleTimeout
 	}
@@ -88,7 +107,10 @@ func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, 
 		return nil, fmt.Errorf("node shells are not enabled: %w", apperr.ErrNotFound)
 	}
 	if d.Guard.Busy() {
-		return nil, fmt.Errorf("The server is busy; try again in a moment.: %w", apperr.ErrBusy) //nolint:staticcheck // shown to the user
+		if d.Refusals != nil {
+			d.Refusals.Refused("exec")
+		}
+		return nil, apperr.ErrServerBusy
 	}
 	runCtx, cancel := context.WithCancel(ctx)
 	s := &shell{d: d, sink: sink, sess: sess, ch: ch, req: req, cancel: cancel, done: make(chan struct{}), resize: make(chan Size, 1), candidates: shellCandidates}
@@ -99,6 +121,7 @@ func open(ctx context.Context, d Deps, sink Sink, sess session.Session, ch int, 
 	if req.Cols > 0 && req.Rows > 0 {
 		s.resize <- Size{Cols: req.Cols, Rows: req.Rows}
 	}
+	d.Metrics.ExecOpened()
 	go s.run(runCtx)
 	return s, nil
 }
@@ -175,6 +198,7 @@ type shell struct {
 // Close stops the shell and waits for it to finish.
 func (s *shell) Close() {
 	s.closeOnce.Do(func() {
+		s.d.Metrics.ExecClosed()
 		s.idle.Stop()
 		s.cancel()
 		s.mu.Lock()

@@ -187,7 +187,12 @@ type hubEnv struct {
 	watchErr  func() error
 	idleSecs  int
 	maxPerUsr int
+	busy      atomic.Bool  // the memory guard of the hub
+	refused   atomic.Int32 // refusals reported to the metrics
 }
+
+func (e *hubEnv) Busy() bool     { return e.busy.Load() }
+func (e *hubEnv) Refused(string) { e.refused.Add(1) }
 
 func pod(name string) *unstructured.Unstructured { return fakekube.Pod("ns1", name, nil) }
 
@@ -228,6 +233,7 @@ func newHubEnv(t *testing.T, mutate ...func(*hubEnv)) *hubEnv {
 	e.hub = watch.NewHub(watch.Deps{
 		Clients: e.spy, Clock: e.clock, Log: slog.New(slog.DiscardHandler), Closers: e.closers, MaxPerUser: e.maxPerUsr,
 		IdleSeconds: func(context.Context, string) int { return e.idleSecs },
+		Guard:       e, Refusals: e,
 	})
 	t.Cleanup(e.hub.Close)
 	return e
@@ -652,4 +658,19 @@ func TestHub_ListFailureThatIsTransient_RetriesAfterTheBackoff(t *testing.T) {
 	e.mu.Unlock()
 	e.clock.Advance(time.Second)
 	assert.Equal(t, "snapshot rv=100 [a b]", r.next(t))
+}
+
+func TestHub_WatchesPerUser_CountsEachUsersUpstreamsSorted(t *testing.T) {
+	e := newHubEnv(t)
+	assert.Empty(t, e.hub.WatchesPerUser())
+
+	ra1, ra2, rb := newRec(), newRec(), newRec()
+	e.subscribe(t, sessA, "", ra1)
+	e.subscribe(t, sessA, "other", ra2) // a second upstream of the same user
+	e.subscribe(t, sessB, "", rb)
+	ra1.next(t)
+	ra2.next(t)
+	rb.next(t)
+
+	assert.Equal(t, []int{1, 2}, e.hub.WatchesPerUser())
 }

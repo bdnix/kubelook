@@ -302,3 +302,57 @@ func TestServe_VaultConfigured_StartsAndKeepsAPIProtected(t *testing.T) {
 	code, _ = get(t, "http://"+r.addr+"/api/v1/me")
 	assert.Equal(t, http.StatusUnauthorized, code)
 }
+
+func TestServe_MetricsEndpoint_ExportsTheServersOwnMetrics(t *testing.T) {
+	r := start(t, loadConfig(t, ""), true)
+	get(t, "http://"+r.addr+"/healthz")
+
+	code, body := get(t, "http://"+r.addr+"/metrics")
+
+	assert.Equal(t, 200, code)
+	assert.Contains(t, body, `kubelook_http_requests_total{method="GET",route="GET /healthz",status="200"} 1`)
+	assert.Contains(t, body, "kubelook_sessions_active 0")
+	assert.Contains(t, body, "kubelook_watches_active 0")
+	assert.Contains(t, body, "kubelook_ws_connections 0")
+	assert.Contains(t, body, "kubelook_build_info{")
+	lines := 0
+	for _, l := range strings.Split(body, "\n") {
+		if strings.HasPrefix(l, "kubelook_") {
+			lines++
+		}
+	}
+	assert.GreaterOrEqual(t, lines, 10)
+	r.cancel()
+	assert.NoError(t, testutil.Recv(t, r.result))
+}
+
+func TestServe_OTLPEndpointConfigured_StartsAndStopsWithoutAnyGoroutineLeft(t *testing.T) {
+	// No request is made, so no span waits for the unreachable collector when the server stops.
+	r := start(t, loadConfig(t, "telemetry:\n  otlpEndpoint: 127.0.0.1:1\n"), true)
+	r.cancel()
+	assert.NoError(t, testutil.Recv(t, r.result))
+}
+
+func TestServe_MemoryGuardBusy_StillAnswersHealthChecksAndMetrics(t *testing.T) {
+	cfg := loadConfig(t, "")
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	ready := make(chan app.Ready, 1)
+	result := make(chan error, 1)
+	go func() {
+		result <- app.Serve(ctx, cfg, app.ServeOptions{
+			Listener: ln, OnReady: func(r app.Ready) { ready <- r },
+			MemoryUsage: func() uint64 { return 100 }, MemoryLimit: func() uint64 { return 100 }, // full
+		})
+	}()
+	addr := testutil.Recv(t, ready).Addr
+
+	code, _ := get(t, "http://"+addr+"/healthz")
+	assert.Equal(t, 200, code)
+	code, _ = get(t, "http://"+addr+"/metrics")
+	assert.Equal(t, 200, code)
+	cancel()
+	assert.NoError(t, testutil.Recv(t, result))
+}
