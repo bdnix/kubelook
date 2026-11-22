@@ -39,8 +39,8 @@ Written answers to the spec's "To confirm in the spike" list. Each section has t
 
 ## Open watch or shell after credential expiry
 
-- **Result:** open — answered in Step 7.11 part B (`slow_test.go`, nightly).
-- **How it was checked:** `slow_test.go`.
+- **Result:** not answered yet. The nightly workflow runs the test and writes what it saw to `.it/findings/credential-expiry.txt`, which the workflow uploads as an artifact; copy the answer here after the first nightly run. The test records and does not assert: the configuration cannot switch re-minting off (`vault.remintBefore: 0s` is read as "use the default of 5 minutes"), so the test container uses `1ns`, and a request that finds the credential expired may re-mint it instead of failing. If no request is refused, the finding is that the credential was replaced on use.
+- **How it was checked:** `TestSlow_ConnectionsOpenWhenTheCredentialExpires` in `test/integration/slow_test.go` (nightly, `KUBELOOK_IT_SLOW=1`).
 - **Date:** —
 - **Consequence for the plan:** if connections drop, nothing to change (the hub resumes watches; shells end with the standard message).
 
