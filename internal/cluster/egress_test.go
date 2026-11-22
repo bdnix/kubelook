@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -130,22 +131,46 @@ func TestToken_OIDCIssuerOnALocalAddress_IsRefusedWhenTheGuardIsOn(t *testing.T)
 	assert.Equal(t, 0, idp.Refreshes(), "the identity provider was never contacted")
 }
 
-func TestExec_ThroughAGuardedKubeconfigCluster_IsRefusedForALoopbackServer(t *testing.T) {
-	var reached bool
-	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
-	t.Cleanup(srv.Close)
-	named := strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)
-
-	e := newOpenerEnv(t)
-	_, _, err := e.c.AddKubeconfig(t.Context(), e.sess, "work", kubeconfigFor(named))
-	require.NoError(t, err)
-	clients := kube.NewClients(kube.Deps{Config: e.guardedOpener(t), Clock: e.clock})
-
+func execAgainst(t *testing.T, e *openerEnv, ex execs.Executor) error {
+	t.Helper()
 	var out strings.Builder
-	err = execs.NewKubeExecutor(clients).Stream(t.Context(), e.sess, "k:work/ctx",
+	return ex.Stream(t.Context(), e.sess, "k:work/ctx",
 		execs.ExecRequest{Namespace: "ns", Pod: "web-1", Container: "app", Command: []string{"sh"}},
 		execs.StreamIO{Stdout: &out})
+}
+
+// loopbackKubeconfigCluster uploads a kubeconfig whose server is a loopback TLS server reached by name, so only the
+// check at connection time can refuse it.
+func loopbackKubeconfigCluster(t *testing.T) (e *openerEnv, reached *atomic.Bool) {
+	t.Helper()
+	reached = &atomic.Bool{}
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached.Store(true) }))
+	t.Cleanup(srv.Close)
+	e = newOpenerEnv(t)
+	_, _, err := e.c.AddKubeconfig(t.Context(), e.sess, "work", kubeconfigFor(strings.Replace(srv.URL, "127.0.0.1", "localhost", 1)))
+	require.NoError(t, err)
+	return e, reached
+}
+
+func TestExec_ThroughAGuardedKubeconfigCluster_IsRefusedForALoopbackServer(t *testing.T) {
+	e, reached := loopbackKubeconfigCluster(t)
+	proxy, err := egress.NewProxy(true)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = proxy.Close() })
+	clients := kube.NewClients(kube.Deps{Config: e.guardedOpener(t), Clock: e.clock})
+
+	err = execAgainst(t, e, execs.NewGuardedKubeExecutor(clients, proxy))
 
 	require.ErrorIs(t, err, egress.ErrBlocked)
-	assert.False(t, reached, "no connection was made")
+	assert.False(t, reached.Load(), "no connection was made")
+}
+
+func TestExec_ThroughAGuardedKubeconfigCluster_WithoutATunnel_FailsClosed(t *testing.T) {
+	e, reached := loopbackKubeconfigCluster(t)
+	clients := kube.NewClients(kube.Deps{Config: e.guardedOpener(t), Clock: e.clock})
+
+	err := execAgainst(t, e, execs.NewKubeExecutor(clients))
+
+	require.Error(t, err)
+	assert.False(t, reached.Load(), "no connection was made")
 }
