@@ -14,7 +14,7 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X github.com/bdnix/kubelook/internal/version.Version=$(VERSION) -X github.com/bdnix/kubelook/internal/version.Commit=$(COMMIT)
 COVER_TOOL := github.com/vladopajic/go-test-coverage/v2@v2.23.0
 
-.PHONY: chart-test load it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
+.PHONY: version test-release-scripts chart-test load it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
 
 tools:
 	hack/install-tools.sh
@@ -90,6 +90,13 @@ it:
 e2e:
 	cd test/e2e && npm ci && npx playwright test
 	@echo "E2E OK"
+
+# The version of the next publication (the VERSION file, validated); tests of the release scripts.
+version:
+	@hack/version.sh
+
+test-release-scripts:
+	hack/test-release-scripts.sh
 
 # Lint, render and assert the Helm chart (Step 8.2); needs no cluster.
 chart-test:
