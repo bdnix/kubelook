@@ -1,0 +1,7 @@
+# chart-testing (ct) configuration for the Helm chart lint in CI (job chart-tests).
+chart-dirs:
+  - deploy/helm
+validate-maintainers: false
+target-branch: main
+# The version in Chart.yaml is a placeholder: the pipeline stamps the real one when it publishes (Step 8.4).
+check-version-increment: false

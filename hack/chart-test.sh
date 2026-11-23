@@ -38,13 +38,20 @@ docs Deployment < "$S" > "$TMP/s-deploy"
 [ "$(count Deployment < "$S")" = 1 ] || fail "sqlite: expected one Deployment"
 has "$TMP/s-deploy" 'type: Recreate' "sqlite: strategy Recreate"
 has "$TMP/s-deploy" 'replicas: 1$' "sqlite: one replica"
-has "$TMP/s-deploy" 'mountPath: /data$' "sqlite: the volume is mounted where the default sqlitePath is"
+has "$TMP/s-deploy" 'mountPath: /data\}' "sqlite: the volume is mounted where the default sqlitePath is"
 [ "$(count PersistentVolumeClaim < "$S")" = 1 ] || fail "sqlite: expected a PersistentVolumeClaim"
 [ "$(count Job < "$S")" = 0 ] || fail "sqlite: no migrate Job"
 [ "$(count CronJob < "$S")" = 0 ] || fail "sqlite: no CronJob when retentionDays is 0"
 [ "$(count PodDisruptionBudget < "$S")" = 0 ] || fail "sqlite: no PodDisruptionBudget for one replica"
 # The debug image is pinned to a digest by hack/pin-netshoot.sh (Step 8.1).
 has "$S" 'image: "?ghcr\.io/bdnix/kubelook-netshoot@sha256:[0-9a-f]{64}"?$' "the default debug.image is pinned to a digest"
+
+
+# --- SQLite with audit cleanup: the CronJob mounts the volume of the console and runs on its node.
+docs CronJob < <(render "$CI/sqlite-values.yaml" --set audit.retentionDays=7) > "$TMP/s-cron"
+has "$TMP/s-cron" 'claimName: kubelook-data' "sqlite: the CronJob mounts the PersistentVolumeClaim"
+has "$TMP/s-cron" 'podAffinity:' "sqlite: the CronJob runs on the node of the console"
+lacks "$TMP/s-cron" 'KUBELOOK_AUDIT_CLEANUP_DATABASE_URL' "sqlite: no cleanup URL"
 
 # --- PostgreSQL
 P="$TMP/postgres-values.yaml"
@@ -61,7 +68,9 @@ has "$TMP/p-job" 'helm.sh/hook-delete-policy' "postgres: migrate hook delete pol
 has "$TMP/p-job" 'name: KUBELOOK_MIGRATE_DATABASE_URL' "postgres: the migrate Job gets the migration URL"
 lacks "$TMP/p-job" 'psql' "postgres: roles are applied only when database.rolesSecret is set"
 has "$TMP/p-cron" 'name: KUBELOOK_AUDIT_CLEANUP_DATABASE_URL' "postgres: the CronJob gets the cleanup URL"
-lacks "$TMP/p-cron" 'name: KUBELOOK_DATABASE_URL' "postgres: the CronJob must not get the application URL"
+# The commands load the whole configuration, which requires the application URL on PostgreSQL too (decided with the owner).
+has "$TMP/p-cron" 'name: KUBELOOK_DATABASE_URL' "postgres: the CronJob loads the configuration, which requires the application URL"
+has "$TMP/p-job" 'name: KUBELOOK_DATABASE_URL' "postgres: the migrate Job loads the configuration, which requires the application URL"
 
 # --- Full values: every setting reaches the configuration the application loads.
 F="$TMP/full-values.yaml"
@@ -76,7 +85,7 @@ docs Job < "$F" > "$TMP/f-job"
 has "$TMP/f-job" 'postgres:18\.6-trixie' "full: roles are applied with psql of postgres:18.6-trixie"
 has "$TMP/f-job" 'retention_days=90' "full: retention_days equals audit.retentionDays"
 has "$F" 'GOMEMLIMIT' "full: GOMEMLIMIT"
-has "$F" 'value: 400MiB' "full: goMemLimit"
+has "$F" 'value: "400MiB"' "full: goMemLimit"
 has "$F" 'hostnames:' "full: hostAliases"
 has "$F" 'kind: Ingress' "full: Ingress"
 has "$F" 'kind: NetworkPolicy' "full: NetworkPolicy"
@@ -107,8 +116,8 @@ has "$TMP/s-deploy" 'automountServiceAccountToken: false' "the Deployment does n
 has "$TMP/s-deploy" 'readOnlyRootFilesystem: true' "read-only root filesystem"
 has "$TMP/s-deploy" 'runAsUser: 65532' "runs as 65532"
 has "$TMP/s-deploy" 'runAsNonRoot: true' "runs as non-root"
-has "$TMP/s-deploy" 'path: /healthz' "liveness probe"
-has "$TMP/s-deploy" 'path: /readyz' "readiness probe"
+has "$TMP/s-deploy" 'path: /healthz,' "liveness probe"
+has "$TMP/s-deploy" 'path: /readyz,' "readiness probe"
 has "$TMP/s-deploy" 'checksum/config:' "the pod restarts when the configuration changes"
 
 echo "CHART OK"

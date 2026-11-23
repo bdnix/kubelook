@@ -16,8 +16,8 @@ defaults:
   run:
     shell: bash
 
-# Required checks (branch protection): backend-tests, frontend-tests, ui-tests, integration-tests, image-scan.
-# Publishing happens only on pushes to main, after all five have passed.
+# Required checks (branch protection): backend-tests, frontend-tests, ui-tests, integration-tests, image-scan,
+# chart-tests. Publishing happens only on pushes to main, after all of them have passed.
 jobs:
   # Lint, unit tests and the vulnerability check of one side share a job: one checkout, one
   # toolchain setup, one cache. The coverage run IS the unit-test run, so no test runs twice.
@@ -197,6 +197,30 @@ jobs:
         if: ${{ always() }}
         run: make it-down
 
+  # Lints and renders the Helm chart with every ci values file and asserts on the manifests; no cluster needed.
+  # The install in a real cluster is the job chart-install-tests (Step 8.3).
+  chart-tests:
+    name: "Helm Chart: Lint & Template Tests"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Install the tools (helm, kubectl)
+        run: make tools
+      - name: Lint, render and assert
+        run: make chart-test
+      - name: Put helm on the path for chart-testing
+        run: echo "$PWD/bin" >> "$GITHUB_PATH"
+      - uses: helm/chart-testing-action@720270857a28afd41e2426521a7801db09e9b510 # v2.9.0
+      - name: Lint with chart-testing
+        run: ct lint --config ct.yaml
+
   # Builds the whole product (web app, Go binary, image), so there is no separate build job.
   image-scan:
     name: "Container Image: Build & Vulnerability Scan"
@@ -248,7 +272,7 @@ jobs:
   publish-image:
     name: Publish Container Image
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [backend-tests, frontend-tests, ui-tests, integration-tests, image-scan]
+    needs: [backend-tests, frontend-tests, ui-tests, integration-tests, image-scan, chart-tests]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
