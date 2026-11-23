@@ -10,11 +10,11 @@ fail() { echo "FAIL: $*" >&2; fails=$((fails + 1)); }
 version() { printf "$1" > "$TMP/VERSION"; shift; VERSION_FILE="$TMP/VERSION" "$ROOT/hack/version.sh" "$@"; }
 
 for v in 0.1.0 0.1.0-rc.1 12.30.456 1.0.0-rc.12; do
-  out="$(version '%s\n' "$v" 2>&1)" || fail "$v was refused"
+  out="$(version "$v\n" 2>&1)" || fail "$v was refused"
   [ "$out" = "$v" ] || fail "$v printed '$out'"
 done
 for v in v0.1.0 0.1 0.1.0-beta 0.1.0-rc 0.1.0-rc.1.2 ' 0.1.0' '0.1.0 ' 01.2.3x; do
-  if version '%s\n' "$v" >/dev/null 2>&1; then fail "'$v' was accepted"; fi
+  if version "$v\n" >/dev/null 2>&1; then fail "'$v' was accepted"; fi
 done
 if version '' >/dev/null 2>&1; then fail "an empty file was accepted"; fi
 if version '0.1.0\n0.1.1\n' >/dev/null 2>&1; then fail "two lines were accepted"; fi
