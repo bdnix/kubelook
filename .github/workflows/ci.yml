@@ -171,9 +171,6 @@ jobs:
         working-directory: test/e2e
       - name: Browser end-to-end tests
         run: make e2e
-      - name: Recorded findings
-        if: ${{ always() }}
-        run: cat .it/findings/* 2>/dev/null || echo "no findings recorded"
       - name: Collect logs
         if: ${{ failure() }}
         run: |

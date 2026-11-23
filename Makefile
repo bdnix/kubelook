@@ -14,7 +14,7 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X github.com/bdnix/kubelook/internal/version.Version=$(VERSION) -X github.com/bdnix/kubelook/internal/version.Commit=$(COMMIT)
 COVER_TOOL := github.com/vladopajic/go-test-coverage/v2@v2.23.0
 
-.PHONY: docs-check version test-release-scripts chart-test load it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
+.PHONY: docs-check version test-release-scripts chart-test it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
 
 tools:
 	hack/install-tools.sh
@@ -109,9 +109,3 @@ clean:
 	rm -rf $(BIN)/kubelook coverage.out web/dist web/coverage
 	mkdir -p internal/webui/dist
 	find internal/webui/dist -mindepth 1 ! -name placeholder.txt -delete
-
-# Watch-hub load test (Step 6.4): measures memory per watch, event latency and time to the first snapshot with real time,
-# so it is never part of `verify` or the ci workflow. Parameters: LOAD_PODS, LOAD_SESSIONS, LOAD_EVENTS_PER_SECOND,
-# LOAD_SECONDS; LOAD_DOCS names a file the result table is appended to (hack/load.sh sets it).
-load:
-	go test -tags load -count=1 -timeout 15m -run TestLoad ./test/load/... -v

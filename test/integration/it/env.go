@@ -132,10 +132,3 @@ func PG(t testing.TB, args ...string) string {
 	t.Helper()
 	return run(t, filepath.Join(Root(), "hack", "it-pg.sh"), args...)
 }
-
-// Slow starts kubelook-it-slow (port 18083), whose credentials are re-minted only at the last instant.
-func Slow(t testing.TB) string {
-	t.Helper()
-	t.Cleanup(func() { TryDocker("rm", "-f", "kubelook-it-slow") })
-	return run(t, filepath.Join(Root(), "hack", "it-slow.sh"))
-}
