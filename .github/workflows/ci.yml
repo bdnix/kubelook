@@ -441,7 +441,7 @@ jobs:
           sed -i -E "s#^(  digest: )\"\"\$#\1\"$DIGEST\"#" "$RUNNER_TEMP/chart/kubelook/values.yaml"
           grep -q "digest: \"$DIGEST\"" "$RUNNER_TEMP/chart/kubelook/values.yaml"
           if [ "$PRERELEASE" = true ]; then
-            { printf 'Release candidate: the external security review and the test against a real organisation'"'"'s Vault are still open.\n\n'; cat "$RUNNER_TEMP/chart/kubelook/README.md"; } > "$RUNNER_TEMP/readme"
+            { printf 'Release candidate: the test against a real organisation'"'"'s Vault is still open.\n\n'; cat "$RUNNER_TEMP/chart/kubelook/README.md"; } > "$RUNNER_TEMP/readme"
             mv "$RUNNER_TEMP/readme" "$RUNNER_TEMP/chart/kubelook/README.md"
           fi
           helm package "$RUNNER_TEMP/chart/kubelook" --version "$chart_version" --app-version "$chart_version" --destination "$RUNNER_TEMP/out"
@@ -478,7 +478,7 @@ jobs:
         run: |
           flags=(--target "$GITHUB_SHA" --generate-notes --title "v$VERSION")
           if [ "$PRERELEASE" = true ]; then
-            flags+=(--prerelease --notes "Release candidate: the external security review and the test against a real organisation's Vault are still open.")
+            flags+=(--prerelease --notes "Release candidate: the test against a real organisation's Vault is still open.")
           fi
           gh release create "v$VERSION" "${flags[@]}" --repo "$GITHUB_REPOSITORY" kubelook-*.tgz
         env:

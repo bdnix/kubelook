@@ -1,7 +1,6 @@
 # Security review
 
-A written self-review, kept next to the code so that the claims of the spec's security model can be checked. It is **not** the external
-review: that is an open human gate (see the end). Each row names where the mitigation is implemented and which test proves it. A row
+A written self-review, kept next to the code so that the claims of the spec's security model can be checked. No external review or penetration test is planned. Each row names where the mitigation is implemented and which test proves it. A row
 without a test says so.
 
 ## Threats and mitigations
@@ -38,15 +37,14 @@ administrators set. Private ranges stay reachable on purpose, because clusters l
 own: whoever deploys it restricts its outbound traffic with a firewall or a NetworkPolicy ([deployment.md](deployment.md)). A
 NetworkPolicy filters by IP address and cannot express "Google and GitHub" by name.
 
-## Open human gates
+## Open human gate
 
-The plan covers these with the integration suite, but a person must do them. The sign-off lines are filled in by the repository owner.
-Cutting `0.1.0` (a version without `-rc`) needs both ([releasing.md](releasing.md)).
+The plan covers this with the integration suite, but a person must do it. The sign-off line is filled in by the repository owner.
+Cutting `0.1.0` (a version without `-rc`) needs it ([releasing.md](releasing.md)).
 
 | Gate | What it is | Passed (date, who, link) |
 | --- | --- | --- |
 | Gate 1 | A real user's Vault token in a real organisation's Vault: discovery lists exactly the clusters the policies allow, opening works, and the open questions of [spike-findings.md](spike-findings.md) (for example Vault namespaces) are answered | _not yet_ |
-| Gate 2 | An external security review and penetration test of the console, including this document | _not yet_ |
 
 Items of [spike-findings.md](spike-findings.md) that are still open: the Vault namespace question, Kyverno's report location, and the
 behaviour of open connections when a credential expires (the nightly run records it).

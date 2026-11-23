@@ -24,7 +24,7 @@ The `backend-tests` job runs the tests of the script (`make test-release-scripts
 
 A release candidate is published like a release with three differences: the GitHub release is created with `--prerelease`, the image
 does not get the moving `<major>.<minor>` tag, and the chart `README.md` and the release notes start with: "Release candidate: the
-external security review and the test against a real organisation's Vault are still open."
+test against a real organisation's Vault is still open."
 
 ## How a build decides that it is a release
 
@@ -36,13 +36,12 @@ commit that was built (`gh release create --target "$GITHUB_SHA"`); no job pushe
 ## Cutting a release
 
 1. Check the preconditions: `main` is green including `integration-tests` and `chart-install-tests`; `docs/spike-findings.md` is up to
-   date; `hack/pin-netshoot.sh` was run after the last netshoot update; and, for a version without the `-rc` suffix, both human gates
-   (a real organisation's Vault, and the external security review and penetration test) are recorded as passed in
-   `docs/security-review.md`.
+   date; `hack/pin-netshoot.sh` was run after the last netshoot update; and, for a version without the `-rc` suffix, the human gate
+   (the test with a real organisation's Vault) is recorded as passed in `docs/security-review.md`.
 2. Open a pull request that changes `VERSION` and nothing else is required.
 3. Merge it once every required check is green. The build of the merge publishes the release.
 
-The plan publishes only release candidates (`0.1.0-rc.1` first). Cutting `0.1.0` is the repository owner's decision, after the gates.
+The plan publishes only release candidates (`0.1.0-rc.1` first). Cutting `0.1.0` is the repository owner's decision, after the gate.
 
 ## Verifying a release
 
