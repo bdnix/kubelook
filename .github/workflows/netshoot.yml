@@ -12,6 +12,11 @@ on:
 permissions:
   contents: read
 
+# A run is never cancelled: a publishing run must finish, and two runs of the same workflow queue.
+concurrency:
+  group: netshoot
+  cancel-in-progress: false
+
 defaults:
   run:
     shell: bash
