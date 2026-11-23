@@ -17,7 +17,7 @@ defaults:
     shell: bash
 
 # Required checks (branch protection): backend-tests, frontend-tests, ui-tests, integration-tests, image-scan,
-# chart-tests. Publishing happens only on pushes to main, after all of them have passed.
+# chart-tests, chart-install-tests. Publishing happens only on pushes to main, after all of them have passed.
 jobs:
   # Lint, unit tests and the vulnerability check of one side share a job: one checkout, one
   # toolchain setup, one cache. The coverage run IS the unit-test run, so no test runs twice.
@@ -221,6 +221,54 @@ jobs:
       - name: Lint with chart-testing
         run: ct lint --config ct.yaml
 
+  # The chart installed into a real kind cluster: the console it deploys signs in, opens a Vault cluster, lists pods,
+  # streams logs, upgrades and uninstalls. Needs the image and the environment of integration-tests, so it builds
+  # its own: no secrets and no write permissions.
+  chart-install-tests:
+    name: "Helm Chart: Install Tests (kind)"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Cache tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-${{ hashFiles('hack/install-tools.sh') }}
+      - name: Start the environment (kind, Vault, PostgreSQL, identity stand-in)
+        run: make it-up
+      - name: Install the chart
+        run: hack/it-chart.sh
+      - name: Chart install tests
+        run: go test -tags integration -count=1 -run 'TestSmoke|TestChart' ./test/integration/...
+        env:
+          KUBELOOK_IT_BASE_URL: http://localhost:18090
+      - name: Collect logs
+        if: ${{ failure() }}
+        run: |
+          mkdir -p it-logs
+          bin/kubectl --kubeconfig .it/kubeconfig-alpha-host.yaml -n kubelook get all,pvc,configmap -o wide > it-logs/kubelook-objects.txt 2>&1 || true
+          bin/kubectl --kubeconfig .it/kubeconfig-alpha-host.yaml -n kubelook logs deployment/kubelook --tail=300 > it-logs/kubelook.log 2>&1 || true
+          bin/kubectl --kubeconfig .it/kubeconfig-alpha-host.yaml -n kubelook describe pods > it-logs/kubelook-describe.txt 2>&1 || true
+          cp .it/pf.log it-logs/ 2>/dev/null || true
+          for c in $(docker ps -a --format '{{.Names}}' | grep kubelook-it); do docker logs "$c" > "it-logs/$c.log" 2>&1 || true; done
+      - name: Upload logs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: chart-install-logs
+          path: it-logs
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Remove the environment
+        if: ${{ always() }}
+        run: make it-down
+
   # Builds the whole product (web app, Go binary, image), so there is no separate build job.
   image-scan:
     name: "Container Image: Build & Vulnerability Scan"
@@ -272,7 +320,7 @@ jobs:
   publish-image:
     name: Publish Container Image
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [backend-tests, frontend-tests, ui-tests, integration-tests, image-scan, chart-tests]
+    needs: [backend-tests, frontend-tests, ui-tests, integration-tests, image-scan, chart-tests, chart-install-tests]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
