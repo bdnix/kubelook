@@ -1,0 +1,59 @@
+name: nightly
+
+# The slow checks that do not gate pull requests: the integration tests that wait for real credentials to
+# expire, and the watch-hub load test.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  slow:
+    name: "Slow Integration Tests & Load Test"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Cache tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: bin
+          key: tools-${{ runner.os }}-${{ hashFiles('hack/install-tools.sh') }}
+      - name: Start the environment
+        run: make it-up
+      - name: Slow integration tests
+        run: KUBELOOK_IT_SLOW=1 make it
+      - name: Load test
+        run: make load 2>&1 | tee load-test-output.txt
+      - name: Collect logs
+        if: ${{ failure() }}
+        run: |
+          mkdir -p it-logs
+          for c in $(docker ps -a --format '{{.Names}}' | grep kubelook-it); do docker logs "$c" > "it-logs/$c.log" 2>&1 || true; done
+      - name: Upload findings and results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nightly-results
+          path: |
+            .it/findings
+            load-test-output.txt
+            docs/load-test.md
+            it-logs
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Remove the environment
+        if: ${{ always() }}
+        run: make it-down

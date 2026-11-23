@@ -19,4 +19,8 @@ docker run -d --name kubelook-it-app --network kind -p 127.0.0.1:18080:8080 \
   -e KUBELOOK_ENCRYPTION_KEY="$KUBELOOK_ENCRYPTION_KEY" -e KUBELOOK_GOOGLE_CLIENT_SECRET=it-secret -e KUBELOOK_GITHUB_CLIENT_SECRET=it-secret \
   kubelook:dev serve >/dev/null
 wait_http http://127.0.0.1:18080/readyz 60
+
+# Two replicas on PostgreSQL (Step 7.9): migrate, apply the roles twice, start both.
+"$ROOT/hack/it-pg.sh" schema
+"$ROOT/hack/it-pg.sh" replicas
 echo "APPS OK"

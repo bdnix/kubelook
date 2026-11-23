@@ -65,6 +65,25 @@ beforeEach(() => {
 });
 
 describe('AppRoutes (signed in)', () => {
+  it('Sign out ends the session on the server and shows the sign-in page', async () => {
+    let out = false;
+    const client = fakeClient({
+      'GET /me': () =>
+        out
+          ? jsonResponse({ error: { code: 'unauthenticated', message: 'Sign in.' } }, 401)
+          : jsonResponse(me()),
+      'GET /clusters': () => jsonResponse({ sources: oneCluster }),
+      'GET /auth/providers': () => jsonResponse({ providers: ['google'] }),
+      'POST /auth/logout': () => {
+        out = true;
+        return new Response(null, { status: 204 });
+      },
+    });
+    renderApp(<AppRoutes />, { client });
+    await userEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+    expect(await screen.findByRole('link', { name: 'Sign in with Google' })).toBeInTheDocument();
+  });
+
   it('/ with clusters shows the cluster picker', async () => {
     renderApp(<AppRoutes />, { client: signedIn() });
     expect(await screen.findByRole('heading', { name: 'Choose a cluster' })).toBeInTheDocument();

@@ -106,3 +106,36 @@ func TryDocker(args ...string) {
 
 // ClusterPath is the percent-encoded cluster ID for a URL path ("k:a/b" contains a slash).
 func ClusterPath(id string) string { return url.PathEscape(id) }
+
+// Replica1URL and Replica2URL are the two PostgreSQL-backed replicas; both are configured with the public URL of the first.
+const (
+	Replica1URL = "http://localhost:18081"
+	Replica2URL = "http://localhost:18082"
+)
+
+// AppKey returns the encryption key of the Kubelook containers (written by hack/it-apps.sh).
+func AppKey() string {
+	data, err := os.ReadFile(filepath.Join(Root(), ".it", "app.env"))
+	if err != nil {
+		panic("reading .it/app.env (run make it-up): " + err.Error())
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if k, v, ok := strings.Cut(line, "="); ok && k == "KUBELOOK_ENCRYPTION_KEY" {
+			return v
+		}
+	}
+	panic("KUBELOOK_ENCRYPTION_KEY not in .it/app.env")
+}
+
+// PG runs hack/it-pg.sh (see there for the subcommands) and returns its output.
+func PG(t testing.TB, args ...string) string {
+	t.Helper()
+	return run(t, filepath.Join(Root(), "hack", "it-pg.sh"), args...)
+}
+
+// Slow starts kubelook-it-slow (port 18083), whose credentials are re-minted only at the last instant.
+func Slow(t testing.TB) string {
+	t.Helper()
+	t.Cleanup(func() { TryDocker("rm", "-f", "kubelook-it-slow") })
+	return run(t, filepath.Join(Root(), "hack", "it-slow.sh"))
+}

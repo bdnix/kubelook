@@ -35,13 +35,13 @@ type frame struct {
 // WS connects /api/v1/ws with the session cookie and the Origin the server expects.
 func (c *Client) WS() *WS {
 	c.t.Helper()
-	u, _ := url.Parse(BaseURL())
+	u, _ := url.Parse(c.base())
 	var cookies []string
 	for _, ck := range c.HC.Jar.Cookies(u) {
 		cookies = append(cookies, ck.Name+"="+ck.Value)
 	}
-	conn, resp, err := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(BaseURL(), "http")+"/api/v1/ws", &websocket.DialOptions{
-		HTTPHeader: http.Header{"Origin": {BaseURL()}, "Cookie": {strings.Join(cookies, "; ")}},
+	conn, resp, err := websocket.Dial(context.Background(), "ws"+strings.TrimPrefix(c.base(), "http")+"/api/v1/ws", &websocket.DialOptions{
+		HTTPHeader: http.Header{"Origin": {c.origin()}, "Cookie": {strings.Join(cookies, "; ")}},
 	})
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()

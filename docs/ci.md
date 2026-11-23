@@ -9,7 +9,7 @@ The `ci` workflow (`.github/workflows/ci.yml`) runs on every pull request and on
 | `backend-tests` | Backend: Lint, Unit Tests & Coverage | `golangci-lint` is clean (formatting, import rules, ban on direct `time.Now`/`fmt.Print*`); Go unit tests pass with `-race` and shuffled order; total statement coverage meets the Go threshold (shown in the job summary); `govulncheck` finds no reachable vulnerability |
 | `frontend-tests` | Frontend: Lint, Unit Tests & Coverage | ESLint, Prettier and the TypeScript checks (app and UI tests) pass; web unit tests pass; coverage meets the web thresholds; `npm audit` finds no high or critical production advisory |
 | `ui-tests` | UI Tests (Playwright) | The built web app works in a real browser: user journeys with the API answered by the tests (`web/ui`). Failures upload the report and traces |
-| `integration-tests` | Integration & End-to-End Tests (kind, Vault, PostgreSQL) | The real Kubelook image works against real Vault and two real Kubernetes clusters (1.35 and 1.37): sign-in, the Vault path (the spec's Gate 1), kubeconfig clusters, live data and day-2 operations. Failures upload the container and kind logs |
+| `integration-tests` | Integration & End-to-End Tests (kind, Vault, PostgreSQL) | The real Kubelook image works against real Vault and two real Kubernetes clusters (1.35 and 1.37): sign-in, the Vault path (the spec's Gate 1), kubeconfig clusters, live data and day-2 operations, PostgreSQL with two replicas and the audit roles, and the browser end-to-end suite (`test/e2e`, real Chromium against the real stack). Failures upload the container and kind logs and the browser traces |
 | `image-scan` | Container Image: Build & Vulnerability Scan | The whole product builds (web app, embedded Go binary, image), runs `version`, and has no fixable HIGH or CRITICAL vulnerability (Trivy) |
 | `dependency-review` | Dependency Review | Pull requests add no dependency with a high-severity advisory, including GitHub Actions and npm dev dependencies (pull requests only) |
 | `publish-image` | Publish Container Image | On pushes to `main` only, after the five required jobs pass: publishes `ghcr.io/bdnix/kubelook` for `linux/amd64` and `linux/arm64` with SBOM and provenance |
@@ -17,6 +17,11 @@ The `ci` workflow (`.github/workflows/ci.yml`) runs on every pull request and on
 There is no aggregate gate job: branch protection requires the five test jobs directly, and `publish-image` lists them in `needs`. Adding or renaming a required job means updating both. Lint and tests of one side share a job (one checkout, one toolchain setup, one cache), and the coverage run is the unit-test run, so no test executes twice.
 
 Locally: `make it-up && make it` runs the integration suite (needs Docker and a cgroup v2 host; `make it-down` removes it), `make lint`, `make test-backend`, `make test-frontend`, `make coverage`, `make test-ui` (needs Chromium: `cd web && npx playwright install --with-deps chromium`), and `make verify` for lint, coverage and build together.
+
+## Other workflows
+
+- `nightly` (`.github/workflows/nightly.yml`, 02:17 UTC and on demand): the slow integration test that waits for a real credential to expire (`KUBELOOK_IT_SLOW=1`) and the watch-hub load test. It uploads `.it/findings` and the load result. It is not a required check.
+- `netshoot` (`.github/workflows/netshoot.yml`): on a push to `main` that changes `build/netshoot/**`, publishes `ghcr.io/bdnix/kubelook-netshoot:<tag>` for `linux/amd64` and `linux/arm64`, with a report-only Trivy scan and a provenance attestation. A new netshoot release arrives as a Dependabot pull request on the `FROM` line.
 
 ## Publishing
 

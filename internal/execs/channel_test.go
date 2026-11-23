@@ -281,6 +281,9 @@ func TestShell_IdleClosesTheChannelOnTheFakeClock(t *testing.T) {
 	ch, err := e.open(80, 24)
 	require.NoError(t, err)
 	assert.Equal(t, "opened", e.next().Type)
+	// The shell resets its idle timer before it sends output, from its own goroutine: wait for each output
+	// frame so that no reset can land after the clock moved on.
+	assert.Equal(t, "$ ", decode(t, e.next()))
 	e.clock.Advance(9 * time.Minute)
 	select {
 	case r := <-e.sink.closed:
@@ -288,6 +291,7 @@ func TestShell_IdleClosesTheChannelOnTheFakeClock(t *testing.T) {
 	default:
 	}
 	require.NoError(t, ch.Handle(t.Context(), "exec.stdin", stdin("a")))
+	assert.Equal(t, "a", decode(t, e.next()))
 	e.clock.Advance(9 * time.Minute)
 	select {
 	case r := <-e.sink.closed:
