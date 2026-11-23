@@ -51,6 +51,7 @@ These cannot be applied from the repository and must be set by an owner:
 
 - Protect `main`; require pull requests.
 - Require the status checks of the jobs `backend-tests`, `frontend-tests`, `ui-tests`, `integration-tests` and `image-scan`. GitHub lists a job with a `name:` under that name, so select `Backend: Lint, Unit Tests & Coverage`, `Frontend: Lint, Unit Tests & Coverage`, `UI Tests (Playwright)`, `Integration & End-to-End Tests (kind, Vault, PostgreSQL)` and `Container Image: Build & Vulnerability Scan`. Also require `Helm Chart: Lint & Template Tests` (`chart-tests`) and `Helm Chart: Install Tests (kind)` (`chart-install-tests`).
+- Create the environment `production` (*Settings → Environments*), with *Deployment branches and tags* set to `main` only, and optionally required reviewers. The publishing jobs and the `netshoot` workflow use it, so a workflow edited on another branch cannot publish ([releasing.md](releasing.md)).
 - Restrict who can push to `main`: a push to `main` publishes images and, when `VERSION` changes, a release.
 - Require branches to be up to date before merging.
 - Disallow force pushes to `main`.

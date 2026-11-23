@@ -326,6 +326,7 @@ jobs:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: [backend-tests, frontend-tests, ui-tests, integration-tests, image-scan, chart-tests, chart-install-tests]
     runs-on: ubuntu-24.04
+    environment: production   # restricted to the main branch in the repository settings (docs/ci.md)
     timeout-minutes: 30
     permissions:
       contents: read
@@ -414,6 +415,7 @@ jobs:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
     needs: [publish-image]
     runs-on: ubuntu-24.04
+    environment: production   # restricted to the main branch in the repository settings (docs/ci.md)
     timeout-minutes: 15
     permissions:
       contents: read
@@ -467,6 +469,7 @@ jobs:
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.publish-image.outputs.release == 'true' }}
     needs: [publish-image, publish-chart]
     runs-on: ubuntu-24.04
+    environment: production   # restricted to the main branch in the repository settings (docs/ci.md)
     timeout-minutes: 10
     permissions:
       contents: write

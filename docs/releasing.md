@@ -47,9 +47,10 @@ The plan publishes only release candidates (`0.1.0-rc.1` first). Cutting `0.1.0`
 
 ```bash
 cosign verify ghcr.io/bdnix/kubelook:<version> \
-  --certificate-identity-regexp 'https://github.com/bdnix/kubelook/.*' \
+  --certificate-identity 'https://github.com/bdnix/kubelook/.github/workflows/ci.yml@refs/heads/main' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
-gh attestation verify oci://ghcr.io/bdnix/kubelook:<version> --repo bdnix/kubelook
+gh attestation verify oci://ghcr.io/bdnix/kubelook:<version> --repo bdnix/kubelook \
+  --signer-workflow bdnix/kubelook/.github/workflows/ci.yml
 ```
 
 ## Rollback
@@ -61,3 +62,13 @@ A released version is never re-published. Fix forward: a pull request that bumps
 Pushing to `main` publishes, so restrict who can push to it (see `docs/ci.md`). The workflow runs the publishing jobs only on `push` to
 `main`; fork and Dependabot pull requests never get a token that can push, sign or release. `main` builds are never cancelled by a newer
 push, so two quick merges each publish.
+
+**The `production` environment.** A workflow file on a branch runs as written on that branch, so someone with write access could edit
+the conditions of a publishing job and publish from their branch. The jobs that publish (`publish-image`, `publish-chart`,
+`create-release` and the `netshoot` workflow) therefore declare `environment: production`. Create it once under *Settings →
+Environments* and under *Deployment branches and tags* choose *Selected branches and tags* and add `main`: a job on any other
+branch is then refused. Optionally add *Required reviewers*: every publishing job then waits for an approval, which gives a manual
+step before a release (each of the three jobs asks separately). The environment has no secrets.
+
+**Verification.** `cosign verify` and `gh attestation verify` above name the workflow and the `main` branch, so an image built by a
+workflow on another branch does not pass them.
