@@ -1,0 +1,57 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["encryption", "database", "helm", "audit"],
+  "properties": {
+    "replicaCount": { "type": "integer", "minimum": 1 },
+    "encryption": {
+      "type": "object",
+      "required": ["keySecret"],
+      "properties": { "keySecret": { "type": "string", "minLength": 1 } }
+    },
+    "database": {
+      "type": "object",
+      "required": ["driver"],
+      "properties": { "driver": { "enum": ["sqlite", "postgres"] } }
+    },
+    "helm": {
+      "type": "object",
+      "properties": { "version": { "const": 4 } }
+    },
+    "audit": {
+      "type": "object",
+      "properties": { "retentionDays": { "type": "integer", "minimum": 0 } }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "database": { "properties": { "driver": { "const": "sqlite" } } } } },
+      "then": { "properties": { "replicaCount": { "maximum": 1 } } }
+    },
+    {
+      "if": { "properties": { "database": { "properties": { "driver": { "const": "postgres" } } } } },
+      "then": { "properties": { "database": { "required": ["existingSecret"], "properties": { "existingSecret": { "type": "string", "minLength": 1 } } } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "database": { "properties": { "driver": { "const": "postgres" } } },
+          "audit": { "properties": { "retentionDays": { "minimum": 1 } } }
+        }
+      },
+      "then": {
+        "properties": {
+          "audit": {
+            "required": ["cleanup"],
+            "properties": {
+              "cleanup": {
+                "required": ["credentialsSecret"],
+                "properties": { "credentialsSecret": { "type": "string", "minLength": 1 } }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}
