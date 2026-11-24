@@ -1,0 +1,12 @@
+# The host cluster: it runs Kubelook from its Helm chart and nothing else, so the tests that cordon and drain
+# the nodes of alpha and beta never evict the console under test. Same node image as beta.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5
+    # NodePorts of the Services hack/it-kubelook.sh creates: both replicas, replica 1, replica 2.
+    extraPortMappings:
+      - {containerPort: 30080, hostPort: 18080, listenAddress: "127.0.0.1"}
+      - {containerPort: 30081, hostPort: 18081, listenAddress: "127.0.0.1"}
+      - {containerPort: 30082, hostPort: 18082, listenAddress: "127.0.0.1"}

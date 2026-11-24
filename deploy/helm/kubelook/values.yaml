@@ -1,0 +1,112 @@
+# Values of the Kubelook chart. The top-level keys named in docs/spec.md ("Helm setting") are written into the
+# application's config.yaml as they are; docs/configuration.md lists every key, its default and its meaning.
+# Where a key is not set here, the application's own default applies. Secrets are never values: they are
+# referenced by the name of a Secret that already exists in the release namespace.
+
+image:
+  repository: ghcr.io/bdnix/kubelook
+  # Empty: the chart's appVersion.
+  tag: ""
+  # Set (sha256:...) to pin the image; it replaces the tag.
+  digest: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+replicaCount: 1
+
+encryption:
+  # Name of a Secret with the key `key`: 32 random bytes, base64. Required.
+  keySecret: ""
+
+server:
+  listenAddress: ":8080"
+  # The address users open, for example https://kubelook.example.org. Required.
+  publicURL: ""
+
+database:
+  # sqlite (one replica, a PersistentVolumeClaim) or postgres.
+  driver: sqlite
+  sqlitePath: /data/kubelook.db
+  # Secret with the key `url`: the application's PostgreSQL URL. Required with postgres.
+  existingSecret: ""
+  # Secret with the key `url`: a role that may change the schema. The migrate hook Job uses it.
+  migrationSecret: ""
+  # Optional. Secret with the keys `appPassword` and `cleanupPassword`. When set, the migrate hook Job also applies
+  # deploy/postgres/roles.sql (the insert-only application role and the cleanup role) with audit.retentionDays.
+  rolesSecret: ""
+
+auth:
+  restrictSignIn: true
+  google:
+    clientId: ""
+    # {name: <Secret>, key: <key>}: the OAuth client secret.
+    clientSecretRef: {}
+    allowedDomains: []
+  github:
+    clientId: ""
+    clientSecretRef: {}
+    allowedOrgs: []
+
+vault:
+  address: ""
+
+debug:
+  # The toolbox image of the debug toolkit and node shells, pinned to a digest by hack/pin-netshoot.sh.
+  image: ghcr.io/bdnix/kubelook-netshoot@sha256:61aee7cf3efce547c6e2c72c491df2a9e9d7048516133fc63a65733e0f1032fa
+
+helm:
+  # Only 4 is accepted. Releases made by Helm 3 stay manageable.
+  version: 4
+
+audit:
+  # Days to keep audit records; 0 keeps them forever and renders no cleanup CronJob.
+  retentionDays: 0
+  cleanup:
+    schedule: "17 3 * * *"
+    # PostgreSQL only. Secret with the key `url`: the cleanup role. Required with postgres and retentionDays > 0.
+    credentialsSecret: ""
+
+maintenance:
+  banner: ""
+
+# Other keys of the application's configuration may be added here: session, kubeconfig, fileBrowser, logs, shell,
+# nodeShell, watch, memory, modules, prometheus, telemetry, egress. See docs/configuration.md.
+
+persistence:
+  size: 1Gi
+  storageClass: ""
+
+service:
+  type: ClusterIP
+  port: 80
+  # ClientIP makes REST calls prefer the replica of the user's WebSocket.
+  sessionAffinity: None
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []
+  #  - host: kubelook.example.org
+  #    paths:
+  #      - path: /
+  #        pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    memory: 512Mi
+
+# GOMEMLIMIT, about 90% of the memory limit. Change both together.
+goMemLimit: 460MiB
+
+hostAliases: []
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+networkPolicy:
+  enabled: false
+  # Egress rules of the pod, added to DNS. NetworkPolicy filters by IP: see docs/deployment.md.
+  egress: []

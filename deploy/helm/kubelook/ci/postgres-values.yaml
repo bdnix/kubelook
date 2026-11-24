@@ -1,0 +1,14 @@
+# PostgreSQL, two replicas, audit cleanup on.
+replicaCount: 2
+encryption:
+  keySecret: kubelook-key
+server:
+  publicURL: https://kubelook.example.org
+database:
+  driver: postgres
+  existingSecret: kubelook-db
+  migrationSecret: kubelook-db-migrate
+audit:
+  retentionDays: 30
+  cleanup:
+    credentialsSecret: kubelook-db-cleanup

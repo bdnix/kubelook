@@ -28,7 +28,7 @@ func TestAudit_EveryMutationHasARequestedAndAnOutcomeRecordWithTheAccountAndTheV
 
 	it.Eventually(t, 20*time.Second, func() bool {
 		seen := map[string]map[string]bool{}
-		for _, l := range it.AuditLines(t, "kubelook-it-app") {
+		for _, l := range it.AuditLines(t) {
 			if l.Account["email"] != "audit-complete@corp.example" || l.Verb == "vault-credential-issued" || l.Verb == "sign-in" {
 				continue
 			}

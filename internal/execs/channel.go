@@ -289,17 +289,25 @@ func (s *shell) sent() bool {
 }
 
 func (s *shell) attempt(ctx context.Context, cmd []string) error {
+	q := newStdinQueue()
+	s.mu.Lock()
+	// Close cancels the context before it takes the lock to close the stdin queue. An attempt that takes the lock
+	// after that must not start: Close would never close its queue, and an executor that reads stdin until EOF
+	// would keep Close waiting forever. It is checked before the audit record, so a shell that never started
+	// records nothing.
+	if err := ctx.Err(); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	s.stdin = q
+	s.mu.Unlock()
+	defer q.close()
 	ev := audit.Event{Cluster: s.req.Cluster, Namespace: s.req.Namespace, ResourceKind: "Pod", ResourceName: s.req.Pod}
 	ev.Verb, ev.Outcome = audit.VerbExecStart, "success"
 	ev.Details = map[string]any{"container": s.req.Container, "shell": cmd[0]}
 	if err := s.d.Audit.Record(ctx, ev); err != nil {
 		return apperr.ErrNotRecorded
 	}
-	q := newStdinQueue()
-	s.mu.Lock()
-	s.stdin = q
-	s.mu.Unlock()
-	defer q.close()
 	started := s.d.Clock.Now()
 	err := s.d.Executor.Stream(ctx, s.sess, s.req.Cluster,
 		ExecRequest{Namespace: s.req.Namespace, Pod: s.req.Pod, Container: s.req.Container, Command: cmd, TTY: true, Stdin: true},
