@@ -90,7 +90,7 @@ make it-down
 - [Operations](docs/operations.md): key rotation, restarts, metrics, logs, the audit record and known limits
 - [Running with `docker run`](docs/docker-run.md) (documented, not supported)
 - [Development](docs/development.md)
-- [Security review](docs/security-review.md), [CI](docs/ci.md), [releasing](docs/releasing.md), [spike findings](docs/spike-findings.md), [load test](docs/load-test.md)
+- [Security review](docs/security-review.md), [CI](docs/ci.md), [releasing](docs/releasing.md), [spike findings](docs/spike-findings.md)
 - [Implementation plan](PLAN.md)
 
 ## Development

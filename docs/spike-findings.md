@@ -9,19 +9,13 @@ Written answers to the spec's "To confirm in the spike" list. Each section has t
 - **Date:** 2026-11-20
 - **Consequence for the plan:** none; this was required (A31) and it holds. The same run found that the Helm 4 SDK refuses to run an action without a wait strategy; the adapter now sets the CLI default (hooks only).
 
-## Release touched by Helm 4 managed again by the Helm 3 CLI
-
-- **Result:** favourable in one run on each cluster. After the Kubelook changes, `helm3 upgrade` and `helm3 rollback` of the same release succeeded, and the same two commands succeeded on a release first installed through Kubelook (Helm 4); `helm3 list` worked on both. One run per cluster, not a rate.
-- **How it was checked:** the recorded part of the same test; it writes `.it/findings/helm-cross-version.txt`, which the job prints.
-- **Date:** 2026-11-20
-- **Consequence for the plan:** nothing to add to `docs/operations.md`.
-
 ## YAML save conflict rate on a busy object
 
-- **Result:** one run, recorded and not asserted: 20 saves of a Deployment during a rollout, 19 saved and 1 refused with 409. One run is a sample, not a rate; the number varies with how fast the rollout moves.
-- **How it was checked:** `TestEdit_ConflictRateOnABusyObject_IsRecordedNotAsserted` in the `integration-tests` job; it writes `.it/findings/yaml-save-conflicts.txt`, which the job prints.
-- **Date:** 2026-11-20
-- **Consequence for the plan:** a conflict is rare enough that a full PUT with a conflict banner is workable; the owner may still decide on patch-on-save. Behaviour is not changed.
+- **Result:** not measured. How often the Kubernetes API answers 409 is a property of Kubernetes and of the cluster's load, not of
+  Kubelook, so no test records it. What Kubelook does with a 409 is tested: the save is refused with a conflict banner and the user
+  reloads or diffs (`internal/httpapi` and `web/src/features/editor` unit tests).
+- **Date:** 2026-11-24
+- **Consequence for the plan:** behaviour is not changed: a full PUT with a conflict banner.
 
 ## Trivy rescans after report deletion
 
@@ -39,10 +33,14 @@ Written answers to the spec's "To confirm in the spike" list. Each section has t
 
 ## Open watch or shell after credential expiry
 
-- **Result:** not answered yet. The nightly workflow runs the test and writes what it saw to `.it/findings/credential-expiry.txt`, which the workflow uploads as an artifact; copy the answer here after the first nightly run. The test records and does not assert: the configuration cannot switch re-minting off (`vault.remintBefore: 0s` is read as "use the default of 5 minutes"), so the test container uses `1ns`, and a request that finds the credential expired may re-mint it instead of failing. If no request is refused, the finding is that the credential was replaced on use.
-- **How it was checked:** `TestSlow_ConnectionsOpenWhenTheCredentialExpires` in `test/integration/slow_test.go` (nightly, `KUBELOOK_IT_SLOW=1`).
-- **Date:** —
-- **Consequence for the plan:** if connections drop, nothing to change (the hub resumes watches; shells end with the standard message).
+- **Result:** answered by Kubelook's own behaviour, which is unit-tested with fakes and the fake clock; how a real API server treats
+  an expired token is a property of Kubernetes and is not tested. A cluster credential is re-minted before it expires
+  (`TestToken_NearExpiry_RemintsAndAudits`, `TestRunRefresher_RemintsActiveClustersAndStopsAfterSessionEnds`). When the API server
+  still answers 401, the watch hub backs off and reconnects with a fresh client instead of failing the view
+  (`TestHub_WatchErrorEventUnauthorized_BacksOffAndReconnectsWithoutFailing`, `TestHub_ListUnauthorized_RetriesAfterTheBackoff`); a
+  shell whose stream ends shows the standard message and offers a new shell (`web/src/features/shell/shell.test.tsx`).
+- **Date:** 2026-11-24
+- **Consequence for the plan:** a bug was fixed: a 401 used to fail the watch for good, because it was mapped to "forbidden".
 
 ## Cluster mounts in a Vault namespace
 

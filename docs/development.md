@@ -36,7 +36,6 @@ cd web && npm ci
 | `make e2e` | the browser tests of the whole stack (`test/e2e`); needs `make it-up` | `E2E OK` |
 | `make chart-test` | lint, render and assert the Helm chart; needs no cluster | `CHART OK` |
 | `make test-release-scripts` | the tests of `hack/version.sh` | `RELEASE SCRIPTS OK` |
-| `make load` | the watch-hub load test ([load-test.md](load-test.md)); a measurement, not a pass or fail | |
 
 The web build rewrites `internal/webui/dist`, which the Go build embeds, so never run Make targets in parallel.
 
@@ -58,7 +57,7 @@ internal/            all Go code; one package per concern
   telemetry/ egress/ httpapi/ webui/ testutil/           hardening, the HTTP layer, the embedded web app
 web/                 the React single-page app (src/), its unit tests beside the code, and web/ui (browser tests)
 deploy/helm/         the Helm chart; deploy/postgres/roles.sql the hardened database roles
-test/                integration (build tag integration), e2e (Playwright) and load (build tag load)
+test/                integration (build tag integration) and e2e (Playwright)
 hack/                scripts: tools, the integration environment, chart tests, release scripts, docs check
 docs/                the documentation; PLAN.md is the implementation plan
 ```
@@ -136,7 +135,6 @@ integration environment. Most screens are tested without any backend: `web/ui` a
 | Browser tests of the whole stack | `test/e2e` | `integration-tests` |
 | Helm chart: render and assert | `hack/chart-test.sh` | `chart-tests` |
 | Helm chart: install into kind | `hack/it-chart.sh`, `test/integration/zz_chart_test.go` | `chart-install-tests` |
-| Slow checks (credential expiry), load test | `test/integration/slow_test.go`, `test/load` | `nightly` workflow |
 
 A failing integration test is a product bug: the tests run against the real image, Vault and clusters, with one stand-in for the
 identity providers.

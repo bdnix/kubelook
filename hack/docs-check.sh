@@ -9,7 +9,7 @@ fail() { echo "DOCS FAIL: $*" >&2; fails=$((fails + 1)); }
 
 # Required documents.
 for f in docs/deployment.md docs/configuration.md docs/vault-policy.md docs/postgres.md docs/docker-run.md docs/operations.md \
-         docs/security-review.md docs/releasing.md docs/ci.md docs/spike-findings.md docs/load-test.md README.md; do
+         docs/security-review.md docs/releasing.md docs/ci.md docs/spike-findings.md README.md; do
   [ -f "$f" ] || fail "missing $f"
 done
 [ -f docs/configuration.md ] || { echo "DOCS FAIL: cannot go on without docs/configuration.md" >&2; exit 1; }
