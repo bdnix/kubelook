@@ -1,38 +1,69 @@
 # Continuous integration
 
-The `ci` workflow (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`. Every action is pinned to a commit SHA with the version in a trailing comment, the workflow token is read-only, and only the `publish-*` jobs and `create-release` have write permissions.
+The `ci` workflow (`.github/workflows/ci.yml`) runs on every pull request, in the merge queue (`merge_group`) and on every push to
+`main`. Every action is pinned to a commit SHA with its version in a trailing comment, the workflow token is read-only, and only the
+release and publishing jobs have write permissions.
+
+## How the pipeline is built
+
+```
+pull request / merge queue / main
+├── workflow-lint ─┐
+├── backend-tests ─┤
+├── frontend-tests ┤
+├── ui-tests ──────┤
+├── chart-tests ───┤
+├── dependency-review (pull requests only)
+└── build (amd64 + arm64, native runners) ──► integration-tests
+                                                     │
+main only, after every check above passed:           ▼
+release-please ──► publish-image ──► publish-chart
+```
+
+- **Build once.** The image is built once per architecture, on a native runner (`ubuntu-24.04` and `ubuntu-24.04-arm`), with
+  BuildKit's layer cache. Each build is smoke-tested and scanned on its own architecture and kept as an artifact. The integration
+  tests load the amd64 build, and on `main` the publishing job pushes both builds. Nothing is built twice, and what is published is
+  what was tested.
+- **One real-system environment.** `integration-tests` starts two kind clusters under test (Kubernetes 1.35 and 1.37), a third kind
+  cluster that runs Kubelook from its Helm chart (two replicas on PostgreSQL), Vault, PostgreSQL and the sign-in stand-in. The
+  clusters start in parallel. The browser suite, the Go integration suite and the chart's life cycle (upgrade, uninstall) all run
+  against that release.
+- **Verified publishing.** After pushing, the publishing jobs verify the signature and the attestations from the registry, run the
+  published image, and pull the published chart back and render it.
 
 ## Jobs and what each proves
 
 | Job ID | Name in the checks list | Proves |
 | --- | --- | --- |
-| `backend-tests` | Backend: Lint, Unit Tests & Coverage | `golangci-lint` is clean (formatting, import rules, ban on direct `time.Now`/`fmt.Print*`); Go unit tests pass with `-race` and shuffled order; total statement coverage meets the Go threshold (shown in the job summary); `govulncheck` finds no reachable vulnerability |
-| `frontend-tests` | Frontend: Lint, Unit Tests & Coverage | ESLint, Prettier and the TypeScript checks (app and UI tests) pass; web unit tests pass; coverage meets the web thresholds; `npm audit` finds no high or critical production advisory |
-| `ui-tests` | UI Tests (Playwright) | The built web app works in a real browser: user journeys with the API answered by the tests (`web/ui`). Failures upload the report and traces |
-| `integration-tests` | Integration & End-to-End Tests (kind, Vault, PostgreSQL) | The real Kubelook image works against real Vault and two real Kubernetes clusters (1.35 and 1.37): sign-in, the Vault path (the spec's Gate 1), kubeconfig clusters, live data and day-2 operations, PostgreSQL with two replicas and the audit roles, and the browser end-to-end suite (`test/e2e`, real Chromium against the real stack). Failures upload the container and kind logs and the browser traces |
-| `chart-tests` | Helm Chart: Lint & Template Tests | The Helm chart lints and renders with every values file in `deploy/helm/kubelook/ci`; the rendered objects have the properties the plan lists (strategy, volume, hook, cleanup job, hardened pods); the rendered `config.yaml` loads with the application's own strict loader; the five invalid combinations fail the install; `ct lint` is clean |
-| `chart-install-tests` | Helm Chart: Install Tests (kind) | The chart installs a working console into a real kind cluster (`hack/it-chart.sh`): sign-in, Vault discovery, opening a cluster, listing pods, streaming logs, `helm upgrade` with a new setting, `helm uninstall` leaving no pods |
-| `image-scan` | Container Image: Build & Vulnerability Scan | The whole product builds (web app, embedded Go binary, image), runs `version`, and has no fixable HIGH or CRITICAL vulnerability (Trivy) |
-| `dependency-review` | Dependency Review | Pull requests add no dependency with a high-severity advisory, including GitHub Actions and npm dev dependencies (pull requests only) |
-| `publish-image` | Publish Container Image | On pushes to `main` only, after the seven required jobs pass: publishes `ghcr.io/bdnix/kubelook` for `linux/amd64` and `linux/arm64` with SBOM, provenance and a cosign signature; on a release build also the version tags and a Trivy scan of the pushed digest |
-| `publish-chart` | Publish Helm Chart | On pushes to `main` only, after `publish-image`: publishes the chart to `oci://ghcr.io/bdnix/charts/kubelook` with the digest of the image just built |
-| `create-release` | Create Release | On release builds only: the tag `v<VERSION>` on the tested commit and the GitHub release with the chart archive |
+| `workflow-lint` | Workflows: Lint & Security Audit | actionlint finds no error in the workflows; zizmor finds no security problem (template injection, excessive permissions, unpinned actions) |
+| `backend-tests` | Backend: Lint, Unit Tests & Coverage | `golangci-lint` is clean; Go unit tests pass with `-race` and shuffled order; total statement coverage meets the Go threshold; `govulncheck` finds no reachable vulnerability |
+| `frontend-tests` | Frontend: Lint, Unit Tests & Coverage | ESLint, Prettier and the TypeScript checks pass; web unit tests pass; coverage meets the web thresholds; `npm audit` finds no high or critical production advisory |
+| `ui-tests` | UI Tests (Playwright) | The built web app works in a real browser, with the API answered by the tests (`web/ui`) |
+| `chart-tests` | Helm Chart: Lint & Template Tests | The chart lints and renders with every values file in `deploy/helm/kubelook/ci`; the rendered objects have the required properties; the rendered `config.yaml` loads with the application's strict loader; invalid combinations fail; `ct lint` is clean |
+| `build` | Image: Build, Smoke Test & Scan (amd64), (arm64) | The image builds for the architecture, runs `version`, runs as `65532:65532`, has no shell, and has no fixable HIGH or CRITICAL vulnerability (Trivy) |
+| `integration-tests` | Integration & End-to-End Tests (Helm-installed, kind, Vault, PostgreSQL) | Kubelook installed from its chart works against real Vault, real PostgreSQL and two real Kubernetes clusters: sign-in, the Vault path, kubeconfig clusters, live data and day-2 operations, two replicas sharing sessions, a replica that stops or dies, the audit roles, the key change, the browser suite, and the chart upgrade and uninstall |
+| `dependency-review` | Dependency Review | Pull requests add no dependency with a high-severity advisory (pull requests only) |
+| `release-please` | Release | On `main` only, after every check passed: keeps the release pull request up to date, or creates the tag and the GitHub release when that pull request was merged ([releasing.md](releasing.md)) |
+| `publish-image` | Publish Container Image | On `main` only: pushes the tested amd64 and arm64 builds as one image (`main`, `sha-<commit>`, and the version tags on a release), signs it, attests provenance and an SBOM per architecture, and verifies all of it from the registry |
+| `publish-chart` | Publish Helm Chart | On `main` only: publishes the chart pinned to that image's digest, pulls it back and renders it, and on a release attaches it to the GitHub release |
 
-There is no aggregate gate job: branch protection requires the test jobs directly, and `publish-image` lists them in `needs`. Adding or renaming a required job means updating both. Lint and tests of one side share a job (one checkout, one toolchain setup, one cache), and the coverage run is the unit-test run, so no test executes twice.
+There is no aggregate gate job: branch protection requires the check jobs directly, and `release-please` lists them in `needs`.
+Adding or renaming a required job means updating both.
 
-Locally: `make it-up && make it` runs the integration suite (needs Docker and a cgroup v2 host; `make it-down` removes it), `make lint`, `make test-backend`, `make test-frontend`, `make coverage`, `make test-ui` (needs Chromium: `cd web && npx playwright install --with-deps chromium`), and `make verify` for lint, coverage and build together.
+Locally: `make it-up && make e2e && make it` runs the real-system tests (needs Docker and a cgroup v2 host; `make it-down` removes
+the environment), and `make verify` runs lint, unit tests with coverage and the build.
 
 ## Other workflows
 
-- `netshoot` (`.github/workflows/netshoot.yml`): on a push to `main` that changes `build/netshoot/**`, publishes `ghcr.io/bdnix/kubelook-netshoot:<tag>` for `linux/amd64` and `linux/arm64`, with a report-only Trivy scan and a provenance attestation. A new netshoot release arrives as a Dependabot pull request on the `FROM` line.
-
-## Publishing
-
-Publishing happens only from builds of `main`; pull requests and other branches never publish. Every build publishes the `main` and `sha-` image tags, the chart `<version>-main.<short-sha>`, a signature and provenance. A build whose `VERSION` has no tag yet is a release build: it also publishes the version tags and the chart `<version>`, and `create-release` creates the tag and the GitHub release. How to cut a release, verify one and roll back is in [releasing.md](releasing.md).
+- `netshoot` (`.github/workflows/netshoot.yml`): on a push to `main` that changes `build/netshoot/**`, publishes
+  `ghcr.io/bdnix/kubelook-netshoot:<tag>` for `linux/amd64` and `linux/arm64`, with a report-only Trivy scan and a provenance
+  attestation. A new netshoot release arrives as a Dependabot pull request on the `FROM` line.
 
 ## Coverage rules
 
-Coverage is enforced by the configuration, which is the only source of truth: `.testcoverage.yml` for Go (total statement coverage, and the excluded paths) and `web/vite.config.ts` for the web app (thresholds and excluded paths). Each exclusion has its reason in a comment there; a new exclusion needs one too.
+Coverage is enforced by the configuration, which is the only source of truth: `.testcoverage.yml` for Go (total statement coverage,
+and the excluded paths) and `web/vite.config.ts` for the web app (thresholds and excluded paths). Each exclusion has its reason in a
+comment there; a new exclusion needs one too.
 
 ## Updating a pinned action
 
@@ -48,11 +79,14 @@ Then write `uses: <owner>/<repo>@<sha> # <tag>`. Dependabot rewrites both the SH
 
 These cannot be applied from the repository and must be set by an owner:
 
-- Protect `main`; require pull requests.
-- Require the status checks of the jobs `backend-tests`, `frontend-tests`, `ui-tests`, `integration-tests` and `image-scan`. GitHub lists a job with a `name:` under that name, so select `Backend: Lint, Unit Tests & Coverage`, `Frontend: Lint, Unit Tests & Coverage`, `UI Tests (Playwright)`, `Integration & End-to-End Tests (kind, Vault, PostgreSQL)` and `Container Image: Build & Vulnerability Scan`. Also require `Helm Chart: Lint & Template Tests` (`chart-tests`) and `Helm Chart: Install Tests (kind)` (`chart-install-tests`).
-- Create the environment `production` (*Settings → Environments*), with *Deployment branches and tags* set to `main` only, and optionally required reviewers. The publishing jobs and the `netshoot` workflow use it, so a workflow edited on another branch cannot publish ([releasing.md](releasing.md)).
-- Restrict who can push to `main`: a push to `main` publishes images and, when `VERSION` changes, a release.
-- Require branches to be up to date before merging.
-- Disallow force pushes to `main`.
+- Protect `main`; require pull requests, and turn on the merge queue (the workflow runs on `merge_group`).
+- Require these checks: `Workflows: Lint & Security Audit`, `Backend: Lint, Unit Tests & Coverage`, `Frontend: Lint, Unit Tests &
+  Coverage`, `UI Tests (Playwright)`, `Helm Chart: Lint & Template Tests`, `Image: Build, Smoke Test & Scan (amd64)`, `Image: Build,
+  Smoke Test & Scan (arm64)` and `Integration & End-to-End Tests (Helm-installed, kind, Vault, PostgreSQL)`. Remove the checks that no
+  longer exist: `Container Image: Build & Vulnerability Scan`, `Helm Chart: Install Tests (kind)` and the old name of the integration
+  job.
+- Create the secret `RELEASE_PLEASE_TOKEN` ([releasing.md](releasing.md)).
+- Keep the environment `production` restricted to `main`; the release and publishing jobs and the `netshoot` workflow use it.
+- Restrict who can push to `main`, and disallow force pushes to it.
 - Enable the dependency graph and Dependabot alerts (`dependency-review` fails without the dependency graph).
 - Set the default workflow permissions of GitHub Actions to read-only.

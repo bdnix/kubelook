@@ -32,10 +32,9 @@ cd web && npm ci
 | `make build` | web build, embed in the Go binary, `bin/kubelook` | `BUILD OK` |
 | `make test-ui` | browser tests of the built web app, with the API answered by the tests (`web/ui`) | `N passed` |
 | `make image` | the container image `kubelook:dev` | |
-| `make it-up` / `make it` / `make it-down` | the integration environment: two kind clusters, Vault, PostgreSQL, a sign-in stand-in, the real image; the Go tests against it; remove it | `IT UP` / `INTEGRATION OK` / `IT DOWN` |
+| `make it-up` / `make it` / `make it-down` | the integration environment (two kind clusters under test, a host cluster running Kubelook from its Helm chart, Vault, PostgreSQL, a sign-in stand-in); the Go tests against it; remove it | `IT UP` / `INTEGRATION OK` / `IT DOWN` |
 | `make e2e` | the browser tests of the whole stack (`test/e2e`); needs `make it-up` | `E2E OK` |
 | `make chart-test` | lint, render and assert the Helm chart; needs no cluster | `CHART OK` |
-| `make test-release-scripts` | the tests of `hack/version.sh` | `RELEASE SCRIPTS OK` |
 
 The web build rewrites `internal/webui/dist`, which the Go build embeds, so never run Make targets in parallel.
 
@@ -102,15 +101,17 @@ docs/                the documentation; PLAN.md is the implementation plan
 
 ### The whole stack, on your machine
 
-`make it-up` builds the image and starts everything the product talks to: two kind clusters (Kubernetes 1.35 and 1.37), Vault with
-cluster mounts, tokens and policies, PostgreSQL, and a stand-in for Google and GitHub sign-in, then starts the Kubelook image on
-`http://localhost:18080` (SQLite) and two replicas on PostgreSQL (ports 18081 and 18082). Vault tokens for the test users are in
-`.it/tokens.env`; the Vault CLI runs inside the container `kubelook-it-vault`. `make it-down` removes it all. The console of
-this environment admits the domain `corp.example` (Google) and the organisation `acme` (GitHub); the integration tests announce to the
-stand-in which account signs in next (`test/integration/it`).
+`make it-up` builds the image (or loads the archive named by `KUBELOOK_IMAGE_ARCHIVE`) and starts everything the product talks
+to: two kind clusters under test (alpha on Kubernetes 1.35, beta on 1.37), Vault with cluster mounts, tokens and policies,
+PostgreSQL, and a stand-in for Google and GitHub sign-in. It installs Kubelook from its Helm chart into a third kind cluster, `host`,
+with two replicas on PostgreSQL, and makes it reachable at `http://localhost:18080` (either replica), `:18081` (replica 1) and
+`:18082` (replica 2). `hack/it-kubelook.sh` installs, upgrades, restarts, stops and kills those replicas for the tests.
+Vault tokens for the test users are in `.it/tokens.env`; the Vault CLI runs inside the container `kubelook-it-vault`; kubeconfigs
+for the three clusters are in `.it/kubeconfig-<cluster>-host.yaml`. `make it-down` removes it all. The console of this environment
+admits the domain `corp.example` (Google) and the organisation `acme` (GitHub); the integration tests announce to the stand-in which
+account signs in next (`test/integration/it`).
 
-To try the Helm chart in the same environment: `hack/it-chart.sh` installs it into the alpha cluster and forwards it to
-`http://localhost:18090`.
+Run the browser suite before the Go suite (`make e2e && make it`): the last Go test upgrades, uninstalls and reinstalls the release.
 
 ### Only the web app
 
@@ -131,10 +132,12 @@ integration environment. Most screens are tested without any backend: `web/ui` a
 | Go unit tests | next to the code, `x_test.go` in package `x_test` | `backend-tests` |
 | Web unit tests | next to the code, `X.test.tsx` | `frontend-tests` |
 | Browser tests of the web app | `web/ui/*.ui.ts` | `ui-tests` |
-| Integration: real Vault, real Kubernetes, PostgreSQL | `test/integration` (build tag `integration`) | `integration-tests` |
+| Integration: Kubelook installed from its chart, real Vault, real Kubernetes, PostgreSQL | `test/integration` (build tag `integration`) | `integration-tests` |
 | Browser tests of the whole stack | `test/e2e` | `integration-tests` |
 | Helm chart: render and assert | `hack/chart-test.sh` | `chart-tests` |
-| Helm chart: install into kind | `hack/it-chart.sh`, `test/integration/zz_chart_test.go` | `chart-install-tests` |
+| Helm chart: upgrade and uninstall of the installed release | `test/integration/zz_chart_test.go` | `integration-tests` |
+| Image: build, smoke test and scan per architecture | `ci.yml` | `build` |
+| Workflows: actionlint and zizmor | `ci.yml` | `workflow-lint` |
 
 A failing integration test is a product bug: the tests run against the real image, Vault and clusters, with one stand-in for the
 identity providers.
