@@ -1,0 +1,6 @@
+# zizmor configuration (the workflow-lint job). Findings accepted for one place are marked there with an inline
+# "zizmor: ignore[...]" comment and the reason.
+rules:
+  # It suggests the "$/" form for local actions; actionlint, which runs in the same job, is not known to accept it.
+  self-repository:
+    disable: true

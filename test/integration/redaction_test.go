@@ -50,7 +50,7 @@ func TestRedaction_SecretsAreMaskedEverywhereButTheAuditedReveal(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, secretPlaintext, string(raw))
 	it.Eventually(t, 20*time.Second, func() bool {
-		for _, l := range it.AuditLines(t, "kubelook-it-app") {
+		for _, l := range it.AuditLines(t) {
 			if l.Verb == "secret-reveal" && l.Account["email"] == "redaction@corp.example" {
 				assert.NotContains(t, l.Raw, secretPlaintext)
 				return true
