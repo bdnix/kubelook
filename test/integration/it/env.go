@@ -16,7 +16,7 @@ import (
 	"testing"
 )
 
-// BaseURL is the address of the Kubelook container with SQLite.
+// BaseURL is the address of Kubelook in the integration environment: both replicas of the release in the host cluster.
 func BaseURL() string {
 	if v := os.Getenv("KUBELOOK_IT_BASE_URL"); v != "" {
 		return strings.TrimRight(v, "/")
@@ -107,13 +107,14 @@ func TryDocker(args ...string) {
 // ClusterPath is the percent-encoded cluster ID for a URL path ("k:a/b" contains a slash).
 func ClusterPath(id string) string { return url.PathEscape(id) }
 
-// Replica1URL and Replica2URL are the two PostgreSQL-backed replicas; both are configured with the public URL of the first.
+// Replica1URL and Replica2URL reach one replica each (hack/it-kubelook.sh labels the pods and points a Service at each).
+// Both replicas are configured with the public URL of BaseURL, as replicas behind one name are in production.
 const (
 	Replica1URL = "http://localhost:18081"
 	Replica2URL = "http://localhost:18082"
 )
 
-// AppKey returns the encryption key of the Kubelook containers (written by hack/it-apps.sh).
+// AppKey returns the encryption key of the Kubelook release (written by hack/it-kubelook.sh).
 func AppKey() string {
 	data, err := os.ReadFile(filepath.Join(Root(), ".it", "app.env"))
 	if err != nil {
@@ -131,4 +132,10 @@ func AppKey() string {
 func PG(t testing.TB, args ...string) string {
 	t.Helper()
 	return run(t, filepath.Join(Root(), "hack", "it-pg.sh"), args...)
+}
+
+// Kubelook runs hack/it-kubelook.sh (see there for the subcommands: expose, kill, stop, rekey, install, uninstall).
+func Kubelook(t testing.TB, args ...string) string {
+	t.Helper()
+	return run(t, filepath.Join(Root(), "hack", "it-kubelook.sh"), args...)
 }

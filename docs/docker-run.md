@@ -2,8 +2,8 @@
 
 **Documented, not a supported deployment.** The supported deployment is the Helm chart ([deployment.md](deployment.md)). The commands
 below show how the image is configured: it reads a YAML file and environment variables, however they are provided. Nothing here is
-covered by a test of this repository except that the image runs as a non-root user with the `serve`, `migrate`, `audit-cleanup` and
-`version` commands (the integration environment starts it this way, see `hack/it-apps.sh`).
+covered by a test of this repository except that `docker run` of the image runs `version` (the build job) and `audit-cleanup` (the
+integration tests, see `hack/it-pg.sh`).
 
 The image runs as `65532:65532` on a distroless base and has no shell.
 
