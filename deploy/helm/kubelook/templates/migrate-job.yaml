@@ -1,0 +1,112 @@
+{{- if include "kubelook.postgres" . }}
+{{- $hook := "pre-install,pre-upgrade" }}
+{{- $policy := "before-hook-creation,hook-succeeded" }}
+{{- /* The hook runs before the chart's other objects exist, so it brings its own configuration. */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubelook.fullname" . }}-migrate-config
+  labels: {{- include "kubelook.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: {{ $hook }}
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: {{ $policy }}
+data:
+  config.yaml: |
+    {{- include "kubelook.config" . | nindent 4 }}
+{{- if .Values.database.rolesSecret }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubelook.fullname" . }}-roles
+  labels: {{- include "kubelook.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: {{ $hook }}
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: {{ $policy }}
+data:
+  roles.sql: |
+    {{- .Files.Get "files/roles.sql" | nindent 4 }}
+{{- end }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kubelook.fullname" . }}-migrate
+  labels: {{- include "kubelook.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: {{ $hook }}
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: {{ $policy }}
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels: {{- include "kubelook.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext: {{- include "kubelook.podSecurityContext" . | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.hostAliases }}
+      hostAliases: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- /* migrate first; the roles are applied to the tables that exist afterwards */}}
+      {{- if .Values.database.rolesSecret }}
+      initContainers:
+        {{- include "kubelook.migrateContainer" . | nindent 8 }}
+      containers:
+        - name: roles
+          image: postgres:18.6-trixie
+          command: [/bin/sh, -ec]
+          args:
+            - >-
+              psql "$KUBELOOK_MIGRATE_DATABASE_URL" -v ON_ERROR_STOP=1
+              -v app_password="$APP_PASSWORD" -v cleanup_password="$CLEANUP_PASSWORD"
+              -v retention_days={{ int .Values.audit.retentionDays }} -f /roles/roles.sql
+          env:
+            - name: KUBELOOK_MIGRATE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.migrationSecret }}
+                  key: url
+            - name: APP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.rolesSecret }}
+                  key: appPassword
+            - name: CLEANUP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.database.rolesSecret }}
+                  key: cleanupPassword
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: roles, mountPath: /roles, readOnly: true}
+      {{- else }}
+      containers:
+        {{- include "kubelook.migrateContainer" . | nindent 8 }}
+      {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "kubelook.fullname" . }}-migrate-config
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.database.rolesSecret }}
+        - name: roles
+          configMap:
+            name: {{ include "kubelook.fullname" . }}-roles
+        {{- end }}
+{{- end }}

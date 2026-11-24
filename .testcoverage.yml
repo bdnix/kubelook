@@ -6,5 +6,5 @@ exclude:
   paths:
     - ^cmd/kubelook/main\.go$     # 3-line entry point, cannot run in-process
     - ^internal/testutil/         # test helpers, not product code
-    - ^test/                      # integration/load tests (build-tagged)
+    - ^test/                      # integration tests (build-tagged)
     - ^hack/                      # tooling

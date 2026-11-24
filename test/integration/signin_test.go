@@ -137,7 +137,7 @@ func TestSignIn_Audit_RecordsSignInAndSignOutAndNeverTheClientSecret(t *testing.
 	bad := it.NewClient(t)
 	bad.SignInGoogle(it.Account{Sub: "si-aud-bad", Email: "aud-bad@gmail.example"})
 
-	lines := it.AuditLines(t, "kubelook-it-app")
+	lines := it.AuditLines(t)
 	var okIn, failIn, out bool
 	for _, l := range lines {
 		switch {
@@ -152,5 +152,5 @@ func TestSignIn_Audit_RecordsSignInAndSignOutAndNeverTheClientSecret(t *testing.
 	assert.True(t, okIn, "a successful sign-in is audited")
 	assert.True(t, failIn, "a refused sign-in is audited with its reason")
 	assert.True(t, out, "sign-out is audited")
-	assert.False(t, strings.Contains(it.Logs(t, "kubelook-it-app"), "it-secret"), "the client secret never reaches the log")
+	assert.False(t, strings.Contains(it.Logs(t), "it-secret"), "the client secret never reaches the log")
 }

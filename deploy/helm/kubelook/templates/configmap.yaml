@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kubelook.fullname" . }}
+  labels: {{- include "kubelook.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    {{- include "kubelook.config" . | nindent 4 }}

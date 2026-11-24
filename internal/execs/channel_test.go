@@ -394,6 +394,21 @@ func TestShell_ExecCloseFromTheBrowser(t *testing.T) {
 	ch.Close()
 }
 
+// Closing a shell right after opening it races with the start of its first attempt. Whatever the order, Close must
+// return: an attempt that starts after Close was called must not create a stdin queue Close never closes (the fake
+// executor, like a slow real one, reads stdin until EOF and does not watch the context). Many rounds make the
+// unlucky order likely.
+func TestShell_CloseRightAfterOpen_NeverHangs(t *testing.T) {
+	for range 200 {
+		e := newEnv(t)
+		ch, err := e.open(80, 24)
+		require.NoError(t, err)
+		closed := make(chan struct{})
+		go func() { ch.Close(); close(closed) }()
+		testutil.Recv(t, closed)
+	}
+}
+
 func TestShell_BadOpsAndOpenRequests(t *testing.T) {
 	e := newEnv(t)
 	ch, err := e.open(80, 24)

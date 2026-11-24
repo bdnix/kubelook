@@ -26,7 +26,7 @@ test.describe("the real stack in a browser", () => {
           () =>
             document
               .querySelector("aside[aria-label=Details]")
-              ?.outerHTML.slice(0, 4000) ?? "no details drawer",
+              ?.innerText.slice(0, 2000) ?? "no details drawer",
         )
         .catch((e: unknown) => `no page: ${String(e)}`);
       console.log(`--- details drawer\n${drawer}`);
@@ -142,6 +142,10 @@ test.describe("the real stack in a browser", () => {
     const drawer = page.getByRole("complementary", { name: "Details" });
     await drawer.getByRole("tab", { name: "YAML" }).click();
     await expect.poll(() => editorText(page)).toContain("mode: integration");
+    // The editor is read-only until the access check has answered, and keys typed before that are dropped.
+    await expect(
+      drawer.getByText("You can read this object but not change it."),
+    ).toBeHidden();
 
     try {
       const lines = (await editorText(page)).split("\n");

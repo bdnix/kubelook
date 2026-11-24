@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kubelook.fullname" . }}
+  labels: {{- include "kubelook.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  strategy:
+    {{- if include "kubelook.postgres" . }}
+    type: RollingUpdate
+    {{- else }}
+    type: Recreate
+    {{- end }}
+  selector:
+    matchLabels: {{- include "kubelook.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "kubelook.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "kubelook.config" . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "kubelook.fullname" . }}
+      automountServiceAccountToken: false
+      securityContext: {{- include "kubelook.podSecurityContext" . | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.hostAliases }}
+      hostAliases: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: kubelook
+          image: {{ include "kubelook.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: [serve]
+          ports:
+            - name: http
+              containerPort: {{ include "kubelook.port" . }}
+          env:
+            - name: GOMEMLIMIT
+              value: {{ .Values.goMemLimit | quote }}
+            {{- include "kubelook.secretEnv" . | nindent 12 }}
+          livenessProbe:
+            httpGet: {path: /healthz, port: http}
+          readinessProbe:
+            httpGet: {path: /readyz, port: http}
+          securityContext: {{- include "kubelook.containerSecurityContext" . | nindent 12 }}
+          {{- with .Values.resources }}
+          resources: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - {name: config, mountPath: /etc/kubelook, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+            {{- if not (include "kubelook.postgres" .) }}
+            - {name: data, mountPath: {{ include "kubelook.dataDir" . }}}
+            {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "kubelook.fullname" . }}
+        - name: tmp
+          emptyDir: {}
+        {{- if not (include "kubelook.postgres" .) }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "kubelook.fullname" . }}-data
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
