@@ -24,7 +24,6 @@ Locally: `make it-up && make it` runs the integration suite (needs Docker and a 
 
 ## Other workflows
 
-- `nightly` (`.github/workflows/nightly.yml`, 02:17 UTC and on demand): the slow integration test that waits for a real credential to expire (`KUBELOOK_IT_SLOW=1`) and the watch-hub load test. It uploads `.it/findings` and the load result. It is not a required check.
 - `netshoot` (`.github/workflows/netshoot.yml`): on a push to `main` that changes `build/netshoot/**`, publishes `ghcr.io/bdnix/kubelook-netshoot:<tag>` for `linux/amd64` and `linux/arm64`, with a report-only Trivy scan and a provenance attestation. A new netshoot release arrives as a Dependabot pull request on the `FROM` line.
 
 ## Publishing

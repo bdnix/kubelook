@@ -131,5 +131,5 @@ FROM audit_events WHERE time > (extract(epoch FROM now() - interval '1 day') * 1
   site, so Safari users who stay away that long paste their token and kubeconfigs again.
 - **Credentials are not revoked at sign-out.** Cluster credentials minted by Vault run to their TTL (`vault.tokenTTL`, default 30
   minutes); see [vault-policy.md](vault-policy.md).
-- **Capacity.** The spec proposes 200 active sessions per replica; `make load` measures it ([load-test.md](load-test.md)) and reports
-  rather than enforces.
+- **Capacity.** The spec proposes 200 active sessions per replica. It is not measured: how many sessions a replica carries
+  depends mostly on the clusters and Vault behind it. Watch the Prometheus metrics (sessions, watches, memory, refused requests).

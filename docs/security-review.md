@@ -46,5 +46,4 @@ Cutting `0.1.0` (a version without `-rc`) needs it ([releasing.md](releasing.md)
 | --- | --- | --- |
 | Gate 1 | A real user's Vault token in a real organisation's Vault: discovery lists exactly the clusters the policies allow, opening works, and the open questions of [spike-findings.md](spike-findings.md) (for example Vault namespaces) are answered | _not yet_ |
 
-Items of [spike-findings.md](spike-findings.md) that are still open: the Vault namespace question, Kyverno's report location, and the
-behaviour of open connections when a credential expires (the nightly run records it).
+Items of [spike-findings.md](spike-findings.md) that are still open: the Vault namespace question and Kyverno's report location.
