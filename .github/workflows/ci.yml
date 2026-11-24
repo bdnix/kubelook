@@ -182,10 +182,22 @@ jobs:
         run: echo "version=$(cat VERSION)-ci.${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       # The Go module and build caches and the npm cache are BuildKit cache mounts (Dockerfile). GitHub's cache keeps
-      # image layers but not mount contents, so they are saved and restored around the build.
-      - name: Cache the build's cache mounts
-        id: mounts
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # image layers but not mount contents, so they are restored into the builder before the build. Only builds of
+      # main take them out again and save them (that takes about two minutes); pull requests restore main's.
+      - name: Restore the build's cache mounts
+        if: ${{ github.event_name != 'push' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: cache-mount
+          key: buildkit-mounts-${{ matrix.arch }}-${{ hashFiles('go.sum', 'web/package-lock.json') }}-${{ github.sha }}
+          restore-keys: |
+            buildkit-mounts-${{ matrix.arch }}-${{ hashFiles('go.sum', 'web/package-lock.json') }}-
+            buildkit-mounts-${{ matrix.arch }}-
+      # Cache poisoning: GitHub scopes caches by branch, so this build of main restores only caches that builds of main
+      # saved; a pull request cannot poison what main publishes, and whoever can push to main controls the build anyway.
+      - name: Restore and save the build's cache mounts
+        if: ${{ github.event_name == 'push' }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0 # zizmor: ignore[cache-poisoning]
         with:
           path: cache-mount
           key: buildkit-mounts-${{ matrix.arch }}-${{ hashFiles('go.sum', 'web/package-lock.json') }}-${{ github.sha }}
@@ -197,6 +209,7 @@ jobs:
         with:
           cache-dir: cache-mount
           dockerfile: Dockerfile
+          skip-extraction: ${{ github.event_name != 'push' }}
       - name: Build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:

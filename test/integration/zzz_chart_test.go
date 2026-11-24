@@ -13,10 +13,11 @@ import (
 	"github.com/bdnix/kubelook/test/integration/it"
 )
 
-// Every test of this package runs against Kubelook installed from its Helm chart (hack/it-kubelook.sh). This one,
-// last in the package, checks the chart's own life cycle on that release: an upgrade rolls the console out with the
-// new configuration, and an uninstall leaves no pod. The release is gone afterwards: CI runs the browser suite first,
-// and make it-up installs it again before another run.
+// Every test of this package runs against Kubelook installed from its Helm chart (hack/it-kubelook.sh). This one
+// checks the chart's own life cycle on that release: an upgrade rolls the console out with the new configuration,
+// and an uninstall leaves no pod. The release is gone afterwards, so it must run last: Go runs a package's test files
+// in name order, and this file name sorts after every other (zz_drain_test.go included). CI runs the browser suite
+// before the Go suite, and make it-up installs the release again before another run.
 func TestChart_UpgradeRollsOutTheNewConfigurationAndUninstallLeavesNoPods(t *testing.T) {
 	it.Kubelook(t, "install", "--set", "maintenance.banner=upgraded")
 	c := signedIn(t, "chart-after-upgrade")

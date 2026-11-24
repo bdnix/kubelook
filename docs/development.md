@@ -135,7 +135,7 @@ integration environment. Most screens are tested without any backend: `web/ui` a
 | Integration: Kubelook installed from its chart, real Vault, real Kubernetes, PostgreSQL | `test/integration` (build tag `integration`) | `integration-tests` |
 | Browser tests of the whole stack | `test/e2e` | `integration-tests` |
 | Helm chart: render and assert | `hack/chart-test.sh` | `chart-tests` |
-| Helm chart: upgrade and uninstall of the installed release | `test/integration/zz_chart_test.go` | `integration-tests` |
+| Helm chart: upgrade and uninstall of the installed release | `test/integration/zzz_chart_test.go` | `integration-tests` |
 | Image: build, smoke test and scan per architecture | `ci.yml` | `build` |
 | Workflows: actionlint and zizmor | `ci.yml` | `workflow-lint` |
 
