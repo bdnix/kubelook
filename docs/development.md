@@ -111,7 +111,7 @@ for the three clusters are in `.it/kubeconfig-<cluster>-host.yaml`. `make it-dow
 admits the domain `corp.example` (Google) and the organisation `acme` (GitHub); the integration tests announce to the stand-in which
 account signs in next (`test/integration/it`).
 
-Run the browser suite before the Go suite (`make e2e && make it`): the last Go test upgrades, uninstalls and reinstalls the release.
+Run the browser suite before the Go suite (`make e2e && make it`): the last Go test upgrades and uninstalls the release; `make it-up` installs it again.
 
 ### Only the web app
 

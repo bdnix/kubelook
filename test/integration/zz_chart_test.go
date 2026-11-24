@@ -15,11 +15,9 @@ import (
 
 // Every test of this package runs against Kubelook installed from its Helm chart (hack/it-kubelook.sh). This one,
 // last in the package, checks the chart's own life cycle on that release: an upgrade rolls the console out with the
-// new configuration, and an uninstall leaves no pod. It installs the release again at the end, so the environment
-// stays usable (for the browser tests, and for running the suite again).
+// new configuration, and an uninstall leaves no pod. The release is gone afterwards: CI runs the browser suite first,
+// and make it-up installs it again before another run.
 func TestChart_UpgradeRollsOutTheNewConfigurationAndUninstallLeavesNoPods(t *testing.T) {
-	t.Cleanup(func() { it.Kubelook(t, "install") })
-
 	it.Kubelook(t, "install", "--set", "maintenance.banner=upgraded")
 	c := signedIn(t, "chart-after-upgrade")
 	var me struct {

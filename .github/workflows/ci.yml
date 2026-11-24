@@ -193,7 +193,7 @@ jobs:
             buildkit-mounts-${{ matrix.arch }}-${{ hashFiles('go.sum', 'web/package-lock.json') }}-
             buildkit-mounts-${{ matrix.arch }}-
       - name: Inject the cache mounts into the builder
-        uses: reproducible-containers/buildkit-cache-dance@2925f5cfd92896e0f5a155899ff2ed2922b575c6 # v3.4.0
+        uses: reproducible-containers/buildkit-cache-dance@5422eac04292c961a382e0f584ea0f03ad9da723 # v3.4.0
         with:
           cache-dir: cache-mount
           dockerfile: Dockerfile
@@ -265,7 +265,7 @@ jobs:
         run: make e2e
         env:
           PLAYWRIGHT_CHROMIUM_EXECUTABLE: /usr/bin/google-chrome
-      - name: Integration tests (the last one upgrades, uninstalls and reinstalls the release)
+      - name: Integration tests (the last one upgrades and uninstalls the release)
         run: make it
       - name: Collect logs
         if: ${{ failure() }}

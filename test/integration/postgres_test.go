@@ -231,7 +231,7 @@ func TestPostgres_RolesScript_CoversALaterMigrationAndChangesTheRetentionPeriod(
 	assert.True(t, auditRowExists(t, owner, "it-keep"))
 }
 
-// This test replaces the key of both replicas and restores it afterwards.
+// This test replaces the key of both replicas.
 func TestPostgres_ChangingTheEncryptionKey_SignsUsersOutAndDiscardsSavedCopiesWithoutLeakingAKey(t *testing.T) {
 	c := pgSignedIn(t, "pg-key")
 	sealed := c.AddVaultToken(it.Token("BOB_TOKEN"))
@@ -241,7 +241,8 @@ func TestPostgres_ChangingTheEncryptionKey_SignsUsersOutAndDiscardsSavedCopiesWi
 	_, err := rand.Read(raw)
 	require.NoError(t, err)
 	newKey := base64.StdEncoding.EncodeToString(raw)
-	t.Cleanup(func() { it.Kubelook(t, "rekey") }) // back to the key of .it/app.env
+	// The new key stays: later tests sign in afresh, and hack/it-kubelook.sh install (make it-up) applies the key of
+	// .it/app.env again.
 	it.Kubelook(t, "rekey", newKey)
 
 	// The spec: active-session credentials become unreadable, so every signed-in user is signed out. The first request
