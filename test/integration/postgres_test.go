@@ -68,6 +68,7 @@ func pgSignedIn(t *testing.T, sub string) *it.Client {
 	t.Helper()
 	c := it.NewClient(t)
 	c.Base = it.Replica1URL
+	c.Origin = it.BaseURL() // the public URL of both replicas: their WebSocket upgrades accept only that origin
 	final := c.SignInGoogle(it.Account{Sub: sub, Email: sub + "@corp.example", HD: "corp.example"})
 	require.Empty(t, final.Query().Get("signin_error"), "signing in as %s: %s", sub, final)
 	status, _, apiErr := addToken(t, c, "BOB_TOKEN")
@@ -252,6 +253,7 @@ func TestPostgres_ChangingTheEncryptionKey_SignsUsersOutAndDiscardsSavedCopiesWi
 
 	again := it.NewClient(t)
 	again.Base = it.Replica1URL
+	again.Origin = it.BaseURL()
 	final := again.SignInGoogle(it.Account{Sub: "pg-key", Email: "pg-key@corp.example", HD: "corp.example"})
 	require.Empty(t, final.Query().Get("signin_error"), "%s", final)
 	var res struct {
