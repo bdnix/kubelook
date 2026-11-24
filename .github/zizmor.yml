@@ -1,0 +1,5 @@
+# zizmor configuration (the workflow-lint job).
+rules:
+  # It suggests the "$/" form for local actions; actionlint, which runs in the same job, is not known to accept it.
+  self-repository:
+    disable: true
