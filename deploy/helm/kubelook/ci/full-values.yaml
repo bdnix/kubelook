@@ -1,0 +1,132 @@
+# Every setting of the spec set to a value that is not its default. The configuration part is the same as
+# internal/config/testdata/full.yaml: TestLoad_RenderedChartConfig loads the rendered file and compares both.
+replicaCount: 2
+image:
+  repository: example.org/kubelook
+  tag: 1.2.3
+  pullPolicy: Always
+encryption:
+  keySecret: kubelook-key
+server:
+  listenAddress: ":9090"
+  publicURL: https://kubelook.example.org
+database:
+  driver: postgres
+  sqlitePath: /var/lib/kubelook/k.db
+  migrateOnStart: true
+  existingSecret: kubelook-db
+  migrationSecret: kubelook-db-migrate
+  rolesSecret: kubelook-db-roles
+session:
+  idleTimeout: 10m
+  maxLifetime: 2h
+auth:
+  restrictSignIn: false
+  google:
+    clientId: google-id
+    clientSecretRef: {name: google-oauth, key: secret}
+    allowedDomains: [example.org, example.com]
+    issuerURL: https://idp.example.org
+  github:
+    clientId: github-id
+    clientSecretRef: {name: github-oauth, key: secret}
+    allowedOrgs: [acme, widgets]
+    baseURL: https://ghe.example.org
+    apiBaseURL: https://ghe.example.org/api/v3
+vault:
+  address: https://vault.example.org
+  kubernetesMountPrefix: k8s/
+  credsNamespace: ops
+  clusterRoleBinding: false
+  candidateRoles: [viewer, editor]
+  tokenTTL: 45m
+  expiryWarning: 10m
+  remintBefore: 2m
+kubeconfig:
+  enabled: false
+fileBrowser:
+  enabled: false
+  maxTransferBytes: 1024
+logs:
+  historyMaxLines: 100
+  liveBufferLines: 200
+  maxLinesPerSecond: 300
+shell:
+  idleTimeout: 5m
+nodeShell:
+  enabled: true
+  image: example.org/node-shell:1
+debug:
+  image: example.org/debug:2
+  shell: /bin/sh
+  profiles:
+    - name: net
+      profile: netadmin
+      shareProcessNamespace: true
+helm:
+  version: 4
+  maxConcurrentJobs: 2
+  maxChartBytes: 2048
+  repositories:
+    - name: bitnami
+      url: https://charts.example.org
+watch:
+  maxPerUser: 7
+memory:
+  refuseNewWorkPercent: 60
+audit:
+  retentionDays: 90
+  cleanup:
+    schedule: "5 4 * * *"
+    credentialsSecret: kubelook-db-cleanup
+maintenance:
+  banner: Down at noon
+modules:
+  keda:
+    enabled: false
+  trivy:
+    enabled: auto
+prometheus:
+  clusters:
+    "v:prod":
+      url: https://prom.example.org
+telemetry:
+  otlpEndpoint: otel.example.org:4317
+egress:
+  blockLocalAddresses: false
+goMemLimit: 400MiB
+resources:
+  limits:
+    memory: 450Mi
+hostAliases:
+  - ip: 10.0.0.5
+    hostnames: [vault.internal]
+podAnnotations:
+  example.org/note: full
+nodeSelector:
+  kubernetes.io/os: linux
+tolerations:
+  - key: dedicated
+    operator: Exists
+service:
+  type: ClusterIP
+  port: 8080
+  sessionAffinity: ClientIP
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+  hosts:
+    - host: kubelook.example.org
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: kubelook-tls
+      hosts: [kubelook.example.org]
+networkPolicy:
+  enabled: true
+  egress:
+    - to:
+        - ipBlock: {cidr: 10.0.0.0/8}

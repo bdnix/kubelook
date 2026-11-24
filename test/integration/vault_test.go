@@ -109,7 +109,7 @@ func TestVault_Open_MintsCredentialsOnTheRealClusterAndAuditsThem(t *testing.T) 
 		"Vault's creds endpoint creates a service account in the itops namespace")
 
 	var issued bool
-	for _, l := range it.AuditLines(t, "kubelook-it-app") {
+	for _, l := range it.AuditLines(t) {
 		if l.Verb != "vault-credential-issued" || l.Account["email"] != "vault-open@corp.example" {
 			continue
 		}

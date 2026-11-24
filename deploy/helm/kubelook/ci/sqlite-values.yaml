@@ -1,0 +1,7 @@
+# SQLite, one replica, no audit cleanup: the smallest valid installation.
+encryption:
+  keySecret: kubelook-key
+server:
+  publicURL: https://kubelook.example.org
+audit:
+  retentionDays: 0
