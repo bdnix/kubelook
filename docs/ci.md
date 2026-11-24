@@ -13,7 +13,7 @@ pull request / merge queue / main
 ├── test-ui ─────────┤
 ├── test-ui-browser ─┤
 ├── lint-chart ──────┤
-├── review-dependencies (pull requests only)
+├── review-dependencies (pull requests and merge queue)
 └── build-image (amd64 + arm64, native runners) ──► test-e2e
                                                         │
 main only, after every check above passed:              ▼
@@ -42,7 +42,7 @@ release ──► publish-image ──► publish-chart
 | `lint-chart` | Lint & render Helm chart | The chart lints and renders with every values file in `deploy/helm/kubelook/ci`; the rendered objects have the required properties; the rendered `config.yaml` loads with the application's strict loader; invalid combinations fail; `ct lint` is clean |
 | `build-image` | Build & scan image (amd64), Build & scan image (arm64) | The image builds for the architecture, runs `version`, runs as `65532:65532`, has no shell, and has no fixable HIGH or CRITICAL vulnerability (Trivy) |
 | `test-e2e` | Integration & e2e tests | Kubelook installed from its chart works against real Vault, real PostgreSQL and two real Kubernetes clusters: sign-in, the Vault path, kubeconfig clusters, live data and day-2 operations, two replicas sharing sessions, a replica that stops or dies, the audit roles, the key change, the browser suite, and the chart upgrade and uninstall |
-| `review-dependencies` | Review dependency changes | Pull requests add no dependency with a high-severity advisory (pull requests only) |
+| `review-dependencies` | Review dependency changes | The change adds no dependency with a high-severity advisory (pull requests and the merge queue; not on pushes to `main`) |
 | `release` | Prepare release | On `main` only, after every check passed: keeps the release pull request up to date, or creates the tag and the GitHub release when that pull request was merged ([releasing.md](releasing.md)) |
 | `publish-image` | Publish container image | On `main` only: pushes the tested amd64 and arm64 builds as one image (`main`, `sha-<commit>`, and the version tags on a release), signs it, attests provenance and an SBOM per architecture, and verifies all of it from the registry |
 | `publish-chart` | Publish Helm chart | On `main` only: publishes the chart pinned to that image's digest, pulls it back and renders it, and on a release attaches it to the GitHub release |
@@ -81,8 +81,8 @@ These cannot be applied from the repository and must be set by an owner:
 
 - Protect `main`; require pull requests, and turn on the merge queue (the workflow runs on `merge_group`).
 - Require these checks: `Lint GitHub Actions workflows`, `Lint & test Go code`, `Lint & test UI code`, `UI tests in Chrome`,
-  `Lint & render Helm chart`, `Build & scan image (amd64)`, `Build & scan image (arm64)` and `Integration & e2e tests`. Not
-  `Review dependency changes`: it runs only on pull requests, so it would block the merge queue.
+  `Lint & render Helm chart`, `Build & scan image (amd64)`, `Build & scan image (arm64)`, `Integration & e2e tests` and `Review
+  dependency changes`.
 - Keep the secret `GH_PAT` (the token release-please uses) as an environment secret of `production` ([releasing.md](releasing.md)).
 - Keep the environment `production` restricted to `main`; the release and publishing jobs and the `netshoot` workflow use it.
 - Restrict who can push to `main`, and disallow force pushes to it.

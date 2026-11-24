@@ -306,9 +306,11 @@ jobs:
         if: ${{ always() }}
         run: make it-down
 
+  # Pull requests and the merge queue (the action compares the merge group's base and head there). Not on pushes to
+  # main: there is nothing to compare, and the change was reviewed on its way in.
   review-dependencies:
     name: Review dependency changes
-    if: ${{ github.event_name == 'pull_request' }}
+    if: ${{ github.event_name != 'push' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
