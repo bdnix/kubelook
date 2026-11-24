@@ -21,9 +21,8 @@ import (
 	"github.com/bdnix/kubelook/test/integration/it"
 )
 
-// The PostgreSQL tests run against two replicas, kubelook-it-pg-1 (port 18081) and kubelook-it-pg-2 (port 18082),
-// which share one database and one encryption key. Both are configured with the public URL of the first, so every
-// sign-in goes through replica 1 and a client reaches replica 2 with Client.On.
+// The PostgreSQL tests address the two replicas of the release one by one: it.Replica1URL and it.Replica2URL. They
+// share one database and one encryption key; a client signed in on one reaches the other with Client.On.
 
 const pgHost = "127.0.0.1:15432"
 
@@ -78,18 +77,11 @@ func pgSignedIn(t *testing.T, sub string) *it.Client {
 	return c
 }
 
-// startReplica starts a stopped or killed replica container again and waits until it is ready.
-func startReplica(t *testing.T, name, url string) {
+// restoreReplicas waits for the Deployment to replace a stopped or killed replica, numbers it again and waits until
+// every address answers.
+func restoreReplicas(t *testing.T) {
 	t.Helper()
-	it.Docker(t, "start", name)
-	it.Eventually(t, 60*time.Second, func() bool {
-		resp, err := http.Get(url + "/readyz") //nolint:noctx,gosec // test helper polling a fixed local address
-		if err != nil {
-			return false
-		}
-		_ = resp.Body.Close()
-		return resp.StatusCode == http.StatusOK
-	}, name+" is ready")
+	it.Kubelook(t, "expose")
 }
 
 func TestPostgres_ASessionAndAnOpenedCluster_AreSharedByBothReplicas(t *testing.T) {
@@ -121,8 +113,8 @@ func TestPostgres_LogoutOnOneReplica_ClosesTheWebSocketOfTheOther(t *testing.T) 
 func TestPostgres_StoppingAReplica_TheSessionContinuesOnTheOtherAndAWatchDeliversASnapshot(t *testing.T) {
 	c1 := pgSignedIn(t, "pg-stop")
 	c2 := c1.On(it.Replica2URL)
-	it.Docker(t, "stop", "kubelook-it-pg-1")
-	t.Cleanup(func() { startReplica(t, "kubelook-it-pg-1", it.Replica1URL) })
+	it.Kubelook(t, "stop", "1")
+	t.Cleanup(func() { restoreReplicas(t) })
 
 	require.Equal(t, http.StatusOK, c2.JSON(http.MethodGet, "/api/v1/me", nil, nil), "the session continues on replica 2")
 	w := c2.WS()
@@ -137,7 +129,7 @@ func TestPostgres_ADrainJobOfAKilledReplica_IsInterruptedWithARetryOfferSeenFrom
 	c2 := c1.On(it.Replica2URL)
 	node := it.Kubectl(t, "alpha", "get", "nodes", "-o", "jsonpath={.items[0].metadata.name}")
 	t.Cleanup(func() {
-		startReplica(t, "kubelook-it-pg-1", it.Replica1URL)
+		restoreReplicas(t)
 		it.Kubectl(t, "alpha", "uncordon", node)
 		for _, d := range []string{"logger", "shell"} {
 			it.Kubectl(t, "alpha", "-n", "demo", "rollout", "status", "deployment/"+d, "--timeout=180s")
@@ -159,7 +151,7 @@ func TestPostgres_ADrainJobOfAKilledReplica_IsInterruptedWithARetryOfferSeenFrom
 		return job.Status == "running"
 	}, "the drain job runs")
 
-	it.Docker(t, "kill", "kubelook-it-pg-1")
+	it.Kubelook(t, "kill", "1")
 	it.Eventually(t, 90*time.Second, func() bool {
 		job.Status, job.Offers = "", nil
 		c2.JSON(http.MethodGet, "/api/v1/jobs/"+started.JobID, nil, &job)
@@ -238,7 +230,7 @@ func TestPostgres_RolesScript_CoversALaterMigrationAndChangesTheRetentionPeriod(
 	assert.True(t, auditRowExists(t, owner, "it-keep"))
 }
 
-// This test replaces the key of both replicas, so it stays last in the file.
+// This test replaces the key of both replicas and restores it afterwards.
 func TestPostgres_ChangingTheEncryptionKey_SignsUsersOutAndDiscardsSavedCopiesWithoutLeakingAKey(t *testing.T) {
 	c := pgSignedIn(t, "pg-key")
 	sealed := c.AddVaultToken(it.Token("BOB_TOKEN"))
@@ -248,8 +240,8 @@ func TestPostgres_ChangingTheEncryptionKey_SignsUsersOutAndDiscardsSavedCopiesWi
 	_, err := rand.Read(raw)
 	require.NoError(t, err)
 	newKey := base64.StdEncoding.EncodeToString(raw)
-	t.Cleanup(func() { it.PG(t, "replicas") }) // back to the key of .it/app.env
-	it.PG(t, "replicas", newKey)
+	t.Cleanup(func() { it.Kubelook(t, "rekey") }) // back to the key of .it/app.env
+	it.Kubelook(t, "rekey", newKey)
 
 	// The spec: active-session credentials become unreadable, so every signed-in user is signed out. The first request
 	// that reads the session's credential ends the session; after that the cookie is refused.
@@ -274,7 +266,7 @@ func TestPostgres_ChangingTheEncryptionKey_SignsUsersOutAndDiscardsSavedCopiesWi
 	assert.Contains(t, res.Results[0].Message, "encryption key was changed")
 
 	var found bool
-	for _, l := range it.AuditLines(t, "kubelook-it-pg-1") {
+	for _, l := range it.AuditLines(t) {
 		if l.Verb != "key-changed" {
 			continue
 		}
@@ -288,5 +280,5 @@ func TestPostgres_ChangingTheEncryptionKey_SignsUsersOutAndDiscardsSavedCopiesWi
 		assert.NotContains(t, l.Raw, newKey)
 	}
 	assert.True(t, found, "the audit output has a key-changed line")
-	assert.False(t, strings.Contains(it.Logs(t, "kubelook-it-pg-1"), newKey), "the log never contains the key")
+	assert.False(t, strings.Contains(it.Logs(t), newKey), "the log never contains the key")
 }

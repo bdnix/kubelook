@@ -87,7 +87,7 @@ func TestExec_Audit_RecordsStartAndStopButNeverTheOutput(t *testing.T) {
 
 	it.Eventually(t, 20*time.Second, func() bool {
 		var start, stop bool
-		for _, l := range it.AuditLines(t, "kubelook-it-app") {
+		for _, l := range it.AuditLines(t) {
 			if l.Account["email"] != "exec-audit@corp.example" {
 				continue
 			}

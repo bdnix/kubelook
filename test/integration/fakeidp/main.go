@@ -166,7 +166,7 @@ func allowedRedirect(u *url.URL) bool {
 		return false
 	}
 	switch u.Hostname() {
-	case "localhost", "127.0.0.1", "kubelook-it-app", "kubelook-it-pg-1", "kubelook-it-pg-2":
+	case "localhost", "127.0.0.1":
 		return true
 	}
 	return false

@@ -51,7 +51,7 @@ func TestLogs_TailLines_ReturnsExactlyThatManyThenEOF_AndTheAuditHasNoLogText(t 
 
 	it.Eventually(t, 20*time.Second, func() bool {
 		var open, closed bool
-		for _, l := range it.AuditLines(t, "kubelook-it-app") {
+		for _, l := range it.AuditLines(t) {
 			if l.Account["email"] != "logs-tail@corp.example" {
 				continue
 			}
