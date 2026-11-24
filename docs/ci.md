@@ -85,7 +85,7 @@ These cannot be applied from the repository and must be set by an owner:
   Smoke Test & Scan (arm64)` and `Integration & End-to-End Tests (Helm-installed, kind, Vault, PostgreSQL)`. Remove the checks that no
   longer exist: `Container Image: Build & Vulnerability Scan`, `Helm Chart: Install Tests (kind)` and the old name of the integration
   job.
-- Create the secret `RELEASE_PLEASE_TOKEN` ([releasing.md](releasing.md)).
+- Keep the secret `GH_PAT` (the token release-please uses) as an environment secret of `production` ([releasing.md](releasing.md)).
 - Keep the environment `production` restricted to `main`; the release and publishing jobs and the `netshoot` workflow use it.
 - Restrict who can push to `main`, and disallow force pushes to it.
 - Enable the dependency graph and Dependabot alerts (`dependency-review` fails without the dependency graph).

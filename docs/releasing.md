@@ -44,10 +44,13 @@ changelog starts after `v0.1.0-rc.1`.
 ## The token release-please needs
 
 Pull requests and releases created with the workflow's own `GITHUB_TOKEN` do not trigger workflows, so the release pull request would
-never get its checks and could not be merged. The `Release` job therefore uses the repository secret `RELEASE_PLEASE_TOKEN` when it
-exists: a fine-grained personal access token or a GitHub App token for this repository with read and write access to contents and
-pull requests. Without the secret it falls back to `GITHUB_TOKEN`; the release pull request then needs its checks started by hand
-(for example by closing and reopening it).
+never get its checks and could not be merged. The `Release` job therefore uses the secret `GH_PAT`: a fine-grained personal access
+token limited to this repository, with read and write access to contents and pull requests. It is an environment secret of
+`production`, so only the jobs that declare that environment can read it, and only on `main`. Without the secret the job falls back
+to `GITHUB_TOKEN`; the release pull request then needs its checks started by hand (close and reopen it).
+
+If the job fails while labelling its pull request, the token also needs read and write access to issues: release-please labels its
+pull requests through the issues API.
 
 ## Verifying a release
 

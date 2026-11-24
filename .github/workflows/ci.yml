@@ -345,7 +345,7 @@ jobs:
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           # A token other than GITHUB_TOKEN, so that the release pull request triggers the checks (docs/releasing.md).
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          token: ${{ secrets.GH_PAT || github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
 
