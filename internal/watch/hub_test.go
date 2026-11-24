@@ -648,6 +648,43 @@ func TestHub_WatchErrorEventForbidden_FailsPermanently(t *testing.T) {
 	assert.Equal(t, "failed forbidden", r.next(t))
 }
 
+// retryScheduled waits until the upstream has set its retry timer, and fails the test instead of hanging when it
+// never does (an upstream that gave up schedules no retry).
+func retryScheduled(t *testing.T, e *hubEnv) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() { e.clock.BlockUntil(1); close(done) }()
+	testutil.Recv(t, done)
+}
+
+// A 401 means the credential expired or was replaced, not that the user lacks the right: the hub backs off and
+// reconnects, and the next attempt gets a fresh client (re-minted credential). Spec: watches resume.
+func TestHub_WatchErrorEventUnauthorized_BacksOffAndReconnectsWithoutFailing(t *testing.T) {
+	e := newHubEnv(t)
+	r := newRec()
+	e.subscribe(t, sessA, "", r)
+	r.next(t)
+	w := e.watcher(t)
+	w.Error(&metav1.Status{Status: metav1.StatusFailure, Code: 401, Reason: metav1.StatusReasonUnauthorized, Message: "token expired"})
+	retryScheduled(t, e)
+	e.clock.Advance(time.Second)
+	w2 := e.watcher(t)
+	w2.Add(withRV(pod("c"), "101"))
+	assert.Equal(t, "ADDED c", r.next(t), "the subscriber was not failed and gets the events of the new watch")
+}
+
+func TestHub_ListUnauthorized_RetriesAfterTheBackoff(t *testing.T) {
+	e := newHubEnv(t, func(e *hubEnv) { e.listErr = apierrors.NewUnauthorized("token expired") })
+	r := newRec()
+	e.subscribe(t, sessA, "", r)
+	retryScheduled(t, e)
+	e.mu.Lock()
+	e.listErr = nil
+	e.mu.Unlock()
+	e.clock.Advance(time.Second)
+	assert.Equal(t, "snapshot rv=100 [a b]", r.next(t), "no failure frame before the snapshot")
+}
+
 func TestHub_ListFailureThatIsTransient_RetriesAfterTheBackoff(t *testing.T) {
 	e := newHubEnv(t, func(e *hubEnv) { e.listErr = errors.New("timeout") })
 	r := newRec()
