@@ -1,4 +1,4 @@
-name: ci
+name: CI
 
 # The pipeline (docs/ci.md): fast checks and the image build run in parallel; the real-system tests run against the
 # image the build made; on main, after every check passed, release-please updates the release pull request or cuts
@@ -24,8 +24,8 @@ defaults:
 jobs:
   # The workflows themselves: actionlint for correctness, zizmor for security (template injection, permissions,
   # unpinned actions and the like).
-  workflow-lint:
-    name: "Workflows: Lint & Security Audit"
+  lint-actions:
+    name: Lint GitHub Actions workflows
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -42,8 +42,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}   # for the audits that look actions up on GitHub
         run: pipx run zizmor==1.33.1 --no-progress --config .github/zizmor.yml .github/workflows .github/actions
 
-  backend-tests:
-    name: "Backend: Lint, Unit Tests & Coverage"
+  test-go:
+    name: Lint & test Go code
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
@@ -73,8 +73,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  frontend-tests:
-    name: "Frontend: Lint, Unit Tests & Coverage"
+  test-ui:
+    name: Lint & test UI code
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -110,8 +110,8 @@ jobs:
 
   # The built web app in real Chromium, with the API answered by the tests (web/ui).
   # The full-stack browser tests (real backend, Vault, clusters) are Step 7.10.
-  ui-tests:
-    name: UI Tests (Playwright)
+  test-ui-browser:
+    name: UI tests in Chrome
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -140,8 +140,8 @@ jobs:
           retention-days: 7
 
 
-  chart-tests:
-    name: "Helm Chart: Lint & Template Tests"
+  lint-chart:
+    name: Lint & render Helm chart
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -161,8 +161,8 @@ jobs:
   # The image is built once per architecture, on a native runner, and every later job uses that build: the
   # real-system tests load it, and on main the publishing job pushes it. Each architecture is smoke-tested and scanned
   # where it was built.
-  build:
-    name: "Image: Build, Smoke Test & Scan (${{ matrix.arch }})"
+  build-image:
+    name: Build & scan image (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
@@ -250,9 +250,9 @@ jobs:
   # Real Vault, real PostgreSQL, real Kubernetes: Kubelook is installed from its Helm chart (two replicas) into a host
   # kind cluster and manages two more (Kubernetes 1.35 and 1.37). The Go suite, the browser suite and the chart's life
   # cycle (upgrade, uninstall) all run against that one release of the image the build job made.
-  integration-tests:
-    name: "Integration & End-to-End Tests (Helm-installed, kind, Vault, PostgreSQL)"
-    needs: [build]
+  test-e2e:
+    name: Integration & e2e tests
+    needs: [build-image]
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
@@ -306,8 +306,8 @@ jobs:
         if: ${{ always() }}
         run: make it-down
 
-  dependency-review:
-    name: Dependency Review
+  review-dependencies:
+    name: Review dependency changes
     if: ${{ github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -326,10 +326,10 @@ jobs:
   # On main, after every check passed: release-please keeps the release pull request up to date, and when that pull
   # request was merged it creates the tag and the GitHub release (docs/releasing.md). It runs here, after the checks,
   # so a release is never cut from a commit whose checks failed.
-  release-please:
-    name: Release
+  release:
+    name: Prepare release
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [workflow-lint, backend-tests, frontend-tests, ui-tests, chart-tests, build, integration-tests]
+    needs: [lint-actions, test-go, test-ui, test-ui-browser, lint-chart, build-image, test-e2e]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     environment: production   # restricted to the main branch in the repository settings (docs/ci.md)
@@ -352,9 +352,9 @@ jobs:
   # Pushes the images the build job made and the tests used (never a rebuild), as one multi-architecture image; signs
   # it; attests provenance and the SBOM of each architecture; then verifies all of it from the registry.
   publish-image:
-    name: Publish Container Image
+    name: Publish container image
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [release-please]
+    needs: [release]
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     environment: production   # restricted to the main branch in the repository settings (docs/ci.md)
@@ -367,8 +367,8 @@ jobs:
       digest: ${{ steps.manifest.outputs.digest }}
     env:
       IMAGE: ghcr.io/bdnix/kubelook
-      RELEASE: ${{ needs.release-please.outputs.release_created }}
-      VERSION: ${{ needs.release-please.outputs.version }}
+      RELEASE: ${{ needs.release.outputs.release_created }}
+      VERSION: ${{ needs.release.outputs.version }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -458,9 +458,9 @@ jobs:
 
   # The chart as an OCI artifact, pinned to the digest of the image just published; then pulled back and rendered.
   publish-chart:
-    name: Publish Helm Chart
+    name: Publish Helm chart
     if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-    needs: [release-please, publish-image]
+    needs: [release, publish-image]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: production   # restricted to the main branch in the repository settings (docs/ci.md)
@@ -468,9 +468,9 @@ jobs:
       contents: write   # the chart archive is attached to the GitHub release
       packages: write
     env:
-      RELEASE: ${{ needs.release-please.outputs.release_created }}
-      VERSION: ${{ needs.release-please.outputs.version }}
-      TAG: ${{ needs.release-please.outputs.tag_name }}
+      RELEASE: ${{ needs.release.outputs.release_created }}
+      VERSION: ${{ needs.release.outputs.version }}
+      TAG: ${{ needs.release.outputs.tag_name }}
       DIGEST: ${{ needs.publish-image.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

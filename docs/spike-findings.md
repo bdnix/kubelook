@@ -5,7 +5,7 @@ Written answers to the spec's "To confirm in the spike" list. Each section has t
 ## Helm 3 release managed by Kubelook (Helm 4)
 
 - **Result:** works on both kind clusters (Kubernetes 1.35 and 1.37). A release installed with the Helm 3.22.1 CLI is listed by Kubelook with its notes, masked manifest and values; an upgrade through Kubelook (revision 2) stays on client-side apply (no field moved to a server-side-apply manager); a rollback through Kubelook to revision 1 gives revision 3; the Helm 3 CLI then shows revision 3 `deployed`, three history entries and `greeting: one`; an uninstall through Kubelook removes it.
-- **How it was checked:** `TestHelm_ReleasesMadeByHelm3_AreManagedThroughKubelookAndStayManageableByHelm3` in the `integration-tests` job (Helm 4.3.1 SDK, Helm 3.22.1 CLI).
+- **How it was checked:** `TestHelm_ReleasesMadeByHelm3_AreManagedThroughKubelookAndStayManageableByHelm3` in the `test-e2e` job (Helm 4.3.1 SDK, Helm 3.22.1 CLI).
 - **Date:** 2026-11-20
 - **Consequence for the plan:** none; this was required (A31) and it holds. The same run found that the Helm 4 SDK refuses to run an action without a wait strategy; the adapter now sets the CLI default (hooks only).
 
@@ -52,7 +52,7 @@ Written answers to the spec's "To confirm in the spike" list. Each section has t
 ## U1: minting credentials on Vault 2.2.1
 
 - **Result:** works. Vault 2.2.1 mints service account tokens on both kind clusters (Kubernetes 1.35 and 1.37) through `kubernetes/<cluster>/creds/<role>`, with a role bound to `cluster-admin` and one bound to `view`. The two policy results of plan §2 held too: a token lists only the mounts its policies allow, and a `create`-only grant does not count as `update`.
-- **How it was checked:** `hack/vault-setup.sh` (it runs on every `make it-up`) and `TestVault_Discovery_…`, `TestVault_Open_…`, `TestVault_ViewerRole_…` and `TestVault_Remint_…` in the `integration-tests` job.
+- **How it was checked:** `hack/vault-setup.sh` (it runs on every `make it-up`) and `TestVault_Discovery_…`, `TestVault_Open_…`, `TestVault_ViewerRole_…` and `TestVault_Remint_…` in the `test-e2e` job.
 - **Date:** 2026-11-20
 - **Consequence for the plan:** none. Mounts need the `itops` namespace to exist in the cluster, or minting fails.
 

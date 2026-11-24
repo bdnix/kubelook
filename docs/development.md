@@ -129,15 +129,15 @@ integration environment. Most screens are tested without any backend: `web/ui` a
 
 | Layer | Where | Runs in CI as |
 | --- | --- | --- |
-| Go unit tests | next to the code, `x_test.go` in package `x_test` | `backend-tests` |
-| Web unit tests | next to the code, `X.test.tsx` | `frontend-tests` |
-| Browser tests of the web app | `web/ui/*.ui.ts` | `ui-tests` |
-| Integration: Kubelook installed from its chart, real Vault, real Kubernetes, PostgreSQL | `test/integration` (build tag `integration`) | `integration-tests` |
-| Browser tests of the whole stack | `test/e2e` | `integration-tests` |
-| Helm chart: render and assert | `hack/chart-test.sh` | `chart-tests` |
-| Helm chart: upgrade and uninstall of the installed release | `test/integration/zzz_chart_test.go` | `integration-tests` |
-| Image: build, smoke test and scan per architecture | `ci.yml` | `build` |
-| Workflows: actionlint and zizmor | `ci.yml` | `workflow-lint` |
+| Go unit tests | next to the code, `x_test.go` in package `x_test` | `test-go` |
+| Web unit tests | next to the code, `X.test.tsx` | `test-ui` |
+| Browser tests of the web app | `web/ui/*.ui.ts` | `test-ui-browser` |
+| Integration: Kubelook installed from its chart, real Vault, real Kubernetes, PostgreSQL | `test/integration` (build tag `integration`) | `test-e2e` |
+| Browser tests of the whole stack | `test/e2e` | `test-e2e` |
+| Helm chart: render and assert | `hack/chart-test.sh` | `lint-chart` |
+| Helm chart: upgrade and uninstall of the installed release | `test/integration/zzz_chart_test.go` | `test-e2e` |
+| Image: build, smoke test and scan per architecture | `ci.yml` | `build-image` |
+| Workflows: actionlint and zizmor | `ci.yml` | `lint-actions` |
 
 A failing integration test is a product bug: the tests run against the real image, Vault and clusters, with one stand-in for the
 identity providers.
