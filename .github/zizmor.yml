@@ -3,3 +3,9 @@ rules:
   # It suggests the "$/" form for local actions; actionlint, which runs in the same job, is not known to accept it.
   self-repository:
     disable: true
+  # The build job restores the cache of its BuildKit cache mounts, and on main its image is published. GitHub scopes
+  # caches by branch: a build of main restores only caches that builds of main saved, so a pull request cannot poison
+  # what main publishes, and whoever can push to main controls the build anyway.
+  cache-poisoning:
+    ignore:
+      - ci.yml:188

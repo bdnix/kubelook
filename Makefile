@@ -88,7 +88,7 @@ it-down:
 	hack/it-down.sh
 
 it:
-	go test -tags integration -count=1 -p 1 -timeout 30m ./test/integration/...
+	go test -tags integration -count=1 -p 1 -timeout 30m -v ./test/integration/...
 	@echo "INTEGRATION OK"
 
 e2e:
