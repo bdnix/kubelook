@@ -1,7 +1,8 @@
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directory: /
+    # "/" covers .github/workflows; composite actions are found only in the directories listed here.
+    directories: ["/", "/.github/actions/*"]
     schedule: { interval: weekly }
     groups:
       actions: { patterns: ["*"] }
