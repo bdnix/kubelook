@@ -149,18 +149,25 @@ type env struct {
 	auditOut *bytes.Buffer
 	deps     logs.Deps
 	kept     atomic.Int32
+	keeps    chan struct{} // one value per keep-alive, so a test can wait for a tick to be handled
 	sess     session.Session
 }
 
 func newEnv(t *testing.T, perSecond int) *env {
 	t.Helper()
-	e := &env{src: &source{rd: newReader()}, sink: newSink(), clock: clock.NewFake(t0), auditOut: &bytes.Buffer{}, sess: session.Session{Hash: "sh", UserID: "u1"}}
+	e := &env{src: &source{rd: newReader()}, sink: newSink(), clock: clock.NewFake(t0), auditOut: &bytes.Buffer{}, sess: session.Session{Hash: "sh", UserID: "u1"}, keeps: make(chan struct{}, 64)}
 	db := storetest.New(t)
 	n := 0
 	rec := audit.NewRecorder(db, e.clock, e.auditOut, func() string { n++; return fmt.Sprintf("a%d", n) })
 	e.deps = logs.Deps{
 		Source: e.src, Clock: e.clock, Audit: rec, MaxLinesPerSecond: perSecond,
-		KeepAlive: func(context.Context, string) { e.kept.Add(1) },
+		KeepAlive: func(context.Context, string) {
+			e.kept.Add(1)
+			select { // never blocks the stream: tests that do not read keeps ignore it
+			case e.keeps <- struct{}{}:
+			default:
+			}
+		},
 	}
 	return e
 }
@@ -189,13 +196,19 @@ func TestStream_LinesAreSplitIntoTimestampAndTextAndFlushedEvery100ms(t *testing
 		{"ts": "2026-11-14T12:00:00.000000001Z", "text": "hello world"},
 		{"ts": "2026-11-14T12:00:01Z", "text": "second"},
 	}, got)
+	testutil.Recv(t, e.keeps)
 	assert.EqualValues(t, 1, e.kept.Load(), "every tick keeps the session alive")
+	// Each tick is handled before the clock moves again: a ticker drops a tick that is still pending, so two
+	// advances in a row could count as one.
 	e.clock.Advance(100 * time.Millisecond)
+	testutil.Recv(t, e.keeps)
 	e.clock.Advance(100 * time.Millisecond)
+	testutil.Recv(t, e.keeps)
 	e.src.rd.feed(t, "2026-11-14T12:00:02Z third\n")
 	e.clock.Advance(100 * time.Millisecond)
 	assert.Equal(t, "third", linesOf(e.sink.next(t))[0]["text"])
-	assert.GreaterOrEqual(t, e.kept.Load(), int32(3))
+	testutil.Recv(t, e.keeps)
+	assert.EqualValues(t, 4, e.kept.Load(), "one keep-alive per tick")
 }
 
 func TestStream_FiveHundredPendingLinesFlushWithoutWaitingForTheTick(t *testing.T) {
