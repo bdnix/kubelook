@@ -1,0 +1,71 @@
+{{- if gt (int .Values.audit.retentionDays) 0 }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "kubelook.fullname" . }}-audit-cleanup
+  labels: {{- include "kubelook.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.audit.cleanup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels: {{- include "kubelook.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: audit-cleanup
+        spec:
+          restartPolicy: OnFailure
+          automountServiceAccountToken: false
+          securityContext: {{- include "kubelook.podSecurityContext" . | nindent 12 }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.hostAliases }}
+          hostAliases: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if not (include "kubelook.postgres" .) }}
+          # A ReadWriteOnce volume: run on the node of the console.
+          affinity:
+            podAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                - topologyKey: kubernetes.io/hostname
+                  labelSelector:
+                    matchExpressions:
+                      - {key: app.kubernetes.io/name, operator: In, values: [{{ include "kubelook.name" . }}]}
+                      - {key: app.kubernetes.io/instance, operator: In, values: [{{ .Release.Name }}]}
+                      - {key: app.kubernetes.io/component, operator: DoesNotExist}
+          {{- end }}
+          containers:
+            - name: audit-cleanup
+              image: {{ include "kubelook.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args: [audit-cleanup]
+              env:
+                {{- include "kubelook.secretEnv" . | nindent 16 }}
+                {{- if include "kubelook.postgres" . }}
+                - name: KUBELOOK_AUDIT_CLEANUP_DATABASE_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ .Values.audit.cleanup.credentialsSecret }}
+                      key: url
+                {{- end }}
+              securityContext: {{- include "kubelook.containerSecurityContext" . | nindent 16 }}
+              volumeMounts:
+                - {name: config, mountPath: /etc/kubelook, readOnly: true}
+                - {name: tmp, mountPath: /tmp}
+                {{- if not (include "kubelook.postgres" .) }}
+                - {name: data, mountPath: {{ include "kubelook.dataDir" . }}}
+                {{- end }}
+          volumes:
+            - name: config
+              configMap:
+                name: {{ include "kubelook.fullname" . }}
+            - name: tmp
+              emptyDir: {}
+            {{- if not (include "kubelook.postgres" .) }}
+            - name: data
+              persistentVolumeClaim:
+                claimName: {{ include "kubelook.fullname" . }}-data
+            {{- end }}
+{{- end }}

@@ -12,6 +12,11 @@ on:
 permissions:
   contents: read
 
+# A run is never cancelled: a publishing run must finish, and two runs of the same workflow queue.
+concurrency:
+  group: netshoot
+  cancel-in-progress: false
+
 defaults:
   run:
     shell: bash
@@ -20,6 +25,7 @@ jobs:
   publish:
     name: Publish Debug Image
     runs-on: ubuntu-24.04
+    environment: production   # restricted to the main branch in the repository settings (docs/ci.md)
     timeout-minutes: 30
     permissions:
       contents: read

@@ -5,8 +5,6 @@ package integration
 import (
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -82,43 +80,4 @@ func TestEdit_ApplyOfTwoDocuments_CreatesBothObjects(t *testing.T) {
 	for _, r := range res.Results {
 		assert.Empty(t, r.Error)
 	}
-}
-
-// TestEdit_ConflictRateOnABusyObject records how often a save of a Deployment is refused with 409 while it
-// rolls out (spec "to confirm in the spike"). It asserts nothing about the rate: the count goes to the log and
-// to .it/findings/yaml-save-conflicts.txt, and docs/spike-findings.md quotes it.
-func TestEdit_ConflictRateOnABusyObject_IsRecordedNotAsserted(t *testing.T) {
-	c := devopsClient(t, "edit-busy")
-	ns := deploy(t, "busy")
-	it.Kubectl(t, "alpha", "-n", ns, "scale", "deployment/busy", "--replicas=3")
-	it.Kubectl(t, "alpha", "-n", ns, "set", "env", "deployment/busy", "IT_ROLLOUT=1") // the rollout runs while we save
-
-	path := func(q string) string {
-		return "/api/v1/clusters/v:alpha/resources/apps/v1/deployments/busy?namespace=" + ns + q
-	}
-	conflicts, saved := 0, 0
-	for i := range 20 {
-		var obj map[string]any
-		require.Equal(t, http.StatusOK, c.JSON(http.MethodGet, path(""), nil, &obj))
-		md, _ := obj["metadata"].(map[string]any)
-		ann, _ := md["annotations"].(map[string]any)
-		if ann == nil {
-			ann = map[string]any{}
-		}
-		ann["it/save"] = fmt.Sprint(i)
-		md["annotations"] = ann
-		switch status := c.JSON(http.MethodPut, path(""), obj, nil); status {
-		case http.StatusOK:
-			saved++
-		case http.StatusConflict:
-			conflicts++
-		default:
-			t.Fatalf("save %d answered %d", i, status)
-		}
-	}
-	line := fmt.Sprintf("20 saves of a Deployment during a rollout: %d saved, %d refused with 409", saved, conflicts)
-	t.Log(line)
-	dir := filepath.Join(it.Root(), ".it", "findings")
-	require.NoError(t, os.MkdirAll(dir, 0o750))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "yaml-save-conflicts.txt"), []byte(line+"\n"), 0o600))
 }

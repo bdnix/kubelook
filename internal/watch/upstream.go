@@ -238,6 +238,18 @@ func permanent(err error) bool {
 	return errors.Is(err, apperr.ErrForbidden) || errors.Is(err, apperr.ErrNotFound) || errors.Is(err, apperr.ErrInvalid)
 }
 
+// errCredentialRefused is a 401 from the API server: the credential expired or was replaced. It is not
+// permanent: the next attempt gets a fresh client, whose credential the broker re-mints (spec: watches resume).
+var errCredentialRefused = errors.New("the cluster refused the credential; retrying with a fresh one")
+
+// mapErr maps a Kubernetes error for the hub. A 401 is retried; everything else maps as for any request.
+func mapErr(err error) error {
+	if apierrors.IsUnauthorized(err) {
+		return errCredentialRefused
+	}
+	return kube.MapError(err)
+}
+
 func isGone(err error) bool { return apierrors.IsGone(err) || apierrors.IsResourceExpired(err) }
 
 func (u *upstream) failAll(err error) {
@@ -257,7 +269,7 @@ func (u *upstream) establish(ctx context.Context) (stop bool) {
 	}
 	dyn, err := u.h.d.Clients.Dynamic(ctx, u.sess, u.key.Cluster)
 	if err != nil {
-		return u.failed(ctx, kube.MapError(err))
+		return u.failed(ctx, mapErr(err))
 	}
 	opts := metav1.ListOptions{ResourceVersion: u.rv, AllowWatchBookmarks: true, FieldSelector: u.key.FieldSelector}
 	res := dyn.Resource(u.key.GVR)
@@ -272,7 +284,7 @@ func (u *upstream) establish(ctx context.Context) (stop bool) {
 			u.needList = true
 			return false
 		}
-		return u.failed(ctx, kube.MapError(err))
+		return u.failed(ctx, mapErr(err))
 	}
 	u.w, u.watchedAt, u.gotEvent = w, u.h.d.Clock.Now(), false
 	return false
@@ -304,7 +316,7 @@ const maxListRestarts = 3
 func (u *upstream) list(ctx context.Context) error {
 	dyn, err := u.h.d.Clients.Dynamic(ctx, u.sess, u.key.Cluster)
 	if err != nil {
-		return kube.MapError(err)
+		return mapErr(err)
 	}
 	res := dyn.Resource(u.key.GVR)
 	fresh := map[types.UID]*unstructured.Unstructured{}
@@ -323,7 +335,7 @@ func (u *upstream) list(ctx context.Context) error {
 				fresh, rv, cont, restarts = map[types.UID]*unstructured.Unstructured{}, "", "", restarts+1
 				continue
 			}
-			return kube.MapError(err)
+			return mapErr(err)
 		}
 		if cont == "" {
 			rv = page.GetResourceVersion()
@@ -388,8 +400,8 @@ func (u *upstream) onEvent(ev k8swatch.Event, ok bool) bool {
 		switch {
 		case isGone(err):
 			u.needList = true
-		case permanent(kube.MapError(err)):
-			u.failAll(kube.MapError(err))
+		case permanent(mapErr(err)):
+			u.failAll(mapErr(err))
 			return true
 		default:
 			u.scheduleRetry()
