@@ -1,0 +1,7 @@
+Kubelook is installed as {{ include "kubelook.fullname" . }}.
+It answers at {{ .Values.server.publicURL }}. Sign-in redirect addresses to register with the identity providers:
+  {{ .Values.server.publicURL }}/auth/google/callback
+  {{ .Values.server.publicURL }}/auth/github/callback
+{{- if .Values.ingress.enabled }}
+The ingress must support WebSockets and must not time out idle connections in under 60 seconds.
+{{- end }}

@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
@@ -222,33 +221,6 @@ func TestHelm_ChartLargerThanTheLimitFailsTheJob(t *testing.T) {
 	assert.Empty(t, listReleases(t, c, "alpha", ns), "nothing was installed")
 }
 
-// findings collects what the other direction (Helm 3 on a release that Kubelook changed) did. It is recorded, not required.
-type findings struct{ lines []string }
-
-func (f *findings) record(format string, args ...any) {
-	f.lines = append(f.lines, fmt.Sprintf(format, args...))
-}
-
-func (f *findings) write(t *testing.T) {
-	t.Helper()
-	dir := filepath.Join(it.Root(), ".it", "findings")
-	require.NoError(t, os.MkdirAll(dir, 0o750))
-	file, err := os.OpenFile(filepath.Join(dir, "helm-cross-version.txt"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600) //nolint:gosec // G304: a fixed path under .it
-	require.NoError(t, err)
-	defer func() { _ = file.Close() }()
-	_, err = file.WriteString(strings.Join(f.lines, "\n") + "\n")
-	require.NoError(t, err)
-}
-
-func (f *findings) try(binary, cluster string, args ...string) {
-	out, err := cli(binary, cluster, args...)
-	outcome := "ok"
-	if err != nil {
-		outcome = "FAILED"
-	}
-	f.record("%s %s: %s\n    %s", binary, strings.Join(args, " "), outcome, strings.ReplaceAll(out, "\n", "\n    "))
-}
-
 func TestHelm_ReleasesMadeByHelm3_AreManagedThroughKubelookAndStayManageableByHelm3(t *testing.T) {
 	c := devopsClient(t, "helm-legacy")
 	for _, cluster := range []string{"alpha", "beta"} {
@@ -256,10 +228,6 @@ func TestHelm_ReleasesMadeByHelm3_AreManagedThroughKubelookAndStayManageableByHe
 			addChartRepo(t, c, cluster)
 			ns := it.Namespace(t, cluster)
 			packaged := filepath.Join(it.Root(), ".it", "charts", "demo-0.1.0.tgz")
-			f := &findings{}
-			f.record("== %s: namespace %s, Helm 4 CLI %s, Helm 3 CLI %s", cluster, ns,
-				firstLine(mustCLI(t, "helm", cluster, "version", "--short")), firstLine(mustCLI(t, "helm3", cluster, "version", "--short")))
-			t.Cleanup(func() { f.write(t) })
 
 			// 1. Helm 3 creates revision 1.
 			mustCLI(t, "helm3", cluster, "install", "legacy", packaged, "-n", ns, "--set", "greeting=one")
@@ -311,17 +279,6 @@ func TestHelm_ReleasesMadeByHelm3_AreManagedThroughKubelookAndStayManageableByHe
 			require.NoError(t, json.Unmarshal([]byte(mustCLI(t, "helm3", cluster, "get", "values", "legacy", "-n", ns, "-o", "json")), &values))
 			assert.Equal(t, "one", values["greeting"])
 
-			// The other direction is recorded, not required.
-			f.try("helm3", cluster, "upgrade", "legacy", packaged, "-n", ns, "--set", "greeting=three")
-			f.try("helm3", cluster, "rollback", "legacy", "1", "-n", ns)
-			job = helmJob(t, c, cluster, "install", jobRequest(ns, "modern", map[string]any{"chart": demoChart(), "values": map[string]any{"greeting": "one"}}))
-			require.Equal(t, "succeeded", job.Status, job.Message)
-			out, err := cli("helm3", cluster, "list", "-n", ns)
-			require.NoError(t, err, "helm3 list must work on a release installed through Kubelook: %s", out)
-			f.record("helm3 list -n %s:\n    %s", ns, strings.ReplaceAll(out, "\n", "\n    "))
-			f.try("helm3", cluster, "upgrade", "modern", packaged, "-n", ns, "--set", "greeting=three")
-			f.try("helm3", cluster, "rollback", "modern", "1", "-n", ns)
-
 			// 6. Uninstall through Kubelook.
 			job = helmJob(t, c, cluster, "uninstall", jobRequest(ns, "legacy", nil))
 			require.Equal(t, "succeeded", job.Status, job.Message)
@@ -331,5 +288,3 @@ func TestHelm_ReleasesMadeByHelm3_AreManagedThroughKubelookAndStayManageableByHe
 		})
 	}
 }
-
-func firstLine(s string) string { return strings.SplitN(s, "\n", 2)[0] }

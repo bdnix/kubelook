@@ -434,17 +434,16 @@ The targets below are proposed starting points, to be confirmed after the spike.
 
 The work is done in four phases, in order, and a phase with a gate must pass it before the next starts. The spike comes first because the Vault discovery design is the biggest unknown.
 
-Gate 1 has an automated form that runs first: a test suite against a real Vault and real Kubernetes clusters (kind) that proves the three statements of the gate, and that must pass on every change before the platform features are built. The run with a real user's token in a real organisation, and Gate 2, stay with the people who own the deployment. Until both have passed, releases are published as release candidates only.
+Gate 1 has an automated form that runs first: a test suite against a real Vault and real Kubernetes clusters (kind) that proves the three statements of the gate, and that must pass on every change before the platform features are built. The run with a real user's token in a real organisation stays with the people who own the deployment. Until it has passed, releases are published as release candidates only.
 
 | Phase | Scope | Gate to the next phase |
 | --- | --- | --- |
 | 0. Spike | Google and GitHub sign-in; Vault token sign-in and cluster discovery; pods list and logs on one cluster | Auth design holds |
 | 1. Core | All core kinds with live watches; YAML edit with dry run; exec shells; kubeconfig upload; structured logs; debug toolkit; pod file browser; bulk node actions; field filter; certificate details; image-tag edit; the audit log, written by every audited feature from the day it ships; the load test of the watch hub | — |
-| 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser; resource map; Karpenter; KEDA, External Secrets, Vault Secrets Operator, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | Security review |
-| 3. Harden | Metrics and tracing; full load test; retest of the security review's findings | — |
+| 2. Platform | Helm releases; Flux dashboard, reconcile and suspend; CRD browser; resource map; Karpenter; KEDA, External Secrets, Vault Secrets Operator, cert-manager and Gateway API modules; Trivy and permissions views; cluster overview triage | — |
+| 3. Harden | Metrics and tracing; full load test | — |
 
 - **Gate 1, auth design holds:** a real user's Vault token lists exactly the clusters their policies allow, and credentials are re-minted before expiry, and logout closes every open connection for the session.
-- **Gate 2, security review:** a security review of the finished features, including a penetration test, with every finding fixed before Phase 3 starts.
 
 ## Decisions
 

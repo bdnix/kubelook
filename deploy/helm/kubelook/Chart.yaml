@@ -1,0 +1,10 @@
+apiVersion: v2
+name: kubelook
+description: Kubelook, a web console for Kubernetes clusters whose access is granted by Vault
+type: application
+# The pipeline replaces version and appVersion when it publishes the chart (PLAN.md Step 8.4).
+version: 0.0.0-dev
+appVersion: main
+home: https://github.com/bdnix/kubelook
+sources:
+  - https://github.com/bdnix/kubelook

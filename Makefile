@@ -14,7 +14,7 @@ COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X github.com/bdnix/kubelook/internal/version.Version=$(VERSION) -X github.com/bdnix/kubelook/internal/version.Commit=$(COMMIT)
 COVER_TOOL := github.com/vladopajic/go-test-coverage/v2@v2.23.0
 
-.PHONY: load it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
+.PHONY: docs-check chart-test it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
 
 tools:
 	hack/install-tools.sh
@@ -29,7 +29,10 @@ lint-backend:
 lint-frontend:
 	cd web && npm run lint && npm run format:check && npm run typecheck
 
-lint: lint-backend lint-frontend
+docs-check:
+	hack/docs-check.sh
+
+lint: lint-backend lint-frontend docs-check
 	@echo "LINT OK"
 
 test-backend:
@@ -75,29 +78,28 @@ image:
 verify: lint coverage build
 	@echo "VERIFY OK"
 
-# Integration environment (Phase 7): two kind clusters, Vault, PostgreSQL, an identity stand-in and
-# Kubelook containers. Needs Docker and a cgroup v2 host.
-it-up: tools image
+# Integration environment: two kind clusters under test, a host cluster running Kubelook from its Helm chart, Vault,
+# PostgreSQL and an identity stand-in. Needs Docker and a cgroup v2 host. KUBELOOK_IMAGE_ARCHIVE names an image
+# archive to test instead of building kubelook:dev.
+it-up: tools
 	hack/it-up.sh
 
 it-down:
 	hack/it-down.sh
 
 it:
-	go test -tags integration -count=1 -p 1 -timeout 30m ./test/integration/...
+	go test -tags integration -count=1 -p 1 -timeout 30m -v ./test/integration/...
 	@echo "INTEGRATION OK"
 
 e2e:
 	cd test/e2e && npm ci && npx playwright test
 	@echo "E2E OK"
 
+# Lint, render and assert the Helm chart (Step 8.2); needs no cluster.
+chart-test:
+	hack/chart-test.sh
+
 clean:
 	rm -rf $(BIN)/kubelook coverage.out web/dist web/coverage
 	mkdir -p internal/webui/dist
 	find internal/webui/dist -mindepth 1 ! -name placeholder.txt -delete
-
-# Watch-hub load test (Step 6.4): measures memory per watch, event latency and time to the first snapshot with real time,
-# so it is never part of `verify` or the ci workflow. Parameters: LOAD_PODS, LOAD_SESSIONS, LOAD_EVENTS_PER_SECOND,
-# LOAD_SECONDS; LOAD_DOCS names a file the result table is appended to (hack/load.sh sets it).
-load:
-	go test -tags load -count=1 -timeout 15m -run TestLoad ./test/load/... -v
