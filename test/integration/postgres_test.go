@@ -243,13 +243,15 @@ func TestPostgres_ChangingTheEncryptionKey_SignsUsersOutAndDiscardsSavedCopiesWi
 	newKey := base64.StdEncoding.EncodeToString(raw)
 	// The new key stays: later tests sign in afresh, and hack/it-kubelook.sh install (make it-up) applies the key of
 	// .it/app.env again.
-	it.Kubelook(t, "rekey", newKey)
+	t.Log(it.Kubelook(t, "rekey", newKey))
+	start := time.Now()
 
 	// The spec: active-session credentials become unreadable, so every signed-in user is signed out. The first request
 	// that reads the session's credential ends the session; after that the cookie is refused.
 	it.Eventually(t, 30*time.Second, func() bool {
 		return c.JSON(http.MethodGet, "/api/v1/clusters", nil, nil) == http.StatusUnauthorized
 	}, "the old session is ended once the key changed")
+	t.Logf("the old session was ended %s after the rekey returned", time.Since(start).Round(time.Second))
 	assert.Equal(t, http.StatusUnauthorized, c.JSON(http.MethodGet, "/api/v1/me", nil, nil))
 
 	again := it.NewClient(t)

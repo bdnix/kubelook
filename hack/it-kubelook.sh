@@ -151,6 +151,7 @@ case "${1:-}" in
   kill) delete_replica "${2:-}" --grace-period=0 --force --wait=false ;;
   stop) delete_replica "${2:-}" --wait=true ;;
   rekey)
+    step "rekey: new key Secret, rollout restart"
     secret kubelook-key --from-literal=key="${2:-$KUBELOOK_ENCRYPTION_KEY}"
     K rollout restart deployment/kubelook >/dev/null
     K delete services kubelook-it-1 kubelook-it-2 --ignore-not-found >/dev/null
