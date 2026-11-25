@@ -136,7 +136,7 @@ spec:
   selector: {app.kubernetes.io/name: kubelook, app.kubernetes.io/instance: kubelook, it-replica: "2"}
   ports: [{port: 80, targetPort: http, nodePort: 30082}]
 SERVICES
-  for n in 18080 18081 18082; do wait_http "http://127.0.0.1:$n/readyz" 90; done
+  for n in 18080 18081 18082; do wait_http "http://127.0.0.1:$n/readyz" 90; step "$n answers"; done
   step "all three addresses answer"
 }
 
