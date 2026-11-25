@@ -502,6 +502,7 @@ jobs:
           bin/helm push "$CHART_FILE" oci://ghcr.io/bdnix/charts
       - name: Verify the published chart (pull it back and render it)
         run: |
+          mkdir -p "$RUNNER_TEMP/pulled"   # helm pull does not create its destination
           bin/helm pull oci://ghcr.io/bdnix/charts/kubelook --version "$CHART_VERSION" --destination "$RUNNER_TEMP/pulled"
           bin/helm template kubelook "$RUNNER_TEMP/pulled/kubelook-$CHART_VERSION.tgz" -f deploy/helm/kubelook/ci/sqlite-values.yaml \
             | grep -q "image: \"ghcr.io/bdnix/kubelook@$DIGEST\""
