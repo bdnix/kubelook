@@ -169,10 +169,10 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 | --- | --- | --- |
 | Go | 1.27.4 | Required by the spec (client-go, Helm SDKs are Go); newest stable; dependencies need ≥ 1.26 |
 | `k8s.io/client-go`, `k8s.io/api`, `k8s.io/apimachinery` | v0.37.2 | Newest; the line the Helm SDK builds against (it requires v0.37.1). `k8s.io/kubectl` is deliberately not imported: drain is implemented in Step 4.12 so it can use the fake clock |
-| `helm.sh/helm/v4` | v4.3.1 | Spec: Kubelook runs the Helm 4 SDK. **(amended, M4)** `helm.sh/helm/v3` is not a dependency of the product: Helm 3 is past the end of its security fixes |
+| `helm.sh/helm/v4` | v4.3.2 | Spec: Kubelook runs the Helm 4 SDK. **(amended, M4)** `helm.sh/helm/v3` is not a dependency of the product: Helm 3 is past the end of its security fixes |
 | `net/http` `ServeMux` (standard library) | Go 1.27 | Method and wildcard patterns are built in; no router dependency |
 | `github.com/coder/websocket` | v1.8.15 | Context-aware, maintained WebSocket library with origin checking built into `Accept` |
-| `modernc.org/sqlite` | v1.62.0 | Pure-Go SQLite: static binary with `CGO_ENABLED=0`, runs in a distroless image |
+| `modernc.org/sqlite` | v1.63.0 | Pure-Go SQLite: static binary with `CGO_ENABLED=0`, runs in a distroless image |
 | `github.com/jackc/pgx/v5` (`stdlib` adapter) | v5.13.0 | Standard PostgreSQL driver; used through `database/sql` so SQLite and PostgreSQL share code |
 | Hand-written migrator (Step 1.4) | — | ~60 lines over `database/sql`; fully unit-testable; avoids a dependency for two dialects |
 | Hand-written Vault HTTP client (Step 2.5) | — | Kubelook calls six endpoints with a per-request token; `net/http` + `httptest` is simpler and fully fakeable |
@@ -192,21 +192,21 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 | --- | --- | --- |
 | Node.js | 26.13.1 (LTS "Lithium") | Current LTS; satisfies every package's `engines` |
 | npm | the one bundled with Node 26.13.1 | No extra package manager to install |
-| TypeScript | 6.0.3 | Newest version `typescript-eslint` 8.72.2 accepts |
+| TypeScript | 6.0.3 | Newest version `typescript-eslint` 8.74.0 accepts (`typescript <6.1.0`) |
 | React, React DOM | 19.3.1 | Spec: React |
 | Vite, `@vitejs/plugin-react` | 8.3.8, 6.3.0 | Build and dev server |
-| Vitest, `@vitest/coverage-v8` | 5.1.0, 5.1.0 | Unit tests and coverage thresholds in one tool |
-| `@testing-library/react`, `@testing-library/dom`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom` | 16.3.3, `^10` (latest 10.x at install), 14.6.11, 7.0.1, 31.0.1 | Component tests by role and text |
+| Vitest, `@vitest/coverage-v8` | 5.1.1, 5.1.1 | Unit tests and coverage thresholds in one tool |
+| `@testing-library/react`, `@testing-library/dom`, `@testing-library/user-event`, `@testing-library/jest-dom`, `jsdom` | 16.3.3, `^10` (latest 10.x at install), 14.6.13, 8.0.0, 31.0.1 | Component tests by role and text |
 | `fake-indexeddb` | 6.2.8 | In-memory IndexedDB for tests of the saved-credential store |
-| React Router (`react-router`) | 8.5.1 | Deep links |
-| `@tanstack/react-query` | 5.107.1 | Server-state cache for REST calls |
+| React Router (`react-router`) | 8.5.3 | Deep links |
+| `@tanstack/react-query` | 5.108.4 | Server-state cache for REST calls |
 | `zustand` | 5.1.0 | Small client-state store (dock, live resource store) |
-| `monaco-editor`, `@monaco-editor/react`, `monaco-yaml` | 0.57.0, 4.7.0, 5.5.1 | Spec: Monaco YAML editor with schema validation |
+| `monaco-editor`, `@monaco-editor/react`, `monaco-yaml` | 0.54.0, 4.7.0, 5.5.1 | Spec: Monaco YAML editor with schema validation. `monaco-editor` stays at 0.54.0: from 0.55 it changed `createWebWorker`, and `monaco-yaml` 5.5.1 (the newest) still uses the old API, so its worker fails with "Missing requestHandler" |
 | `@xterm/xterm`, `@xterm/addon-fit` | 6.0.0, 0.11.0 | Spec: xterm.js terminals |
 | `d3-force` | 3.0.1 | Force layout for the resource map and Flux graph |
 | `yaml` | 2.9.1 | YAML parse/print in the browser |
 | `idb` | 8.0.4 | Promise wrapper for IndexedDB |
-| ESLint, `typescript-eslint`, `eslint-plugin-react-hooks` | 10.15.0, 8.72.2, 7.1.1 | Lint |
+| ESLint, `typescript-eslint`, `eslint-plugin-react-hooks` | 10.15.0, 8.74.0, 7.1.1 | Lint |
 | Prettier | 3.10.1 | Formatting |
 | `@playwright/test` | 1.65.1 | Browser UI tests of the web app with a mocked API (`web/ui`, from Phase 2, run in CI job `ui-tests`) and full-stack browser tests (`test/e2e`, Phase 7) |
 | CSS | plain CSS files with custom properties | No UI framework: fewer dependencies, themes via variables |
@@ -221,10 +221,10 @@ Pin exactly these. Go modules are pinned in `go.mod`; npm packages are installed
 | kind | v0.33.0 | Spec'd by the task: Kubernetes clusters for integration tests |
 | kind node images | `kindest/node:v1.35.8@sha256:07b2536e30b803ed61d1677a79df6115f798ce64c80f9e22f6ed45afd09323c0` and `kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5` | Oldest supported Kubernetes (1.35) and newest |
 | kubectl | v1.37.2 | Test setup |
-| Helm CLI | v4.3.1 | Chart lint, template, install |
+| Helm CLI | v4.3.2 | Chart lint, template, install |
 | Helm 3 CLI | v3.22.1, installed as `bin/helm3` by `hack/install-tools.sh` (Step 7.8) | **(amended, M4)** Integration tests only: makes and checks Helm 3 releases for the cross-version test |
-| Vault image | `hashicorp/vault:2.2.1@sha256:962a92876e168d68eaaa24b0b8b49bbce1cb63024060a67bba95cd158a366fc2` | Newest Vault (see U1) |
-| PostgreSQL image | `postgres:18.6-trixie` | Newest stable PostgreSQL |
+| Vault image | `hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6` | Newest Vault (U1 was measured on 2.2.1) |
+| PostgreSQL image | `postgres:18.7-trixie` | Newest stable PostgreSQL |
 | Build images | `golang:1.27.4-trixie`, `node:26.13.1-trixie` | Match tool versions. Digests pinned in the `Dockerfile` |
 | Runtime base image | `gcr.io/distroless/static-debian13:nonroot` | No shell, non-root, small attack surface. Digest pinned in the `Dockerfile` |
 | Debug image base | `nicolaka/netshoot:v0.16` | Spec: default debug image is built from netshoot |
@@ -590,7 +590,7 @@ GOLANGCI_VERSION=v2.15.0
 GOVULNCHECK_VERSION=v1.9.0
 KIND_VERSION=v0.33.0
 KUBECTL_VERSION=v1.37.2
-HELM_VERSION=v4.3.1
+HELM_VERSION=v4.3.2
 
 go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION}"
 go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
@@ -641,7 +641,7 @@ make tools            # last line: TOOLS OK
 bin/golangci-lint version | grep -c '2.15.0'      # 1
 bin/kind version | grep -c 'v0.33.0'              # 1
 bin/kubectl version --client | grep -c 'v1.37.2'  # 1
-bin/helm version --short | grep -c 'v4.3.1'       # 1
+bin/helm version --short | grep -c 'v4.3.2'       # 1
 ```
 
 **Pitfalls.**
@@ -978,11 +978,11 @@ npm pkg set scripts.dev="vite" scripts.build="tsc --noEmit && vite build" script
   scripts.lint="eslint . --max-warnings=0" scripts.format:check="prettier --check ." scripts.typecheck="tsc --noEmit"
 npm install --save-exact react@19.3.1 react-dom@19.3.1
 npm install --save-dev --save-exact typescript@6.0.3 vite@8.3.8 @vitejs/plugin-react@6.3.0 \
-  vitest@5.1.0 @vitest/coverage-v8@5.1.0 jsdom@31.0.1 \
-  @testing-library/react@16.3.3 @testing-library/user-event@14.6.11 @testing-library/jest-dom@7.0.1 \
-  eslint@10.15.0 typescript-eslint@8.72.2 eslint-plugin-react-hooks@7.1.1 prettier@3.10.1 \
-  @types/react@19.3.0
-npm install --save-dev --save-exact @eslint/js@10.0.1 @testing-library/dom@10.4.2 @types/node@26.6.6 @types/react-dom@19.3.0
+  vitest@5.1.1 @vitest/coverage-v8@5.1.1 jsdom@31.0.1 \
+  @testing-library/react@16.3.3 @testing-library/user-event@14.6.13 @testing-library/jest-dom@8.0.0 \
+  eslint@10.15.0 typescript-eslint@8.74.0 eslint-plugin-react-hooks@7.1.1 prettier@3.10.1 \
+  @types/react@19.3.1
+npm install --save-dev --save-exact @eslint/js@10.0.1 @testing-library/dom@10.4.2 @types/node@26.6.7 @types/react-dom@19.3.0
 ```
 
 (The four packages in the last command have no version in §3; these are the versions that resolved on 2026-11-11, pinned exactly so that `package.json` has no `^` ranges. Commit `package-lock.json`.)
@@ -1116,7 +1116,7 @@ cd web && npm run build && ls dist/index.html     # file exists
 ```
 
 **Pitfalls.**
-- TypeScript must stay at 6.0.3: `typescript-eslint` 8.72.2 rejects 6.1 and 7.x.
+- TypeScript must stay at 6.0.3: `typescript-eslint` 8.74.0 rejects 6.1 and 7.x.
 - If `tseslint.configs.strict` is not iterable in this version, run `node -e "import('typescript-eslint').then(m=>console.log(Object.keys(m.default.configs)))"` in `web/` and use the `strict` entry as that output shows. Do not remove the strict rules.
 - If Vitest reports an unknown `coverage.thresholds` key, run `npx vitest --help` and `npx vitest run --coverage --coverage.thresholds.lines=90` to find the supported spelling. The gate must exist before continuing.
 - Never import `monaco-editor` or `@xterm/xterm` outside `src/adapters/`.
@@ -1593,7 +1593,7 @@ updates:
     open-pull-requests-limit: 10
     ignore:
       - dependency-name: typescript
-        versions: [">=6.1.0"]   # typescript-eslint 8.72.2 supports < 6.1.0; lift when it supports newer
+        versions: [">=6.1.0"]   # typescript-eslint 8.74.0 supports < 6.1.0; lift when it supports newer
     groups:
       web-minor: { patterns: ["*"], update-types: [minor, patch] }
   - package-ecosystem: docker
@@ -1845,7 +1845,7 @@ Purposes used later (constants in this package): `PurposeSavedCredential` (`save
 
 **Files.** Create `internal/store/db.go`, `internal/store/migrate.go`, `internal/store/migrations/0001_init.sql`, `internal/store/db_test.go`, `internal/store/migrate_test.go`, `internal/store/storetest/storetest.go`.
 
-**Red.** `go get modernc.org/sqlite@v1.62.0 github.com/jackc/pgx/v5@v5.13.0`. Cases:
+**Red.** `go get modernc.org/sqlite@v1.63.0 github.com/jackc/pgx/v5@v5.13.0`. Cases:
 - `Open(ctx, Options{Driver:"sqlite", SQLitePath: <temp file>})` returns a `*DB` whose `Dialect()` is `SQLite`; `PRAGMA foreign_keys` reads `1`; `PRAGMA journal_mode` reads `wal`.
 - `Open` with `Driver:"postgres", URL:"postgres://u:p@127.0.0.1:1/db"` returns without connecting (`sql.Open` is lazy) and `Dialect()` is `Postgres`. (No server needed.)
 - `Open` with an unknown driver → error.
@@ -2213,7 +2213,7 @@ kill %1                             # process exits 0
 
 **Files.** Create `web/src/api/client.ts`, `web/src/api/client.test.ts`, `web/src/api/me.ts`, `web/src/api/me.test.tsx`, `web/src/components/SafeLink.tsx`(+test), `web/src/components/Banner.tsx`(+test), `web/src/features/shell/Layout.tsx`(+test), `web/src/features/shell/routes.tsx`(+test), `web/src/state/theme.ts`(+test), `web/src/test/render.tsx`. Modify `web/src/App.tsx`, `web/src/App.test.tsx`. Backend: add `GET /api/v1/me` returning 401 without a session (handler in `internal/httpapi/me.go` + test); its full payload arrives in Step 2.4.
 
-**Commands.** `cd web && npm install --save-exact react-router@8.5.1 @tanstack/react-query@5.107.1 zustand@5.1.0`
+**Commands.** `cd web && npm install --save-exact react-router@8.5.3 @tanstack/react-query@5.108.4 zustand@5.1.0`
 
 **Red.** Cases:
 - `createClient({ fetch, getCsrf })`: `get('/x')` calls `fetch('/api/v1/x', { credentials: 'same-origin', … })`; `post` sends `Content-Type: application/json` and `X-CSRF-Token`; a non-2xx JSON error becomes `ApiError { status, code, message }`; a non-JSON error body becomes `ApiError` with code `internal`; 204 returns `undefined`.
@@ -3108,7 +3108,7 @@ Command: `make test-frontend`. Expected failure: unresolved imports.
 
 **Goal.** The spec's "Real-time manifest editing".
 
-**Files.** Backend: `internal/httpapi/openapi.go`(+test) — `GET /api/v1/clusters/{cluster}/openapi/{group}/{version}` proxies the cluster's `/openapi/v3/apis/<group>/<version>` (or `/openapi/v3/api/v1` for `core`) through the user's REST client, returns JSON, cached 5 minutes per session+cluster. Web: `web/src/adapters/monaco/YamlEditor.tsx` and `DiffViewer.tsx` (excluded from coverage; no logic beyond wiring props), `web/src/features/editor/{EditorTab,useEditorState,SavePreview,ConflictBanner,CreateFromYaml,kubectlCommand}.ts(x)` with tests, `web/src/lib/yaml.ts`(+test), `web/src/lib/diff.ts`(+test). `npm install --save-exact monaco-editor@0.57.0 @monaco-editor/react@4.7.0 monaco-yaml@5.5.1 yaml@2.9.1`.
+**Files.** Backend: `internal/httpapi/openapi.go`(+test) — `GET /api/v1/clusters/{cluster}/openapi/{group}/{version}` proxies the cluster's `/openapi/v3/apis/<group>/<version>` (or `/openapi/v3/api/v1` for `core`) through the user's REST client, returns JSON, cached 5 minutes per session+cluster. Web: `web/src/adapters/monaco/YamlEditor.tsx` and `DiffViewer.tsx` (excluded from coverage; no logic beyond wiring props), `web/src/features/editor/{EditorTab,useEditorState,SavePreview,ConflictBanner,CreateFromYaml,kubectlCommand}.ts(x)` with tests, `web/src/lib/yaml.ts`(+test), `web/src/lib/diff.ts`(+test). `npm install --save-exact monaco-editor@0.54.0 @monaco-editor/react@4.7.0 monaco-yaml@5.5.1 yaml@2.9.1`.
 
 **Red.** Cases:
 - `useEditorState`: loads the object (redacted) as YAML with `status` and `metadata.managedFields` omitted from the text but `metadata.resourceVersion` kept; tracks dirty state.
@@ -3725,7 +3725,7 @@ Command: `make test-backend PKG="./internal/modules/... ./internal/httpapi/..."`
 **Commands.**
 
 ```bash
-go get helm.sh/helm/v4@v4.3.1
+go get helm.sh/helm/v4@v4.3.2
 go doc helm.sh/helm/v4/pkg/action.Configuration
 go doc helm.sh/helm/v4/pkg/action.List
 go doc helm.sh/helm/v4/pkg/action.Get
@@ -4175,8 +4175,8 @@ Outcome: a suite that runs the real Kubelook image against real Vault, two real 
 | --- | --- | --- | --- |
 | kind cluster "alpha" (Kubernetes 1.35) | `kindest/node:v1.35.8@sha256:07b2…23c0` (full digest in §3) | `kubelook-it-alpha-control-plane:6443` | chosen by kind |
 | kind cluster "beta" (Kubernetes 1.37) | `kindest/node:v1.37.0@sha256:a1ed…0ae5` | `kubelook-it-beta-control-plane:6443` | chosen by kind |
-| Vault (dev mode) | `hashicorp/vault:2.2.1@sha256:962a…6fc2` | `kubelook-it-vault:8200` | 18200 |
-| PostgreSQL | `postgres:18.6-trixie` | `kubelook-it-postgres:5432` | 15432 |
+| Vault (dev mode) | `hashicorp/vault:2.2.2@sha256:dfa4…7ad6` | `kubelook-it-vault:8200` | 18200 |
+| PostgreSQL | `postgres:18.7-trixie` | `kubelook-it-postgres:5432` | 15432 |
 | Identity stand-in | built from `test/integration/fakeidp` | `kubelook-it-fakeidp:8300` | 8300 (same number on purpose) |
 | Kubelook, SQLite, 1 replica | `kubelook:dev` | `kubelook-it-app` | 18080 |
 | Kubelook, PostgreSQL, 2 replicas | `kubelook:dev` | `kubelook-it-pg-1`, `kubelook-it-pg-2` | 18081, 18082 |
@@ -4217,12 +4217,12 @@ done
 # 2. Vault (dev mode, root token "root")
 container_running kubelook-it-vault || docker run -d --name kubelook-it-vault --network kind --cap-add IPC_LOCK \
   -p 127.0.0.1:18200:8200 -e VAULT_DEV_ROOT_TOKEN_ID=root -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
-  hashicorp/vault:2.2.1@sha256:962a92876e168d68eaaa24b0b8b49bbce1cb63024060a67bba95cd158a366fc2
+  hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6
 wait_http http://127.0.0.1:18200/v1/sys/health 60
 
 # 3. PostgreSQL
 container_running kubelook-it-postgres || docker run -d --name kubelook-it-postgres --network kind \
-  -p 127.0.0.1:15432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=kubelook postgres:18.6-trixie
+  -p 127.0.0.1:15432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=kubelook postgres:18.7-trixie
 wait_pg kubelook-it-postgres 60        # loops on: docker exec … pg_isready -U postgres
 
 # 4. Identity stand-in
@@ -4695,7 +4695,7 @@ Outcome: versioned multi-architecture images, the debug image, a Helm chart that
 **Files.** Create `deploy/helm/kubelook/{Chart.yaml,values.yaml,values.schema.json,README.md}`, `deploy/helm/kubelook/templates/{_helpers.tpl,configmap.yaml,deployment.yaml,service.yaml,serviceaccount.yaml,ingress.yaml,pvc.yaml,migrate-job.yaml,audit-cleanup-cronjob.yaml,pdb.yaml,networkpolicy.yaml,NOTES.txt}`, `deploy/helm/kubelook/ci/{sqlite-values.yaml,postgres-values.yaml,full-values.yaml}`, `hack/chart-test.sh`, `ct.yaml`. Modify `Makefile` (target `chart-test`), `.github/workflows/ci.yml` (job `chart-tests`, added to `publish-image.needs` and to the required checks in `docs/ci.md`).
 
 Design rules:
-- `values.yaml` top-level keys are **exactly** the spec's setting names (`auth`, `vault`, `encryption`, `maintenance`, `helm`, `memory`, `debug`, `kubeconfig`, `fileBrowser`, `logs`, `modules`, `audit`) plus the A6 keys, plus chart-only keys: `image.{repository,tag,digest,pullPolicy}`, `replicaCount` (default 1), `database.{driver, existingSecret}` (Secret key `url`), `database.migrationSecret` (Secret key `url`), `database.rolesSecret` (**amended, M7**; Secret keys `appPassword`, `cleanupPassword`; when set, the migrate hook Job also applies `deploy/postgres/roles.sql`, shipped in the chart as a ConfigMap, with `retention_days` = `audit.retentionDays`, using an init step with the `postgres:18.6-trixie` image's `psql`), `auth.google.clientSecretRef` / `auth.github.clientSecretRef` (`{name, key}`), `encryption.keySecret` (Secret key `key`), `audit.cleanup.{schedule, credentialsSecret}`, `persistence.{size, storageClass}` (SQLite), `service.{type, port, sessionAffinity}`, `ingress.*`, `resources` (default limits `memory: 512Mi`), `goMemLimit` (default `460MiB`, about 90% of the memory limit; documented: change both together), `hostAliases`, `podAnnotations`, `nodeSelector`, `tolerations`, `affinity`, `networkPolicy.{enabled, egress}`.
+- `values.yaml` top-level keys are **exactly** the spec's setting names (`auth`, `vault`, `encryption`, `maintenance`, `helm`, `memory`, `debug`, `kubeconfig`, `fileBrowser`, `logs`, `modules`, `audit`) plus the A6 keys, plus chart-only keys: `image.{repository,tag,digest,pullPolicy}`, `replicaCount` (default 1), `database.{driver, existingSecret}` (Secret key `url`), `database.migrationSecret` (Secret key `url`), `database.rolesSecret` (**amended, M7**; Secret keys `appPassword`, `cleanupPassword`; when set, the migrate hook Job also applies `deploy/postgres/roles.sql`, shipped in the chart as a ConfigMap, with `retention_days` = `audit.retentionDays`, using an init step with the `postgres:18.7-trixie` image's `psql`), `auth.google.clientSecretRef` / `auth.github.clientSecretRef` (`{name, key}`), `encryption.keySecret` (Secret key `key`), `audit.cleanup.{schedule, credentialsSecret}`, `persistence.{size, storageClass}` (SQLite), `service.{type, port, sessionAffinity}`, `ingress.*`, `resources` (default limits `memory: 512Mi`), `goMemLimit` (default `460MiB`, about 90% of the memory limit; documented: change both together), `hostAliases`, `podAnnotations`, `nodeSelector`, `tolerations`, `affinity`, `networkPolicy.{enabled, egress}`.
 - The ConfigMap renders `config.yaml` from the spec-named values (only keys the app knows; test by loading it with `kubelook`'s own config loader in `hack/chart-test.sh`).
 - Deployment: one container, `args: [serve]`, env from Secrets (`KUBELOOK_ENCRYPTION_KEY`, provider secrets, `KUBELOOK_DATABASE_URL`), `GOMEMLIMIT`, config mounted at `/etc/kubelook`, `emptyDir` at `/tmp`, PVC at `/data` when SQLite; `securityContext`: `runAsNonRoot: true`, `runAsUser: 65532`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile.type: RuntimeDefault`; probes `/healthz` (liveness) and `/readyz` (readiness); checksum annotation of the ConfigMap; strategy `Recreate` when SQLite, `RollingUpdate` otherwise.
 - ServiceAccount with `automountServiceAccountToken: false` (the console has no cluster rights of its own).
