@@ -22,9 +22,19 @@ KUBECTL_VERSION=v1.37.2
 HELM_VERSION=v4.3.1
 HELM3_VERSION=v3.22.1   # integration tests only: makes and checks releases of Helm 3
 
-go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION}"
-go install "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
-go install "sigs.k8s.io/kind@${KIND_VERSION}"
+# A Go tool is built again only when bin/ does not hold it at this version, built with this Go (its version output
+# names both), so a cached bin/ makes this step take seconds.
+GO_VERSION="${GOTOOLCHAIN}"
+have() { "$GOBIN/$1" "${@:2}" 2>/dev/null || true; }
+built() { grep -Fq "$2" <<<"$1" && grep -Fq "$GO_VERSION" <<<"$1"; }
+# reinstall <name> <package>: replaces whatever bin/<name> holds (go install refuses to overwrite a non-binary).
+reinstall() { rm -f "$GOBIN/$1"; go install "$2"; }
+built "$(have golangci-lint version)" "version ${GOLANGCI_VERSION#v} " || \
+  reinstall golangci-lint "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_VERSION}"
+built "$(have govulncheck -version)" "govulncheck@${GOVULNCHECK_VERSION}" || \
+  reinstall govulncheck "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}"
+built "$(have kind version)" "kind ${KIND_VERSION} " || \
+  reinstall kind "sigs.k8s.io/kind@${KIND_VERSION}"
 
 have_kubectl="$("$GOBIN/kubectl" version --client 2>/dev/null || true)"
 if ! grep -Fqw "${KUBECTL_VERSION}" <<<"$have_kubectl"; then

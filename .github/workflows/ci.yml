@@ -34,6 +34,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
+          go-cache: lint-actions
           go: "true"
       - name: actionlint
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
@@ -52,11 +53,15 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
+          go-cache: test-go
           go: "true"
       - name: Lint
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.15.0
+          # Its cache is saved only when its key changes (weekly), so it went stale; the job's Go cache keeps
+          # ~/.cache/golangci-lint instead, refreshed by every build of main.
+          skip-cache: true
       - name: Unit tests with coverage (>= 90%)
         run: make coverage-backend 2>&1 | tee go-coverage.txt
       - name: Vulnerability check (govulncheck)
@@ -151,6 +156,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
+          go-cache: lint-chart
           tools: "true"
       - name: Lint, render and assert
         run: make chart-test
@@ -261,6 +267,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/setup
         with:
+          go-cache: test-e2e
           tools: "true"
           node: "true"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

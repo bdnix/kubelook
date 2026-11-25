@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 # Helpers for the integration environment scripts. Source this file; do not run it.
 
-# wait_http <url> <seconds>: a bounded retry on a condition, not a fixed sleep.
+# wait_http <url> <seconds>: a bounded retry on a condition, not a fixed sleep. Each attempt is bounded too: without
+# --connect-timeout, a connection to a pod that has just gone away waits for the kernel's SYN retries (about 127 s
+# with Linux's default tcp_syn_retries=6) before curl retries.
 wait_http() {
-  curl -fsS --retry "$2" --retry-delay 1 --retry-connrefused --retry-all-errors -o /dev/null "$1"
+  curl -fsS --connect-timeout 2 --max-time 5 --retry "$2" --retry-delay 1 --retry-max-time "$2" \
+    --retry-connrefused --retry-all-errors -o /dev/null "$1"
 }
 
 # container_running <name>: true when the container exists and runs.

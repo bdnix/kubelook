@@ -10,6 +10,12 @@ inputs:
   tools:
     description: Install the pinned tools (kind, kubectl, helm) into bin/. Implies Go. Steps call them as bin/<tool>.
     default: "false"
+  go-cache:
+    description: |
+      Name of this job's Go cache: the module cache, the build cache and golangci-lint's cache. Each job keeps its own,
+      since the jobs compile different things (with -race and coverage, for the integration tag, or only a tool).
+      Builds of main save it; pull requests and the merge queue restore main's. Empty: no Go cache.
+    default: ""
 runs:
   using: composite
   steps:
@@ -17,6 +23,31 @@ runs:
       uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
       with:
         go-version-file: go.mod
+        # Its own cache has one key for every job: the first job to finish saved it, so it held only what that job
+        # compiled. The per-job cache below replaces it.
+        cache: false
+    - if: ${{ inputs.go-cache != '' && github.event_name != 'push' }}
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+          ~/.cache/golangci-lint
+        key: go-${{ inputs.go-cache }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+        restore-keys: |
+          go-${{ inputs.go-cache }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+          go-${{ inputs.go-cache }}-${{ runner.os }}-${{ runner.arch }}-
+    - if: ${{ inputs.go-cache != '' && github.event_name == 'push' }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+          ~/.cache/golangci-lint
+        key: go-${{ inputs.go-cache }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+        restore-keys: |
+          go-${{ inputs.go-cache }}-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('go.sum') }}-
+          go-${{ inputs.go-cache }}-${{ runner.os }}-${{ runner.arch }}-
     - if: ${{ inputs.node == 'true' }}
       uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
       with:

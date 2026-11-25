@@ -22,6 +22,8 @@ DB=kubelook-it-postgres
 # shellcheck disable=SC1091
 source "$ROOT/.it/app.env"
 
+# step <text>: a timestamped line, so a slow step shows in the output the tests log.
+step() { echo "$(date -u +%T) $*"; }
 secret() { local name="$1"; shift; K create secret generic "$name" "$@" --dry-run=client -o yaml | K apply -f - >/dev/null; }
 ip() { docker inspect -f '{{.NetworkSettings.Networks.kind.IPAddress}}' "$1"; }
 
@@ -76,15 +78,19 @@ hostAliases:
   - {ip: "$(ip kubelook-it-alpha-control-plane)", hostnames: [kubelook-it-alpha-control-plane]}
   - {ip: "$(ip kubelook-it-beta-control-plane)", hostnames: [kubelook-it-beta-control-plane]}
 VALUES
+  step "helm upgrade --install (waits for the migrate hook and the rollout)"
   helm --kubeconfig "$KC" upgrade --install kubelook "$ROOT/deploy/helm/kubelook" -n "$NS" \
     -f "$ROOT/.it/kubelook-values.yaml" "$@" --wait --timeout 300s >/dev/null
+  step "helm done"
   expose
 }
 
 # expose gives each running pod a replica number (keeping the numbers pods already have) and points a NodePort
 # Service at each number, plus one at both.
 expose() {
+  step "rollout status"
   K rollout status deployment/kubelook --timeout=300s >/dev/null
+  step "rollout done; waiting for two live pods"
   local n pod num rows
   # live = Running and not being deleted; columns: name, replica number (or <none>), deletion time (or <none>)
   live() { K get pods -l "$PODS" --field-selector=status.phase=Running --no-headers \
@@ -104,6 +110,7 @@ expose() {
       fi
     done
   done <<<"$rows"
+  step "pods numbered; applying the Services"
   K apply -f - >/dev/null <<SERVICES
 apiVersion: v1
 kind: Service
@@ -129,7 +136,8 @@ spec:
   selector: {app.kubernetes.io/name: kubelook, app.kubernetes.io/instance: kubelook, it-replica: "2"}
   ports: [{port: 80, targetPort: http, nodePort: 30082}]
 SERVICES
-  for n in 18080 18081 18082; do wait_http "http://127.0.0.1:$n/readyz" 90; done
+  for n in 18080 18081 18082; do wait_http "http://127.0.0.1:$n/readyz" 90; step "$n answers"; done
+  step "all three addresses answer"
 }
 
 delete_replica() {
@@ -143,11 +151,16 @@ case "${1:-}" in
   kill) delete_replica "${2:-}" --grace-period=0 --force --wait=false ;;
   stop) delete_replica "${2:-}" --wait=true ;;
   rekey)
+    step "rekey: new key Secret, rollout restart"
     secret kubelook-key --from-literal=key="${2:-$KUBELOOK_ENCRYPTION_KEY}"
     K rollout restart deployment/kubelook >/dev/null
     K delete services kubelook-it-1 kubelook-it-2 --ignore-not-found >/dev/null
     expose
     ;;
-  uninstall) helm --kubeconfig "$KC" uninstall kubelook -n "$NS" --wait --timeout 300s >/dev/null ;;
+  uninstall)
+    step "helm uninstall --wait"
+    helm --kubeconfig "$KC" uninstall kubelook -n "$NS" --wait --timeout 300s >/dev/null
+    step "uninstalled"
+    ;;
   *) echo "usage: it-kubelook.sh install|expose|kill <n>|stop <n>|rekey [key]|uninstall" >&2; exit 2 ;;
 esac
