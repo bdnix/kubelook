@@ -88,7 +88,7 @@ agreed in §5. Advisory-driven bumps stay allowed as before. Agreed so far: `@ma
 
 | Stage | Title | Kind | Depends on | Status | Pull request |
 | --- | --- | --- | --- | --- | --- |
-| 0 | Housekeeping: archive plan 1, the local demo, this plan | code + docs | – | in progress | – |
+| 0 | Housekeeping: archive plan 1, the local demo, this plan | code + docs | – | in review | [#42](https://github.com/bdnix/kubelook/pull/42) |
 | 1 | Finish what is half done, remove leftovers | code | 0 | todo | – |
 | 2 | UI specification | **gate** (document) | 0 | todo | – |
 | 3 | UI foundation: tokens, base styles, the shell, screenshot tests | code | 2 | todo | – |
@@ -139,18 +139,18 @@ defect of the stage that owns that screen.
 
 # Stage 0 — Housekeeping
 
-**Status:** in progress · **Pull request:** – · **Depends on:** –
+**Status:** in review · **Pull request:** [#42](https://github.com/bdnix/kubelook/pull/42) · **Depends on:** –
 
 **Goal.** Close the first plan properly, commit the local demo, and put this plan in place.
 
 | Step | What | Status |
 | --- | --- | --- |
 | U0.1 | Archive the first plan with `git mv` to `docs/plans/20261126-021417-plan.md`; repoint the comments that cite its steps (`deploy/helm/kubelook/Chart.yaml`, `hack/docs-check.sh`, `hack/vault-setup.sh`, `hack/it-chartrepo.sh`, `hack/chart-test.sh`) | done |
-| U0.2 | The local demo: `docker-compose.yaml`, `hack/demo/` (toolbox image and script, kind config, workloads, Kubelook config), `docs/demo.md`, the README section. Needs D6 | done (uncommitted) |
-| U0.3 | This plan as `PLAN.md` | done (uncommitted) |
-| U0.4 | `docs/development.md`: remove the package `internal/overview`, which does not exist, list `certs`, `apperr` and `version`; describe `PLAN.md` and `docs/plans/` | done (uncommitted) |
-| U0.5 | `AGENTS.md`: "the next pull request" is the first stage of §4 whose status is not `done`; keep the status board up to date as §2 says | done (uncommitted) |
-| U0.6 | Commit on a branch, push, open the pull request, CI green | todo |
+| U0.2 | The local demo: `docker-compose.yaml`, `hack/demo/` (toolbox image and script, kind config, workloads, Kubelook config), `docs/demo.md`, the README section. Needs D6 | done |
+| U0.3 | This plan as `PLAN.md` | done |
+| U0.4 | `docs/development.md`: remove the package `internal/overview`, which does not exist, list `certs`, `apperr` and `version`; describe `PLAN.md` and `docs/plans/` | done |
+| U0.5 | `AGENTS.md`: "the next pull request" is the first stage of §4 whose status is not `done`; keep the status board up to date as §2 says | done |
+| U0.6 | Commit on a branch, push, open the pull request, CI green | in review |
 
 **Acceptance.** `make verify` → `VERIFY OK`; `hack/docs-check.sh` → `DOCS OK`; `devbox --name kubelook-demo up` on the
 branch brings the demo up and the walkthrough steps 1–4 work (as far as the current interface allows); CI green.
