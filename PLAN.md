@@ -77,12 +77,34 @@ when all of these hold:
 3. **No dead ends.** Every new screen is reachable by clicking from the home page; the pull request names the click path.
 4. **Wiring check.** Every API endpoint and WebSocket channel the stage adds is called by the web app, and a browser
    test exercises that call (no endpoint that only unit tests reach).
+5. **Design match.** Each screen the stage touches is built from its frame in the Figma file (§3.4). The pull request
+   body links the frame next to the screenshot and lists every deviation with its reason. A deviation that is better than
+   the design changes the Figma frame first (in the same pull request, noted in the body), so the file never lags the code.
+
+### 3.4 New: Figma is the source of the design
+
+The interface is designed in Figma (D8), not in Markdown wireframes. The split of roles:
+
+- **The Figma file** (location: D8a) holds the design: variables for the colour, spacing, radius and type tokens, a
+  component library with the states of U2.3, one frame per screen and state of U2.4, and prototype flows for the click
+  paths of U2.5. It is the source of truth for *how it looks*.
+- **`docs/ui-spec.md`** is the written companion: the rules that do not show in a picture (density, keyboard behaviour,
+  empty/loading/error text, what each screen reads from which API), and a table that links every frame (Figma URL and
+  node ID). PNG exports of the frames live in `docs/ui/` so a pull request shows them and the spec reads offline.
+  `docs/spec.md` stays the source of truth for *what the product does*.
+- **Who works where.** The agent builds and edits the file through the Figma MCP tools (`use_figma`, `get_variable_defs`,
+  `get_design_context`, `get_screenshot`) and reads frames back when it builds a screen; the owner reviews and comments in
+  Figma. Both need edit access to the file (D8a).
+- **Tokens.** The Figma variables are the source of the Mantine theme object in `web/src/theme/` (U3.2). A token changes
+  in Figma first, then in the theme, in the same pull request.
+- **Not a dependency.** Figma is a design tool, not a build input: nothing in `make verify` or CI calls Figma, and the
+  repository does not need a Figma token. The screenshot baselines (§3.2.1) remain what CI enforces.
 
 ### 3.3 Dependencies
 
 The dependency rule of the archived plan holds: add or change a dependency only where a step names it and the owner has
 agreed in §5. Advisory-driven bumps stay allowed as before. Agreed so far: `@mantine/core`, `@mantine/hooks` (D1a) and
-`@fontsource-variable/inter` (D2) in U3.2; the icon package once U2.1 confirms it.
+`@fontsource-variable/inter` (D2) in U3.2; the icon package once U2.1 confirms it. Figma (§3.4) adds no dependency, and Code Connect is not used (D8c).
 
 ## §4 Status board
 
@@ -90,7 +112,7 @@ agreed in §5. Advisory-driven bumps stay allowed as before. Agreed so far: `@ma
 | --- | --- | --- | --- | --- | --- |
 | 0 | Housekeeping: archive plan 1, the local demo, this plan | code + docs | – | in review | [#42](https://github.com/bdnix/kubelook/pull/42) |
 | 1 | Finish what is half done, remove leftovers | code | 0 | todo | – |
-| 2 | UI specification | **gate** (document) | 0 | todo | – |
+| 2 | UI design in Figma and its specification | **gate** (design + document) | 0 | todo | – |
 | 3 | UI foundation: tokens, base styles, the shell, screenshot tests | code | 2 | todo | – |
 | 4 | Lists and tables | code | 3 | todo | – |
 | 5 | Details drawer, dialogs and forms | code | 4 | todo | – |
@@ -110,11 +132,15 @@ else runs in the order of the table.
 | D1 | How the interface is styled | U2.1 | (a) plain CSS with custom properties, as the first plan chose (no new dependency); (b) a headless component library (for example Radix primitives) plus our CSS; (c) a full component library | **decided 2026-11-26: (c) a full component library**; which one is D1a |
 | D1a | Which component library | U2.1 | Mantine, PatternFly, MUI, Chakra UI | **decided 2026-11-26: Mantine** (`@mantine/core`, `@mantine/hooks`, and further `@mantine/*` packages only where a step names them) |
 | D2 | A self-hosted UI font for stable screenshots and a consistent look (for example Inter, OFL licence, served from the app because the CSP allows only `font-src 'self'`) | U3.1 | yes (one font package) / no (system fonts, screenshots tolerate font differences) | **decided 2026-11-26: yes, bundle Inter** (`@fontsource-variable/inter`) |
-| D3 | Visual reference for the design | U2.1 | Freelens, Headlamp, the Kubernetes Dashboard, or "none, design from the spec" | **decided 2026-11-26: Headlamp.** Headlamp shows details as full pages, while the spec asks for a details drawer: U2.2 proposes how to reconcile the two (for example a drawer for quick looks and a full page per object) and the owner decides in U2.6 |
+| D3 | Visual reference for the design | U2.1 | Freelens, Headlamp, the Kubernetes Dashboard, or "none, design from the spec" | **decided 2026-11-26: Headlamp.** Headlamp shows details as full pages, while the spec asks for a details drawer: U2.2 proposes how to reconcile the two (for example a drawer for quick looks and a full page per object) and the owner decides in U2.7 |
 | D4 | When the user has exactly one cluster, open it directly instead of showing the home page | U6.1 | yes / no | **decided 2026-11-26: yes**, land on that cluster's overview; the home page stays reachable from the logo and breadcrumb |
 | D5 | Add `deadcode` (golang.org/x/tools) to CI so code reachable only from tests fails the build | U1.5 | yes / no | **decided 2026-11-26: no**; U1.3 removes today's leftovers and code review watches for new ones |
 | D6 | Keep the demo manifest as `docker-compose.yaml` at the repository root (pilat/devbox needs it there) | U0.2 | yes / move to a separate manifest repository | **decided 2026-11-26: yes**, at the root of this repository |
 | D7 | Which ecosystem components the integration environment installs in Stage 9 (each adds minutes to CI) | U9.1 | CRDs + fixtures only; real where cheap; everything real; two tiers | **decided 2026-11-26: two tiers.** Every pull request: CRDs and fixture objects for every module, with metrics-server and Flux running for real. Before a release candidate: a separate job installs every component for real (Karpenter stays CRDs and fixtures) and runs the same tests |
+| D8 | Where the interface is designed | U2.0 | in Figma (§3.4) / in Markdown wireframes under `docs/ui/` as the plan first said | **decided 2026-11-26: in Figma** |
+| D8a | Where the Figma file lives | U2.0 | – | **decided 2026-11-26:** the owner's personal Figma account (Starter plan), one shared (collaborative) file for the whole of Kubelook, owner has edit access. `whoami` shows the account's seat on that team as `View`; whether the agent can write to the file with that seat is checked in U2.0, not assumed |
+| D8b | Component library in Figma | U2.1 | – | **decided 2026-11-26: adopt a community Mantine kit for Figma.** U2.1 picks the kit (licence, current for the Mantine version in use, light and dark) and records its name and link in `docs/ui-spec.md`; nothing is assumed about which kits exist. It is duplicated into the Kubelook file, not linked |
+| D8c | Map React components to Figma components with Code Connect | U3.3 | yes / no | **decided 2026-11-26: no.** The agent adapts the output of `get_design_context` to Mantine without mappings; the owner may reopen this after Stage 3 |
 
 ## §6 The user walkthrough
 
@@ -176,23 +202,27 @@ wiring check holds for the pending-credentials endpoints.
 
 ---
 
-# Stage 2 — UI specification (gate)
+# Stage 2 — UI design in Figma and its specification (gate)
 
-**Status:** todo · **Pull request:** – · **Depends on:** 0 · **Needs:** D1, D3
+**Status:** todo · **Pull request:** – · **Depends on:** 0 · **Needs:** D1, D3, D8, D8a, D8b
 
-**Goal.** A written design the owner approves before any styling is built, so the stages after it build the same thing.
-Output: `docs/ui-spec.md`, referenced from `docs/spec.md` "UI and UX", plus wireframes (images under `docs/ui/`).
+**Goal.** A design the owner approves in Figma before any styling is built, so the stages after it build the same thing
+(§3.4). Output: the Figma file, `docs/ui-spec.md` (the written companion with the frame links), referenced from
+`docs/spec.md` "UI and UX", and PNG exports of the frames under `docs/ui/`.
 
 | Step | What | Status |
 | --- | --- | --- |
-| U2.1 | **Design direction.** Mantine (D1a) themed after Headlamp's look (D3), with Inter (D2): the Mantine theme object (primary colour, grey scale, radius, spacing, font sizes, component default props), the density (rows per screen on 1440×900), the icon set (Tabler icons, which Mantine uses in its own docs, bundled as React components; CSP forbids remote images; owner confirms the dependency here), and the colour tokens for both themes including status colours (ok, warning, error, unknown, pending) with their contrast ratios (WCAG AA) | todo |
-| U2.2 | **The shell.** Wireframes and sizes: the cluster rail (cluster name or initials with a status dot and a tooltip, grouped by source, favourites first, collapsible to icons), the resource sidebar (collapsible sections, current item marked, module and CRD groups), a top bar (cluster name and role, breadcrumbs, namespace filter, command palette hint, user menu with Settings and Sign out), the banners (where they sit, how they stack), the drawer (resizable width), the dock (collapsible, resizable height, tab bar) | todo |
-| U2.3 | **Components.** Specification of each shared component with its states (default, hover, focus, disabled, loading, error, empty): button (primary, secondary, danger, icon), input, select, checkbox, tabs, table (sticky header, column alignment by type, truncation with tooltip, row selection, sort indicators, row hover, zebra or not), status badge, usage bar, dialog, confirm dialog, menu, toast or inline result, banner, empty state, skeleton loader | todo |
-| U2.4 | **Page inventory.** One entry per screen with its wireframe and its empty, loading and error states: sign-in, add credentials (first run), home, cluster overview, resource list, details drawer (each tab), create from YAML, settings, jobs panel, dock (logs, shell, editor), pod files page, Helm releases and release details, Flux, resource map, Karpenter, each module, who-can, permissions, not found, no access | todo |
-| U2.5 | **Home and navigation.** What the home page shows (clusters by source with status and role, recent clusters, favourites; D4), how a user reaches Settings, jobs and help (keyboard shortcuts), what the browser title says, and the click path to every screen of U2.4 | todo |
-| U2.6 | **Owner review.** The owner approves `docs/ui-spec.md` in the pull request. Changes requested are made in the same pull request | todo |
+| U2.0 | **The Figma file.** Needs D8a. Create or receive the file; one file for the whole product, so organise it by pages (Foundations, Components, Shell, Screens, Flows) or, if the Starter plan limits the pages of a file, by sections on fewer pages; put its link in `docs/ui-spec.md`; check that the agent can write to it (a test frame, then removed). `whoami` lists the account's seat as `View`: if writing fails, or the Figma MCP limits for that seat are too low for this stage, mark this step `blocked` with the reason and the owner decides (a different seat or plan, or designing by hand with the agent reading the file) | todo |
+| U2.1 | **Design direction.** Mantine (D1a) themed after Headlamp's look (D3), with Inter (D2): in Figma the variables (primary colour, grey scale, radius, spacing, font sizes) and text styles; the density (rows per screen on 1440×900); the icon set (Tabler icons, which Mantine uses in its own docs, bundled as React components; CSP forbids remote images; owner confirms the dependency here); the colour tokens for both themes (Figma variable modes) including status colours (ok, warning, error, unknown, pending) with their contrast ratios (WCAG AA). Also picks the community Mantine kit of D8b, and writes the Mantine theme object it implies into `docs/ui-spec.md` as a table of token to value, so U3.2 has one list to implement | todo |
+| U2.2 | **The shell.** Frames and sizes: the cluster rail (cluster name or initials with a status dot and a tooltip, grouped by source, favourites first, collapsible to icons), the resource sidebar (collapsible sections, current item marked, module and CRD groups), a top bar (cluster name and role, breadcrumbs, namespace filter, command palette hint, user menu with Settings and Sign out), the banners (where they sit, how they stack), the drawer (resizable width), the dock (collapsible, resizable height, tab bar). Built with auto layout so the resize and collapse behaviour is visible in the file | todo |
+| U2.3 | **Components.** Each shared component as a Figma component with variants for its states (default, hover, focus, disabled, loading, error, empty): button (primary, secondary, danger, icon), input, select, checkbox, tabs, table (sticky header, column alignment by type, truncation with tooltip, row selection, sort indicators, row hover, zebra or not), status badge, usage bar, dialog, confirm dialog, menu, toast or inline result, banner, empty state, skeleton loader. Every colour, size and radius uses a variable of U2.1, none a raw value | todo |
+| U2.4 | **Page inventory.** One frame per screen and per state (empty, loading, error): sign-in, add credentials (first run), home, cluster overview, resource list, details drawer (each tab), create from YAML, settings, jobs panel, dock (logs, shell, editor), pod files page, Helm releases and release details, Flux, resource map, Karpenter, each module, who-can, permissions, not found, no access. Each frame is 1440×900 (the screenshot viewport of §3.2) and built from the components of U2.3, with realistic data, not lorem ipsum, taken from the demo (`docs/demo.md`). Both themes | todo |
+| U2.5 | **Home and navigation.** What the home page shows (clusters by source with status and role, recent clusters, favourites; D4), how a user reaches Settings, jobs and help (keyboard shortcuts), what the browser title says, and the click path to every screen of U2.4, as prototype flows in Figma for the §6 walkthrough and as a table in `docs/ui-spec.md` | todo |
+| U2.6 | **The written companion.** `docs/ui-spec.md` as §3.4 describes: link table (frame, URL, node ID), the rules a picture does not show, the token table of U2.1, and a PNG export of every frame in `docs/ui/` named after the frame. Reference it from `docs/spec.md` "UI and UX" | todo |
+| U2.7 | **Owner review.** The owner reviews the Figma file (comments on frames) and approves `docs/ui-spec.md` in the pull request. Changes requested are made in the Figma file and re-exported in the same pull request. Open comments in Figma are resolved or answered before approval | todo |
 
-**Acceptance.** The owner approves; `hack/docs-check.sh` → `DOCS OK`. No code changes in this stage.
+**Acceptance.** The owner approves; every screen of U2.4 and every component of U2.3 has a frame in both themes;
+`hack/docs-check.sh` → `DOCS OK`. No application code changes in this stage.
 
 ---
 
@@ -200,14 +230,14 @@ Output: `docs/ui-spec.md`, referenced from `docs/spec.md` "UI and UX", plus wire
 
 **Status:** todo · **Pull request:** – · **Depends on:** 2 · **Needs:** D1, D2
 
-**Goal.** The design tokens, base styles, shared components and the layout shell of `docs/ui-spec.md`, and the
+**Goal.** The design tokens, base styles, shared components and the layout shell of the Figma file and `docs/ui-spec.md`, and the
 screenshot test machinery every later stage uses.
 
 | Step | What | Status |
 | --- | --- | --- |
 | U3.1 | **Screenshot test machinery.** `web/ui/screens.ui.ts` with a helper `screen(page, name)` that waits for fonts and network idle, disables animations, and calls `toHaveScreenshot` in both themes; `make test-ui-update` regenerates baselines inside the CI Playwright image (`mcr.microsoft.com/playwright:v<pinned>`), so baselines match CI; the `ui-tests` job uploads the diff images when a screenshot differs. Font per D2 | todo |
-| U3.2 | **Mantine and the theme.** Add `@mantine/core`, `@mantine/hooks`, `@fontsource-variable/inter` and the icon package U2.1 confirms (the only new dependencies of this stage). `MantineProvider` with the theme of U2.1 in `web/src/theme/`; the light/dark setting of the user drives Mantine's colour scheme (replacing `data-theme` in `theme.css`); jsdom tests render inside a test provider (`web/src/test/render.tsx`). Check that the production build still passes the CSP of the server (no inline scripts; inline styles are allowed) with a UI test under `guardPage`. Red: screenshot of a test page `web/ui/fixtures/kitchen-sink` that renders every component in both themes | todo |
-| U3.3 | **Shared components on Mantine.** Re-implement `Button`, `Field`, `Banner`, `StatusBadge`, `FocusTrap` users, dialogs, menus and tabs with Mantine components, keeping their props where callers depend on them so feature code changes little; add `EmptyState` and skeleton loaders as U2.3 specifies. `Table` keeps its virtualised core (1,000 pods under 2 s) with Mantine styling (Stage 4 finishes it). Existing unit tests keep passing or are rewritten for the same behaviour (keyboard, focus, ARIA); screenshot tests for looks. Remove the plain CSS the components replace | todo |
+| U3.2 | **Mantine and the theme.** Add `@mantine/core`, `@mantine/hooks`, `@fontsource-variable/inter` and the icon package U2.1 confirms (the only new dependencies of this stage). `MantineProvider` with the theme of U2.1 in `web/src/theme/` (its values read from the Figma variables with `get_variable_defs` and matched to the token table of `docs/ui-spec.md`; a difference is a defect of one of the two); the light/dark setting of the user drives Mantine's colour scheme (replacing `data-theme` in `theme.css`); jsdom tests render inside a test provider (`web/src/test/render.tsx`). Check that the production build still passes the CSP of the server (no inline scripts; inline styles are allowed) with a UI test under `guardPage`. Red: screenshot of a test page `web/ui/fixtures/kitchen-sink` that renders every component in both themes | todo |
+| U3.3 | **Shared components on Mantine.** Re-implement `Button`, `Field`, `Banner`, `StatusBadge`, `FocusTrap` users, dialogs, menus and tabs with Mantine components, keeping their props where callers depend on them so feature code changes little; add `EmptyState` and skeleton loaders as U2.3 specifies. `Table` keeps its virtualised core (1,000 pods under 2 s) with Mantine styling (Stage 4 finishes it). Existing unit tests keep passing or are rewritten for the same behaviour (keyboard, focus, ARIA); screenshot tests for looks. Compare each component with its Figma frame side by side (§3.2.5). Remove the plain CSS the components replace | todo |
 | U3.4 | **The shell.** `Layout` on Mantine's `AppShell` with the rail, sidebar, top bar, banners, drawer and dock of U2.2: resizable drawer and dock (sizes saved per browser), collapsible rail and sidebar, the user menu (Settings, Sign out), breadcrumbs. Existing landmarks and accessible names stay, so the existing UI tests keep passing. Screenshot tests: empty shell, shell with a cluster open, with the drawer open, with the dock open | todo |
 | U3.5 | **Walkthrough.** §6 steps 1–3 and 12–13 in the demo, with screenshots in the pull request | todo |
 
