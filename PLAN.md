@@ -104,9 +104,7 @@ The interface is designed in Figma (D8), not in Markdown wireframes. The split o
 
 The dependency rule of the archived plan holds: add or change a dependency only where a step names it and the owner has
 agreed in §5. Advisory-driven bumps stay allowed as before. Agreed so far: `@mantine/core`, `@mantine/hooks` (D1a) and
-`@fontsource-variable/inter` (D2) in U3.2; the icon package once U2.1 confirms it. Figma (§3.4) adds no dependency;
-Code Connect (D8c), if chosen, adds only Figma's own CLI as a developer tool, not a package of the web app, and U3.3
-names it.
+`@fontsource-variable/inter` (D2) in U3.2; the icon package once U2.1 confirms it. Figma (§3.4) adds no dependency, and Code Connect is not used (D8c).
 
 ## §4 Status board
 
@@ -142,7 +140,7 @@ else runs in the order of the table.
 | D8 | Where the interface is designed | U2.0 | in Figma (§3.4) / in Markdown wireframes under `docs/ui/` as the plan first said | **decided 2026-11-26: in Figma** |
 | D8a | Where the Figma file lives | U2.0 | – | **decided 2026-11-26:** the owner's personal Figma account (Starter plan), one shared (collaborative) file for the whole of Kubelook, owner has edit access. `whoami` shows the account's seat on that team as `View`; whether the agent can write to the file with that seat is checked in U2.0, not assumed |
 | D8b | Component library in Figma | U2.1 | – | **decided 2026-11-26: adopt a community Mantine kit for Figma.** U2.1 picks the kit (licence, current for the Mantine version in use, light and dark) and records its name and link in `docs/ui-spec.md`; nothing is assumed about which kits exist. It is duplicated into the Kubelook file, not linked |
-| D8c | Whether to map the shared React components to their Figma components with Figma Code Connect, so the design-to-code tools name our components. U3.3 checks that the owner's Figma plan supports it before the step starts | U3.3 | yes / no | **open** (default if the owner does not decide: no, and U3.3 skips the mapping) |
+| D8c | Map React components to Figma components with Code Connect | U3.3 | yes / no | **decided 2026-11-26: no.** The agent adapts the output of `get_design_context` to Mantine without mappings; the owner may reopen this after Stage 3 |
 
 ## §6 The user walkthrough
 
@@ -239,7 +237,7 @@ screenshot test machinery every later stage uses.
 | --- | --- | --- |
 | U3.1 | **Screenshot test machinery.** `web/ui/screens.ui.ts` with a helper `screen(page, name)` that waits for fonts and network idle, disables animations, and calls `toHaveScreenshot` in both themes; `make test-ui-update` regenerates baselines inside the CI Playwright image (`mcr.microsoft.com/playwright:v<pinned>`), so baselines match CI; the `ui-tests` job uploads the diff images when a screenshot differs. Font per D2 | todo |
 | U3.2 | **Mantine and the theme.** Add `@mantine/core`, `@mantine/hooks`, `@fontsource-variable/inter` and the icon package U2.1 confirms (the only new dependencies of this stage). `MantineProvider` with the theme of U2.1 in `web/src/theme/` (its values read from the Figma variables with `get_variable_defs` and matched to the token table of `docs/ui-spec.md`; a difference is a defect of one of the two); the light/dark setting of the user drives Mantine's colour scheme (replacing `data-theme` in `theme.css`); jsdom tests render inside a test provider (`web/src/test/render.tsx`). Check that the production build still passes the CSP of the server (no inline scripts; inline styles are allowed) with a UI test under `guardPage`. Red: screenshot of a test page `web/ui/fixtures/kitchen-sink` that renders every component in both themes | todo |
-| U3.3 | **Shared components on Mantine.** Re-implement `Button`, `Field`, `Banner`, `StatusBadge`, `FocusTrap` users, dialogs, menus and tabs with Mantine components, keeping their props where callers depend on them so feature code changes little; add `EmptyState` and skeleton loaders as U2.3 specifies. `Table` keeps its virtualised core (1,000 pods under 2 s) with Mantine styling (Stage 4 finishes it). Existing unit tests keep passing or are rewritten for the same behaviour (keyboard, focus, ARIA); screenshot tests for looks. Compare each component with its Figma frame side by side (§3.2.5). If D8c = yes and the owner's plan supports it, map each shared component to its Figma component with Code Connect (the mapping files live in `web/figma/`). Remove the plain CSS the components replace | todo |
+| U3.3 | **Shared components on Mantine.** Re-implement `Button`, `Field`, `Banner`, `StatusBadge`, `FocusTrap` users, dialogs, menus and tabs with Mantine components, keeping their props where callers depend on them so feature code changes little; add `EmptyState` and skeleton loaders as U2.3 specifies. `Table` keeps its virtualised core (1,000 pods under 2 s) with Mantine styling (Stage 4 finishes it). Existing unit tests keep passing or are rewritten for the same behaviour (keyboard, focus, ARIA); screenshot tests for looks. Compare each component with its Figma frame side by side (§3.2.5). Remove the plain CSS the components replace | todo |
 | U3.4 | **The shell.** `Layout` on Mantine's `AppShell` with the rail, sidebar, top bar, banners, drawer and dock of U2.2: resizable drawer and dock (sizes saved per browser), collapsible rail and sidebar, the user menu (Settings, Sign out), breadcrumbs. Existing landmarks and accessible names stay, so the existing UI tests keep passing. Screenshot tests: empty shell, shell with a cluster open, with the drawer open, with the dock open | todo |
 | U3.5 | **Walkthrough.** §6 steps 1–3 and 12–13 in the demo, with screenshots in the pull request | todo |
 
