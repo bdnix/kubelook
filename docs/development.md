@@ -52,13 +52,15 @@ internal/            all Go code; one package per concern
   config/ clock/ crypto/ store/ audit/ session/ auth/    foundations
   vault/ kubeconfig/ cluster/ kube/ redact/              credentials and cluster access
   ws/ watch/ logs/ execs/ files/ jobs/ actions/          live data and day-two operations
-  helm/ flux/ modules/ resourcemap/ overview/ metrics/   platform features
+  helm/ flux/ modules/ resourcemap/ metrics/ certs/      platform features
   telemetry/ egress/ httpapi/ webui/ testutil/           hardening, the HTTP layer, the embedded web app
+  apperr/ version/                                       shared error values, the build version
 web/                 the React single-page app (src/), its unit tests beside the code, and web/ui (browser tests)
 deploy/helm/         the Helm chart; deploy/postgres/roles.sql the hardened database roles
 test/                integration (build tag integration) and e2e (Playwright)
 hack/                scripts: tools, the integration environment, chart tests, release scripts, docs check
-docs/                the documentation; PLAN.md is the implementation plan
+docs/                the documentation; docs/plans/ holds the finished implementation plans
+PLAN.md              the current implementation plan, with the status of every stage
 ```
 
 `internal/httpapi` may import any internal package. Handlers stay thin: decode the request, call a package, encode the answer.
