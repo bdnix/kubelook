@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Checks the documentation (PLAN.md Step 8.5): every configuration key and environment variable is in
+# Checks the documentation (docs/plans/20261126-021417-plan.md Step 8.5): every configuration key and environment variable is in
 # docs/configuration.md, every relative Markdown link points to a file, the required documents exist, and the
 # README is no longer "under construction". Prints DOCS OK.
 set -euo pipefail

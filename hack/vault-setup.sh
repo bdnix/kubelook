@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Vault mounts, roles, policies and tokens, and the Kubernetes fixtures of both clusters.
-# Idempotent. See PLAN.md Step 7.2. Writes .it/tokens.env (never print it in CI logs).
+# Idempotent. See docs/plans/20261126-021417-plan.md Step 7.2. Writes .it/tokens.env (never print it in CI logs).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; export PATH="$ROOT/bin:$PATH"
 cd "$ROOT"
