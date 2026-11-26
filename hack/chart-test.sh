@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Tests of the Helm chart (PLAN.md Step 8.2): lint, render and assert, with no cluster needed.
+# Tests of the Helm chart (docs/plans/20261126-021417-plan.md Step 8.2): lint, render and assert, with no cluster needed.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; export PATH="$ROOT/bin:$PATH"
 CHART="$ROOT/deploy/helm/kubelook"

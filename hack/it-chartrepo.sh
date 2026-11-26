@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the chart repository of the integration environment: the packaged demo charts and index.yaml in
-# .it/charts/, which the identity stand-in serves under /charts. See PLAN.md Step 7.8.
+# .it/charts/, which the identity stand-in serves under /charts. See docs/plans/20261126-021417-plan.md Step 7.8.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; export PATH="$ROOT/bin:$PATH"
 OUT="$ROOT/.it/charts"
