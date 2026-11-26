@@ -19,7 +19,7 @@ GOLANGCI_VERSION=v2.15.0
 GOVULNCHECK_VERSION=v1.9.0
 KIND_VERSION=v0.33.0
 KUBECTL_VERSION=v1.37.2
-HELM_VERSION=v4.3.1
+HELM_VERSION=v4.3.2
 HELM3_VERSION=v3.22.1   # integration tests only: makes and checks releases of Helm 3
 
 # A Go tool is built again only when bin/ does not hold it at this version, built with this Go (its version output

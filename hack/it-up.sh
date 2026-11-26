@@ -41,9 +41,9 @@ create_cluster beta & pids+=($!)
 # 3. Vault, PostgreSQL and the identity stand-in, while the clusters start.
 container_running kubelook-it-vault || { remove_container kubelook-it-vault; docker run -d --name kubelook-it-vault --network kind --cap-add IPC_LOCK \
   -p 127.0.0.1:18200:8200 -e VAULT_DEV_ROOT_TOKEN_ID=root -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
-  hashicorp/vault:2.2.1@sha256:962a92876e168d68eaaa24b0b8b49bbce1cb63024060a67bba95cd158a366fc2 >/dev/null; }
+  hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6 >/dev/null; }
 container_running kubelook-it-postgres || { remove_container kubelook-it-postgres; docker run -d --name kubelook-it-postgres --network kind \
-  -p 127.0.0.1:15432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=kubelook postgres:18.6-trixie >/dev/null; }
+  -p 127.0.0.1:15432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=kubelook postgres:18.7-trixie >/dev/null; }
 "$ROOT/hack/it-chartrepo.sh"
 docker build -q -t kubelook-fakeidp:dev -f "$ROOT/test/integration/fakeidp/Dockerfile" "$ROOT" >/dev/null
 remove_container kubelook-it-fakeidp   # always recreated: the charts mount and the image may have changed

@@ -36,7 +36,7 @@ stricter than the setting, the command simply deletes fewer rows.
 
 The chart runs `kubelook migrate` in a hook before every install and upgrade, using the Secret named by `database.migrationSecret`
 (key `url`). When `database.rolesSecret` is set (keys `appPassword` and `cleanupPassword`), the same hook then applies `roles.sql`
-with `retention_days` set to `audit.retentionDays`, using the `postgres:18.6-trixie` image's `psql`; the two cannot drift in a chart
+with `retention_days` set to `audit.retentionDays`, using the `postgres:18.7-trixie` image's `psql`; the two cannot drift in a chart
 install. Create the Secrets before the first install:
 
 ```bash

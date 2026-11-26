@@ -45,7 +45,7 @@ path "kubernetes/beta/creds/devops-role"  { capabilities = ["update"] }
   tokens shorter than 10 minutes.
 - The roles to try are listed in `vault.candidateRoles`, in order of preference.
 
-The integration environment sets up exactly this on Vault 2.2.1 (`hack/vault-setup.sh`).
+The integration environment sets up exactly this on Vault 2.2.2 (`hack/vault-setup.sh`).
 
 ## The internal endpoint
 

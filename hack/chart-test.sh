@@ -82,7 +82,7 @@ docs ConfigMap < "$F" | awk '
 (cd "$ROOT" && KUBELOOK_TEST_CHART_CONFIG="$TMP/rendered-config.yaml" go test -count=1 ./internal/config -run TestLoad_RenderedChartConfig) \
   || fail "full: the rendered configuration does not load to the values that were set"
 docs Job < "$F" > "$TMP/f-job"
-has "$TMP/f-job" 'postgres:18\.6-trixie' "full: roles are applied with psql of postgres:18.6-trixie"
+has "$TMP/f-job" 'postgres:18\.7-trixie' "full: roles are applied with psql of postgres:18.7-trixie"
 has "$TMP/f-job" 'retention_days=90' "full: retention_days equals audit.retentionDays"
 has "$F" 'GOMEMLIMIT' "full: GOMEMLIMIT"
 has "$F" 'value: "400MiB"' "full: goMemLimit"

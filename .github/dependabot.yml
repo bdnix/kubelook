@@ -21,7 +21,11 @@ updates:
     open-pull-requests-limit: 10
     ignore:
       - dependency-name: typescript
-        versions: [">=6.1.0"]   # typescript-eslint 8.72.2 supports < 6.1.0; lift when it supports newer
+        versions: [">=6.1.0"]   # typescript-eslint (8.74.0) supports < 6.1.0; lift when it supports newer
+      # monaco-editor 0.55+ changed createWebWorker; monaco-yaml 5.5.1 still uses the old call, so the YAML worker never
+      # starts. Lift when monaco-yaml releases support for it.
+      - dependency-name: monaco-editor
+        versions: [">=0.55.0"]
     groups:
       web-minor: { patterns: ["*"], update-types: [minor, patch] }
   - package-ecosystem: docker
