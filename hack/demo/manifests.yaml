@@ -1,0 +1,144 @@
+# Something to look at in the local demo: a web app with a Service, a log producer, a worker, a CronJob,
+# configuration and a Secret (to try the reveal and the redaction).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shop
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: shop
+  labels: {app: web}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: web}
+  template:
+    metadata:
+      labels: {app: web}
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.29-alpine
+          ports: [{containerPort: 80, name: http}]
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 64Mi}
+          readinessProbe:
+            httpGet: {path: /, port: http}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: shop
+spec:
+  selector: {app: web}
+  ports: [{port: 80, targetPort: http}]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+  namespace: shop
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: {app: web}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders
+  namespace: shop
+  labels: {app: orders}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: orders}
+  template:
+    metadata:
+      labels: {app: orders}
+    spec:
+      containers:
+        - name: orders
+          image: busybox:1.37
+          command:
+            - sh
+            - -c
+            - |
+              i=0
+              while true; do
+                lvl=info; [ $((i % 7)) -eq 0 ] && lvl=warn; [ $((i % 23)) -eq 0 ] && lvl=error
+                echo "{\"level\":\"$lvl\",\"msg\":\"order processed\",\"order\":$i,\"region\":\"$REGION\"}"
+                i=$((i+1)); sleep 2
+              done
+          env:
+            - name: REGION
+              valueFrom: {configMapKeyRef: {name: shop-settings, key: region}}
+          resources:
+            requests: {cpu: 5m, memory: 8Mi}
+            limits: {memory: 32Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: shop
+  labels: {app: worker}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: worker}
+  template:
+    metadata:
+      labels: {app: worker}
+    spec:
+      containers:
+        - name: worker
+          image: busybox:1.37
+          command: [sh, -c, 'mkdir -p /data && echo "hello from the worker" > /data/hello.txt && exec sleep 1000000']
+          resources:
+            requests: {cpu: 5m, memory: 8Mi}
+            limits: {memory: 32Mi}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: report
+  namespace: shop
+spec:
+  schedule: "*/5 * * * *"
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: report
+              image: busybox:1.37
+              command: [sh, -c, 'echo "daily report at $(date)"']
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shop-settings
+  namespace: shop
+data:
+  region: eu-west
+  featureFlags: |
+    newCheckout: true
+    darkMode: false
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: payment-gateway
+  namespace: shop
+type: Opaque
+stringData:
+  apiKey: demo-not-a-real-key

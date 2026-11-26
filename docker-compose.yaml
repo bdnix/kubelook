@@ -1,0 +1,141 @@
+# A local demo of Kubelook: the console, PostgreSQL, Vault (dev mode), a sign-in stand-in for GitHub, and a
+# kind cluster with something to look at. Run it with devbox (https://github.com/pilat/devbox), see docs/demo.md:
+#
+#   devbox init https://github.com/bdnix/kubelook.git --name kubelook-demo
+#   devbox --name kubelook-demo up
+#
+# Never expose it beyond localhost: the sign-in stand-in lets anyone in, Vault runs in dev mode with the root token
+# "root", and the encryption key below is public.
+name: kubelook-demo
+
+x-devbox-hosts:
+  # The browser follows the sign-in redirect to the stand-in by the same name Kubelook uses for it.
+  - ip: 127.0.0.1
+    hosts: [kubelook-signin]
+
+x-devbox-scenarios:
+  token:
+    service: toolbox
+    description: "Print a Vault token of a demo user: alice (every role, default) or bob (read only)"
+    command: [/demo/toolbox.sh, token]
+    tty: false
+    interactive: false
+  kubeconfig:
+    service: toolbox
+    description: "Print the cluster's kubeconfig for uploading to Kubelook; --host for kubectl on this machine"
+    command: [/demo/toolbox.sh, kubeconfig]
+    tty: false
+    interactive: false
+  signin-as:
+    service: toolbox
+    description: "Choose who the next sign-in signs in as: alice or bob"
+    command: [/demo/toolbox.sh, signin-as]
+  kubectl:
+    service: toolbox
+    description: "Run kubectl against the demo cluster"
+    command: [kubectl]
+  vault:
+    service: toolbox
+    description: "Run the Vault CLI as root"
+    command: [vault]
+  destroy-cluster:
+    service: toolbox
+    description: "Delete the kind cluster; run it before devbox destroy"
+    command: [/demo/toolbox.sh, destroy]
+
+networks:
+  default:
+    name: kubelook-demo
+
+volumes:
+  postgres: {}
+
+services:
+  kubelook:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args: {VERSION: demo}
+    image: kubelook-demo/kubelook:local
+    command: [serve]
+    ports: ["127.0.0.1:8080:8080"]
+    environment:
+      KUBELOOK_ENCRYPTION_KEY: "${KUBELOOK_ENCRYPTION_KEY:-H8FofKDtFfSJz8mwWwyEKxg2yTQ3dXOrt1YA5GoZpwA=}"
+      KUBELOOK_DATABASE_URL: "postgres://kubelook:kubelook@postgres:5432/kubelook"
+      KUBELOOK_GITHUB_CLIENT_SECRET: it-secret
+    volumes:
+      - ./hack/demo/kubelook.yaml:/etc/kubelook/config.yaml:ro
+    tmpfs: [/tmp]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    depends_on:
+      postgres: {condition: service_healthy}
+      vault: {condition: service_healthy}
+      kubelook-signin: {condition: service_started}
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:18.6-trixie
+    environment:
+      POSTGRES_USER: kubelook
+      POSTGRES_PASSWORD: kubelook
+      POSTGRES_DB: kubelook
+    volumes:
+      - postgres:/var/lib/postgresql
+    healthcheck:
+      test: [CMD, pg_isready, -U, kubelook, -d, kubelook]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  vault:
+    image: hashicorp/vault:2.2.1@sha256:962a92876e168d68eaaa24b0b8b49bbce1cb63024060a67bba95cd158a366fc2
+    cap_add: [IPC_LOCK]
+    ports: ["127.0.0.1:8200:8200"]
+    environment:
+      VAULT_DEV_ROOT_TOKEN_ID: root
+      VAULT_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+      VAULT_ADDR: http://127.0.0.1:8200
+    healthcheck:
+      test: [CMD, vault, status]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # The identity stand-in of the integration tests: it plays GitHub (and Google, unused here) and approves every sign-in as the
+  # account the toolbox announced.
+  kubelook-signin:
+    build:
+      context: .
+      dockerfile: test/integration/fakeidp/Dockerfile
+    image: kubelook-demo/signin:local
+    ports: ["127.0.0.1:8300:8300"]
+    environment:
+      FAKEIDP_EXTERNAL_URL: http://kubelook-signin:8300
+    restart: unless-stopped
+
+  toolbox:
+    build:
+      context: hack/demo
+      dockerfile: toolbox.Dockerfile
+    image: kubelook-demo/toolbox:local
+    environment:
+      DEMO_NETWORK: kubelook-demo
+      DEMO_SIGNIN_URL: http://kubelook-signin:8300
+      VAULT_ADDR: http://vault:8200
+      VAULT_TOKEN: root
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: [CMD, test, -f, /tmp/ready]
+      interval: 5s
+      timeout: 2s
+      retries: 120
+      start_period: 10m
+    depends_on:
+      vault: {condition: service_healthy}
+      kubelook-signin: {condition: service_started}
+    restart: unless-stopped
