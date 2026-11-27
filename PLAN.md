@@ -100,6 +100,11 @@ The interface is designed in Figma (D8), not in Markdown wireframes. The split o
   Figma. Both need edit access to the file (D8a).
 - **Tokens.** The Figma variables are the source of the Mantine theme object in `web/src/theme/` (U3.2). A token changes
   in Figma first, then in the theme, in the same pull request.
+- **The owner approves every design, one at a time.** Each component (U2.3), each frame, that is each screen and each
+  state (U2.4), the shell (U2.2), the home page and navigation (U2.5) and the token set (U2.1) is shown to the owner on its
+  own, through the Figma MCP (a screenshot of the node, with its link) or by any other means the owner chooses. The owner
+  approves or rejects it. A rejected design is changed and shown again until the owner is satisfied. Nothing moves forward
+  until the previous one is approved: the agent does not start the next screen, component or step before that.
 - **Not a dependency.** Figma is a design tool, not a build input: nothing in `make verify` or CI calls Figma, and the
   repository does not need a Figma token. The screenshot baselines (§3.2.1) remain what CI enforces.
 
@@ -224,9 +229,9 @@ wiring check holds for the pending-credentials endpoints.
 | U2.4 | **Page inventory.** One frame per screen and per state (empty, loading, error): sign-in, add credentials (first run), home, cluster overview, resource list, details drawer (each tab), create from YAML, settings, jobs panel, dock (logs, shell, editor), pod files page, Helm releases and release details, Flux, resource map, Karpenter, each module, who-can, permissions, not found, no access. Each frame is 1440×900 (the screenshot viewport of §3.2) and built from the components of U2.3, with realistic data, not lorem ipsum, taken from the fixture names of the §6 walkthrough. Both themes | todo |
 | U2.5 | **Home and navigation.** What the home page shows (clusters by source with status and role, recent clusters, favourites; D4), how a user reaches Settings, jobs and help (keyboard shortcuts), what the browser title says, and the click path to every screen of U2.4, as prototype flows in Figma for the §6 walkthrough and as a table in `docs/ui-spec.md` | todo |
 | U2.6 | **The written companion.** `docs/ui-spec.md` as §3.4 describes: link table (frame, URL, node ID), the rules a picture does not show, the token table of U2.1, and a PNG export of every frame in `docs/ui/` named after the frame. Reference it from `docs/spec.md` "UI and UX" | todo |
-| U2.7 | **Owner review.** The owner reviews the Figma file (comments on frames) and approves `docs/ui-spec.md` in the pull request. Changes requested are made in the Figma file and re-exported in the same pull request. Open comments in Figma are resolved or answered before approval | todo |
+| U2.7 | **Final check.** Every design has been approved one at a time as §3.4 says; this step confirms that nothing is left unapproved, that open comments in the Figma file are resolved or answered, and that `docs/ui-spec.md` and the exported PNGs match the approved frames. Changes after approval go through the same one-at-a-time approval | todo |
 
-**Acceptance.** The owner approves; every screen of U2.4 and every component of U2.3 has a frame in both themes;
+**Acceptance.** The owner has approved every design one at a time (§3.4); every screen of U2.4 and every component of U2.3 has a frame in both themes;
 `hack/docs-check.sh` → `DOCS OK`. No application code changes in this stage.
 
 ---
