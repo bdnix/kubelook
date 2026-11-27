@@ -1,6 +1,10 @@
 import type { Discovery, DiscoveryResource } from '../../api/discovery';
 
-/** The API groups that Kubernetes itself serves; everything else is a custom resource. */
+/**
+ * The API groups that Kubernetes itself serves; everything else is a custom resource. This is every group of the
+ * kube-apiserver of Kubernetes 1.37 (pkg/controlplane/instance.go), plus the aggregated metrics groups. A kind of a
+ * built-in group has no CustomResourceDefinition, so one that is missing here would be looked up and not found.
+ */
 const BUILT_IN_GROUPS = new Set([
   '',
   'apps',
@@ -18,12 +22,14 @@ const BUILT_IN_GROUPS = new Set([
   'events.k8s.io',
   'flowcontrol.apiserver.k8s.io',
   'internal.apiserver.k8s.io',
+  'lifecycle.k8s.io',
   'networking.k8s.io',
   'node.k8s.io',
   'rbac.authorization.k8s.io',
   'resource.k8s.io',
   'scheduling.k8s.io',
   'storage.k8s.io',
+  'storagemigration.k8s.io',
   'metrics.k8s.io',
   'custom.metrics.k8s.io',
   'external.metrics.k8s.io',
