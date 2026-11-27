@@ -42,9 +42,11 @@ beforeEach(() => {
   vaultStatusStore.getState().clear();
 });
 
-function setup(results: object[] | (() => Response)) {
+function setup(results: object[] | (() => Response), pending: object[] = []) {
   const sent: unknown[] = [];
   const client = fakeClient({
+    'GET /credentials/pending': () => jsonResponse({ items: pending }),
+    'POST /credentials/pending/ack': () => jsonResponse({}),
     'POST /credentials/restore': () => {
       if (typeof results === 'function') return results();
       return jsonResponse({ results });
@@ -127,6 +129,17 @@ describe('useRestore', () => {
     await waitFor(() => expect(hook.result.current.state).toBe('done'));
     expect((await store.list()).length).toBe(1);
     expect(hook.result.current.notices).toEqual([]);
+  });
+
+  it('after the restore, replaces the copies the server re-sealed and acknowledges them', async () => {
+    await store.put(kubeCopy);
+    const { hook, sent } = setup(
+      [{ status: 'ok', kind: 'kubeconfig', label: 'work' }],
+      [{ label: 'work', sealed: 'S2-new' }],
+    );
+    await waitFor(() => expect(hook.result.current.state).toBe('done'));
+    expect((await store.list()).map((c) => c.sealed)).toEqual(['S2-new']);
+    expect(sent).toContainEqual({ labels: ['work'] });
   });
 
   it('keeps the copies when the restore request itself fails', async () => {
