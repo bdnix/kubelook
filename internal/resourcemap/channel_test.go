@@ -68,9 +68,10 @@ func (s *source) forResource(resource, namespace string) watch.Subscriber {
 }
 
 type frame struct {
-	ch  int
-	typ string
-	d   any
+	ch        int
+	typ       string
+	d         any
+	droppable bool
 }
 
 type conn struct {
@@ -84,9 +85,16 @@ type conn struct {
 func (c *conn) Send(ch int, typ string, d any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.frames = append(c.frames, frame{ch, typ, d})
+	c.frames = append(c.frames, frame{ch: ch, typ: typ, d: d})
 	return nil
 }
+
+func (c *conn) SendDroppable(ch int, typ string, d any) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.frames = append(c.frames, frame{ch: ch, typ: typ, d: d, droppable: true})
+}
+
 func (c *conn) Session() session.Session { return sess }
 func (c *conn) Hidden() bool             { return c.hidden }
 func (c *conn) CloseChannel(ch int, _ string) {
@@ -189,6 +197,23 @@ func TestOpen_WatchesEveryServedKindOfTheNamespaceAsTheUser(t *testing.T) {
 		got = append(got, k.GVR.Resource)
 	}
 	assert.ElementsMatch(t, []string{"pods", "configmaps", "secrets", "persistentvolumeclaims", "services", "replicasets", "deployments", "statefulsets", "daemonsets", "ingresses"}, got, "the routes are not served here")
+}
+
+// A graph frame replaces the whole map in the browser, so a slow browser may skip the older ones; it never skips an error.
+func TestOpen_GraphFramesAreDroppable_ErrorFramesAreNot(t *testing.T) {
+	r := newRig(t, nil)
+	r.open(t, map[string]any{"cluster": "c", "namespaces": []string{"shop"}})
+	r.settle("shop", "pods")
+	r.snapshot("pods", "shop", o("v1", "Pod", "shop", "web-1", map[string]any{"status": map[string]any{"phase": "Running"}}))
+	r.clk.Advance(time.Second)
+	require.NotEmpty(t, r.conn.graphs())
+	for _, f := range r.conn.frames {
+		assert.Equal(t, f.typ == "graph", f.droppable, "frame %q", f.typ)
+	}
+	r.src.forResource("pods", "shop").Failed("internal", "boom")
+	last := r.conn.frames[len(r.conn.frames)-1]
+	assert.Equal(t, "error", last.typ)
+	assert.False(t, last.droppable)
 }
 
 func TestOpen_SendsTheGraphWhenEveryListHasArrived_AndAfterEachDebouncedChange(t *testing.T) {
