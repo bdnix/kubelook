@@ -24,7 +24,7 @@ All 11 pull requests of the first plan are merged. A review of the code and of t
   set image, CronJob trigger, PVC expand, bulk delete/restart/label, field filter, export, palette, node shell and Helm
   from OCI have unit and stand-in UI tests only.
 - **Small leftovers:** code reachable only from tests, test fixtures inside `web/src`, one stale package name in
-  `docs/development.md`, and a 404 on the StorageVersionMigration list seen in the demo.
+  `docs/development.md`, and a 404 on the StorageVersionMigration list seen on a Kubernetes 1.37 cluster.
 
 The root cause of all of it is the same: every step was accepted on its own tests, and nothing checked the product as a
 user meets it. This plan adds that check (§3.2) and fixes what it finds.
@@ -73,8 +73,7 @@ when all of these hold:
    `make test-ui-update` (Stage 3 adds it), and committed in the same pull request. A changed baseline is reviewed as an
    image in the pull request.
 2. **The user walkthrough.** The walkthrough of §6 is a Playwright test in `web/ui` (stand-in API, fixed data), one test per
-   step the stage touches, and the pull request body has a screenshot of every screen the stage changed. There is no local demo
-   (D11).
+   step the stage touches, and the pull request body has a screenshot of every screen the stage changed.
 3. **No dead ends.** Every new screen is reachable by clicking from the home page; the pull request names the click path.
 4. **Wiring check.** Every API endpoint and WebSocket channel the stage adds is called by the web app, and a browser
    test exercises that call (no endpoint that only unit tests reach).
@@ -111,7 +110,7 @@ agreed in §5. Advisory-driven bumps stay allowed as before. Agreed so far: `@ma
 
 | Stage | Title | Kind | Depends on | Status | Pull request |
 | --- | --- | --- | --- | --- | --- |
-| 0 | Housekeeping: archive plan 1, the local demo, this plan | code + docs | – | done | [#42](https://github.com/bdnix/kubelook/pull/42) |
+| 0 | Housekeeping: archive plan 1, this plan | code + docs | – | done | [#42](https://github.com/bdnix/kubelook/pull/42) |
 | 1 | Finish what is half done, remove leftovers | code | 0 | in progress | – |
 | 2 | UI design in Figma and its specification | **gate** (design + document) | 0 | todo | – |
 | 3 | UI foundation: tokens, base styles, the shell, screenshot tests | code | 2 | todo | – |
@@ -136,7 +135,6 @@ else runs in the order of the table.
 | D3 | Visual reference for the design | U2.1 | Freelens, Headlamp, the Kubernetes Dashboard, or "none, design from the spec" | **decided 2026-11-26: Headlamp.** Headlamp shows details as full pages, while the spec asks for a details drawer: U2.2 proposes how to reconcile the two (for example a drawer for quick looks and a full page per object) and the owner decides in U2.7 |
 | D4 | When the user has exactly one cluster, open it directly instead of showing the home page | U6.1 | yes / no | **decided 2026-11-26: yes**, land on that cluster's overview; the home page stays reachable from the logo and breadcrumb |
 | D5 | Add `deadcode` (golang.org/x/tools) to CI so code reachable only from tests fails the build | U1.5 | yes / no | **decided 2026-11-26: no**; U1.3 removes today's leftovers and code review watches for new ones |
-| D6 | Keep the demo manifest as `docker-compose.yaml` at the repository root (pilat/devbox needs it there) | U0.2 | yes / move to a separate manifest repository | **decided 2026-11-26: yes**, at the root of this repository; **void since D11** |
 | D7 | Which ecosystem components the integration environment installs in Stage 9 (each adds minutes to CI) | U9.1 | CRDs + fixtures only; real where cheap; everything real; two tiers | **decided 2026-11-26: two tiers.** Every pull request: CRDs and fixture objects for every module, with metrics-server and Flux running for real. Before a release candidate: a separate job installs every component for real (Karpenter stays CRDs and fixtures) and runs the same tests |
 | D8 | Where the interface is designed | U2.0 | in Figma (§3.4) / in Markdown wireframes under `docs/ui/` as the plan first said | **decided 2026-11-26: in Figma** |
 | D8a | Where the Figma file lives | U2.0 | – | **decided 2026-11-26:** the owner's personal Figma account (Starter plan), one shared (collaborative) file for the whole of Kubelook, owner has edit access. `whoami` shows the account's seat on that team as `View`; whether the agent can write to the file with that seat is checked in U2.0, not assumed |
@@ -144,7 +142,6 @@ else runs in the order of the table.
 | D8c | Map React components to Figma components with Code Connect | U3.3 | yes / no | **decided 2026-11-26: no.** The agent adapts the output of `get_design_context` to Mantine without mappings; the owner may reopen this after Stage 3 |
 | D9 | How much real infrastructure the integration tests stand up (reviewed against Argo CD, Freelens, Headlamp, Kubernetes Dashboard and k9s on 2026-11-26) | U1.2, U9.1 | keep it all / keep a thin real-cluster layer and use fixtures and fakes for the rest | **decided 2026-11-26: a thin layer.** Real kind clusters stay for Kubernetes API behaviour (discovery, RBAC, watch, exec, files, Helm), the chart install test and a few browser tests. The identity stand-in as a Kubernetes OIDC issuer, and real installs of ecosystem components, are not built; fixtures copied from the real controllers stand in. Heavy jobs run only when relevant paths change. Nothing new is added to the integration environment until the existing one has run reliably |
 | D10 | Is a single Kubelook replica on SQLite enough, so PostgreSQL and the multi-replica tests can go | U1.6 | yes / no (keep PostgreSQL for several replicas) | **decided 2026-11-26: no, keep PostgreSQL support.** It stays in the code, the chart and the docs, but the PostgreSQL and multi-replica integration tests (PostgreSQL container, host cluster running the chart on two replicas) do not run on every pull request: they run when paths that can affect them change, and before a release candidate (U1.6) |
-| D11 | Keep the local demo (docker-compose, devbox, kind, Vault, PostgreSQL, a toolbox) | U1.4, U3.5, U10.1–U10.3 | keep / fake every part except Kubelook / drop it | **decided 2026-11-26: drop it.** It added much work for little benefit: the screenshot tests and the Playwright walkthrough show the interface with canned data, and the integration environment runs the real stack. `docker-compose.yaml`, `hack/demo/` and `docs/demo.md` are removed. D6 no longer applies |
 
 ## §6 The user walkthrough
 
@@ -154,7 +151,7 @@ defect of the stage that owns that screen.
 
 1. Sign in.
 2. Add a Vault token.
-3. See which clusters the token gives, and open `demo`.
+3. See which clusters the token gives, and open `prod`.
 4. Find the pods of the namespace `shop` and tell which are healthy.
 5. Read the logs of `orders`, show only the errors, and pause the stream.
 6. Open a shell in `worker` and list `/data`.
@@ -172,19 +169,17 @@ defect of the stage that owns that screen.
 
 **Status:** done · **Pull request:** [#42](https://github.com/bdnix/kubelook/pull/42) · **Depends on:** –
 
-**Goal.** Close the first plan properly, commit the local demo, and put this plan in place.
+**Goal.** Close the first plan properly and put this plan in place.
 
 | Step | What | Status |
 | --- | --- | --- |
 | U0.1 | Archive the first plan with `git mv` to `docs/plans/20261126-021417-plan.md`; repoint the comments that cite its steps (`deploy/helm/kubelook/Chart.yaml`, `hack/docs-check.sh`, `hack/vault-setup.sh`, `hack/it-chartrepo.sh`, `hack/chart-test.sh`) | done |
-| U0.2 | The local demo: `docker-compose.yaml`, `hack/demo/` (toolbox image and script, kind config, workloads, Kubelook config), `docs/demo.md`, the README section. Needs D6 done; removed again by D11 |
 | U0.3 | This plan as `PLAN.md` | done |
 | U0.4 | `docs/development.md`: remove the package `internal/overview`, which does not exist, list `certs`, `apperr` and `version`; describe `PLAN.md` and `docs/plans/` | done |
 | U0.5 | `AGENTS.md`: "the next pull request" is the first stage of §4 whose status is not `done`; keep the status board up to date as §2 says | done |
 | U0.6 | Commit on a branch, push, open the pull request, CI green | done |
 
-**Acceptance.** `make verify` → `VERIFY OK`; `hack/docs-check.sh` → `DOCS OK`; `devbox --name kubelook-demo up` on the
-branch brings the demo up and the walkthrough steps 1–4 work (as far as the current interface allows); CI green.
+**Acceptance.** `make verify` → `VERIFY OK`; `hack/docs-check.sh` → `DOCS OK`; CI green.
 
 ---
 
@@ -295,7 +290,7 @@ screenshot test machinery every later stage uses.
 | --- | --- | --- |
 | U6.1 | **Home page.** Replace the "Choose a cluster" placeholder with U2.5's home: clusters by source with status, role and a direct "Open" (role picker for Vault clusters), favourites, recently opened; D4 | todo |
 | U6.2 | **First run.** Signed in with no credentials: a page that explains the two ways (Vault token, kubeconfig) with the forms side by side and what happens to the credential (sealed copy in this browser) | todo |
-| U6.3 | **Navigation.** Settings and Jobs in the user menu and the palette; the palette hint (Ctrl/Cmd+K) in the top bar; the keyboard help reachable from the menu; browser titles per page (`Pods · demo · Kubelook`) | todo |
+| U6.3 | **Navigation.** Settings and Jobs in the user menu and the palette; the palette hint (Ctrl/Cmd+K) in the top bar; the keyboard help reachable from the menu; browser titles per page (`Pods · prod · Kubelook`) | todo |
 | U6.4 | **Sign-in page, not found, no access, cluster unavailable** in the new layout | todo |
 | U6.5 | **Screens and walkthrough.** Screenshot tests of each page; §6 steps 1–3, 11–13 done without hints | todo |
 
@@ -364,9 +359,8 @@ the pull request (and in `docs/ci.md`).
 
 | Step | What | Status |
 | --- | --- | --- |
-| U10.1 | The demo gets an optional profile (`devbox up --profile ecosystem`) that installs the components of U9.1 into the demo cluster, so the platform pages have something to show dropped (D11) |
-| U10.2 | README with screenshots of the main screens (taken from the screenshot baselines), the screenshots are the only change to the docs of the interface | todo |
-| U10.3 | **Owner acceptance.** The owner does the §6 walkthrough in a Kubelook of their own, against their own clusters, and lists anything that needs a hint; each item is fixed here or becomes a stage of a next plan | todo |
-| U10.4 | Archive this plan as `AGENTS.md` describes | todo |
+| U10.1 | README with screenshots of the main screens, taken from the screenshot baselines | todo |
+| U10.2 | **Owner acceptance.** The owner does the §6 walkthrough in a Kubelook of their own, against their own clusters, and lists anything that needs a hint; each item is fixed here or becomes a stage of a next plan | todo |
+| U10.3 | Archive this plan as `AGENTS.md` describes | todo |
 
 **Acceptance.** The owner accepts; `make verify`, `make test-ui`, `make it`, `make e2e` green; CI green.
