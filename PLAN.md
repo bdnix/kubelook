@@ -72,8 +72,10 @@ when all of these hold:
    data, fixed viewport 1440×900, both themes). Baselines are generated in CI's container image, never on a laptop, with
    `make test-ui-update` (Stage 3 adds it), and committed in the same pull request. A changed baseline is reviewed as an
    image in the pull request.
-2. **The user walkthrough.** The walkthrough of §6 is a Playwright test in `web/ui` (stand-in API, fixed data), one test per
-   step the stage touches, and the pull request body has a screenshot of every screen the stage changed.
+2. **The user walkthrough, with screenshots.** The walkthrough of §6 is a Playwright test in `web/ui` (stand-in API, fixed
+   data), one test per step the stage touches. Every walkthrough step takes a screenshot of the screen it ends on
+   (1440×900, both themes), committed as a baseline like any other (§3.2.1). The pull request body shows these screenshots in
+   the order of the steps, plus a screenshot of every other screen the stage changed.
 3. **No dead ends.** Every new screen is reachable by clicking from the home page; the pull request names the click path.
 4. **Wiring check.** Every API endpoint and WebSocket channel the stage adds is called by the web app, and a browser
    test exercises that call (no endpoint that only unit tests reach).
@@ -146,7 +148,8 @@ else runs in the order of the table.
 ## §6 The user walkthrough
 
 A person who has not used Kubelook before does these, without help, in a Kubelook of their own. The walkthrough tests of
-§3.2.2 follow the same steps against the stand-in API, with the names below as fixture data. Each step that needs a hint is a
+§3.2.2 follow the same steps against the stand-in API, with the names below as fixture data, and every step ends with a
+screenshot. Each step that needs a hint is a
 defect of the stage that owns that screen.
 
 1. Sign in.
