@@ -1,5 +1,4 @@
 import { createStore } from 'zustand/vanilla';
-import { useStore } from 'zustand';
 
 export type Theme = 'system' | 'light' | 'dark';
 const THEMES: readonly Theme[] = ['system', 'light', 'dark'];
@@ -46,7 +45,3 @@ export function createThemeStore({ storage, root }: { storage: KeyValueStorage; 
 }
 
 export const themeStore = createThemeStore({ storage: window.localStorage, root: document.documentElement });
-
-export function useTheme(): ThemeState {
-  return useStore(themeStore);
-}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { compileFilter, evaluate, resolvePath } from './evaluate';
+import { compileFilter, resolvePath } from './evaluate';
 import { parseFilter, type Filter } from './parse';
 
 const NOW = Date.parse('2026-11-14T12:00:00Z');
@@ -8,7 +8,7 @@ const f = (text: string): Filter => {
   if (!r.ok) throw new Error(r.error.message);
   return r.filter;
 };
-const test = (text: string, obj: unknown) => evaluate(f(text), obj, NOW);
+const test = (text: string, obj: unknown) => compileFilter(f(text), NOW).test(obj);
 
 const pod = {
   metadata: {
@@ -164,6 +164,6 @@ describe('AND and OR', () => {
   });
 
   it('an empty filter matches everything', () => {
-    expect(evaluate([], pod, NOW)).toBe(true);
+    expect(compileFilter([], NOW).test(pod)).toBe(true);
   });
 });

@@ -1,4 +1,3 @@
-import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
 
 export interface CsrfState {
@@ -15,7 +14,3 @@ export function createCsrfStore() {
 
 /** The CSRF token of the current session; the API client reads it for every write. */
 export const csrfStore = createCsrfStore();
-
-export function useCsrf(): CsrfState {
-  return useStore(csrfStore);
-}

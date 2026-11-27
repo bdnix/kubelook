@@ -103,7 +103,3 @@ export function compileFilter(filter: Filter, now: number): Compiled {
     test: (obj) => groups.length === 0 || groups.some((g) => g.every((fn) => fn(obj))),
   };
 }
-
-export function evaluate(filter: Filter, obj: unknown, now: number): boolean {
-  return compileFilter(filter, now).test(obj);
-}

@@ -1,9 +1,8 @@
-import type { DiffLine } from '../../lib/diff';
+import { hasChanges, type DiffLine } from '../../lib/diff';
 
 /** The line diff of what a save would change, from the server's dry run. */
 export function SavePreview({ diff }: { diff: DiffLine[] }) {
-  const changed = diff.some((l) => l.type !== 'same');
-  if (!changed) return <p>The save would change nothing.</p>;
+  if (!hasChanges(diff)) return <p>The save would change nothing.</p>;
   return (
     <pre aria-label="Preview of the change" className="diff">
       {diff.map((l, i) => (
