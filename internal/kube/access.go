@@ -165,6 +165,12 @@ func (a *Access) CanAll(ctx context.Context, sess session.Session, clusterID str
 	return out, nil
 }
 
+// CanExec reports whether the user may open a shell in the pod: "create" on pods/exec (Kubernetes
+// 1.35 requires create for WebSocket exec).
+func (a *Access) CanExec(ctx context.Context, sess session.Session, clusterID, ns, pod string) (bool, string, error) {
+	return a.Can(ctx, sess, clusterID, Check{Verb: "create", Resource: "pods", Subresource: "exec", Namespace: ns, Name: pod})
+}
+
 // ruleAllows reports whether one RBAC rule grants the check.
 func ruleAllows(rule authv1.ResourceRule, c Check) bool {
 	if !matchesAny(rule.Verbs, c.Verb) || !matchesAny(rule.APIGroups, c.Group) {
