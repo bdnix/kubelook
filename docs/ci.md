@@ -14,8 +14,7 @@ pull request / merge queue / main
 ├── test-ui-browser ─┤
 ├── lint-chart ──────┤
 ├── review-dependencies (pull requests and merge queue)
-└── build-image (amd64 + arm64, native) ──► test-e2e (SQLite, one replica)
-                                            test-e2e-postgres (PostgreSQL, two replicas; main and the release PR only)
+└── build-image (amd64 + arm64, native runners) ──► test-e2e (SQLite; also PostgreSQL on main and the release PR)
                                                         │
 main only, after every check above passed:              ▼
 release ──► publish-image ──► publish-chart
@@ -25,14 +24,14 @@ release ──► publish-image ──► publish-chart
   BuildKit's layer cache. Each build is smoke-tested and scanned on its own architecture and kept as an artifact. The integration
   tests load the amd64 build, and on `main` the publishing job pushes both builds. Nothing is built twice, and what is published is
   what was tested.
-- **One real-system environment, in two sizes.** Both jobs start two kind clusters under test (Kubernetes 1.35 and 1.37), a third
+- **One real-system environment, in two sizes.** `test-e2e` is one job with a matrix over the database. Each entry starts two kind clusters under test (Kubernetes 1.35 and 1.37), a third
   kind cluster that runs Kubelook from its Helm chart, Vault and the sign-in stand-in. The clusters start in parallel. The browser
-  suite, the Go integration suite and the chart's life cycle (upgrade, uninstall) all run against that release. `test-e2e` runs
-  one replica on SQLite (`IT_DATABASE=sqlite`) and is what every pull request runs. `test-e2e-postgres` runs two replicas on
+  suite, the Go integration suite and the chart's life cycle (upgrade, uninstall) all run against that release. The `sqlite` entry
+  runs one replica on SQLite (`IT_DATABASE=sqlite`) and is what every pull request runs. The `postgres` entry runs two replicas on
   PostgreSQL (`IT_DATABASE=postgres`) and adds the tests of what the replicas share (the Go tests with the build tag
   `itpostgres`: sessions and opened clusters across replicas, a replica that stops or dies, the audit roles, the key change).
-- **When the PostgreSQL job runs.** On pushes to `main` and on the release pull request (a branch named `release-please--…`, so a
-  release candidate is tested on it). Other pull requests and the merge queue skip it, and a skipped job does not block merging.
+- **When the PostgreSQL entry runs.** On pushes to `main` and on the release pull request (a branch named `release-please--…`, so a
+  release candidate is tested on it). Other pull requests and the merge queue run the SQLite entry only.
 - **Verified publishing.** After pushing, the publishing jobs verify the signature and the attestations from the registry, run the
   published image, and pull the published chart back and render it.
 
@@ -46,8 +45,7 @@ release ──► publish-image ──► publish-chart
 | `test-ui-browser` | UI tests in Chrome | The built web app works in a real browser, with the API answered by the tests (`web/ui`) |
 | `lint-chart` | Lint & render Helm chart | The chart lints and renders with every values file in `deploy/helm/kubelook/ci`; the rendered objects have the required properties; the rendered `config.yaml` loads with the application's strict loader; invalid combinations fail; `ct lint` is clean |
 | `build-image` | Build & scan image (amd64), Build & scan image (arm64) | The image builds for the architecture, runs `version`, runs as `65532:65532`, has no shell, and has no fixable HIGH or CRITICAL vulnerability (Trivy) |
-| `test-e2e` | Integration & e2e tests | Kubelook (one replica on SQLite) installed from its chart works against real Vault and two real Kubernetes clusters: sign-in, the Vault path, kubeconfig clusters, live data and day-2 operations, the browser suite, and the chart upgrade and uninstall |
-| `test-e2e-postgres` | Integration & e2e tests (PostgreSQL, two replicas) | The same against real PostgreSQL with two replicas, plus: sessions and opened clusters shared by both replicas, a replica that stops or dies, the audit roles, the key change |
+| `test-e2e` | Integration & e2e tests; on main and the release pull request also Integration & e2e tests (PostgreSQL, two replicas) | Kubelook (one replica on SQLite) installed from its chart works against real Vault and two real Kubernetes clusters: sign-in, the Vault path, kubeconfig clusters, live data and day-2 operations, the browser suite, and the chart upgrade and uninstall. The PostgreSQL entry repeats it with two replicas on real PostgreSQL and adds: sessions and opened clusters shared by both replicas, a replica that stops or dies, the audit roles, the key change |
 | `review-dependencies` | Review dependency changes | The change adds no dependency with a high-severity advisory (pull requests and the merge queue; not on pushes to `main`) |
 | `release` | Prepare release | On `main` only, after every check passed: keeps the release pull request up to date, or creates the tag and the GitHub release when that pull request was merged ([releasing.md](releasing.md)) |
 | `publish-image` | Publish container image | On `main` only: pushes the tested amd64 and arm64 builds as one image (`main`, `sha-<commit>`, and the version tags on a release), signs it, attests provenance and an SBOM per architecture, and verifies all of it from the registry |
