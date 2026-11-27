@@ -119,7 +119,7 @@ agreed in §5. Advisory-driven bumps stay allowed as before. Agreed so far: `@ma
 | Stage | Title | Kind | Depends on | Status | Pull request |
 | --- | --- | --- | --- | --- | --- |
 | 0 | Housekeeping: archive plan 1, this plan | code + docs | – | done | [#42](https://github.com/bdnix/kubelook/pull/42) |
-| 1 | Finish what is half done, remove leftovers | code | 0 | in review | – |
+| 1 | Finish what is half done, remove leftovers | code | 0 | in review | [#45](https://github.com/bdnix/kubelook/pull/45) |
 | 2 | UI design in Figma and its specification | **gate** (design + document) | 0 | todo | – |
 | 3 | UI foundation: tokens, base styles, the shell, screenshot tests | code | 2 | todo | – |
 | 4 | Lists and tables | code | 3 | todo | – |
@@ -194,7 +194,7 @@ defect of the stage that owns that screen.
 
 # Stage 1 — Finish what is half done, remove leftovers
 
-**Status:** in review · **Pull request:** – · **Depends on:** 0
+**Status:** in review · **Pull request:** [#45](https://github.com/bdnix/kubelook/pull/45) · **Depends on:** 0
 
 **Goal.** No feature is half wired, and no production code exists only for tests.
 
