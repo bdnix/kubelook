@@ -8,12 +8,15 @@ How to build, test and change Kubelook. [`ci.md`](ci.md) says what each CI job p
 | --- | --- | --- |
 | Go | the `go` line of `go.mod` (1.27.4) | the server |
 | Node.js | `web/.nvmrc` (26.13.1) | the web app and its tests |
-| Docker | any recent | the image, and the integration environment |
-| A cgroup v2 host | `stat -fc %T /sys/fs/cgroup` prints `cgroup2fs` | only for the integration environment: the Kubernetes 1.35 node of kind does not start on cgroup v1 |
+| Docker | any recent | only for the image and the integration environment |
+| A Docker host with cgroup v2 | `docker info --format '{{.CgroupVersion}}'` prints `2` | only for the integration environment: the Kubernetes 1.35 node of kind does not start on cgroup v1 |
 | Chromium | Playwright's, or any build | only for the browser tests |
 
-`make tools` installs the pinned developer tools into `bin/` (golangci-lint, govulncheck, kind, kubectl, Helm 4, and Helm 3 for one
-integration test), each checked against a published checksum where one exists. Then install the web dependencies once:
+`make tools` installs the two pinned developer tools into `bin/`, golangci-lint and govulncheck, both built from Go source. That is all
+everyday development needs: no cluster, Vault, kind or Helm is installed on your machine. `make it-tools` installs kind, kubectl, Helm 4
+and Helm 3 (one integration test) into `bin/`, each checked against a published checksum where one exists. Only `make it-up` and
+`make chart-test` call it, so you meet it only when you run the integration environment or the chart tests. Then install the web
+dependencies once:
 
 ```bash
 make tools
@@ -34,7 +37,7 @@ cd web && npm ci
 | `make image` | the container image `kubelook:dev` | |
 | `make it-up` / `make it` / `make it-down` | the integration environment (two kind clusters under test, a host cluster running Kubelook from its Helm chart, Vault, PostgreSQL, a sign-in stand-in); the Go tests against it; remove it | `IT UP` / `INTEGRATION OK` / `IT DOWN` |
 | `make e2e` | the browser tests of the whole stack (`test/e2e`); needs `make it-up` | `E2E OK` |
-| `make chart-test` | lint, render and assert the Helm chart; needs no cluster | `CHART OK` |
+| `make chart-test` | lint, render and assert the Helm chart; needs no cluster, but installs Helm (`make it-tools`) | `CHART OK` |
 
 The web build rewrites `internal/webui/dist`, which the Go build embeds, so never run Make targets in parallel.
 
