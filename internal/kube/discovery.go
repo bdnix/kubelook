@@ -29,13 +29,6 @@ type Resource struct {
 type Discovery struct {
 	ServerVersion string     `json:"serverVersion"`
 	Resources     []Resource `json:"resources"`
-
-	subresources map[string]bool // "pods/exec"
-}
-
-// Has reports whether the cluster serves the subresource of the resource, e.g. Has("pods", "exec").
-func (d *Discovery) Has(resource, subresource string) bool {
-	return d.subresources[resource+"/"+subresource]
 }
 
 // Resolve returns the preferred served version of the resource of the group.
@@ -92,7 +85,7 @@ func BuildDiscovery(c discovery.DiscoveryInterface) (*Discovery, error) {
 	if err != nil && !discovery.IsGroupDiscoveryFailedError(err) {
 		return nil, fmt.Errorf("discovering the cluster's API: %w", err)
 	}
-	d := &Discovery{subresources: map[string]bool{}}
+	d := &Discovery{}
 	if v, verr := c.ServerVersion(); verr == nil && v != nil {
 		d.ServerVersion = v.GitVersion
 	}
@@ -111,7 +104,6 @@ func BuildDiscovery(c discovery.DiscoveryInterface) (*Discovery, error) {
 		}
 		for _, r := range l.APIResources {
 			if strings.Contains(r.Name, "/") {
-				d.subresources[r.Name] = true
 				continue
 			}
 			d.Resources = append(d.Resources, toResource(gv, r, preferred[gv.Group] == gv.Version, served[gv.Group]))
