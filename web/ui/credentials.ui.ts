@@ -121,9 +121,9 @@ test('a re-sealed copy prepared by the server replaces the saved one, so the nex
 
   // The next sign-in sends the new copy.
   await page.reload();
-  await expect.poll(() => JSON.stringify(restoreBodies.at(-1))).toBe(
-    JSON.stringify({ items: [{ sealed: 'v1.k.sealed.rotated' }] }),
-  );
+  await expect
+    .poll(() => JSON.stringify(restoreBodies.at(-1)))
+    .toBe(JSON.stringify({ items: [{ sealed: 'v1.k.sealed.rotated' }] }));
 });
 
 test('a server that rejects the kubeconfig has its message shown as text', async ({ page }) => {

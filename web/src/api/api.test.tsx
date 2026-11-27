@@ -170,7 +170,9 @@ describe('useOpenCluster', () => {
     const { result } = renderHook(() => useOpenCluster('v:prod'), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.status).toBe('open'));
     await waitFor(() => expect(calls).toContain('POST /credentials/pending/ack'));
-    expect(await store.list()).toMatchObject([{ id: 'kubeconfig:work', kind: 'kubeconfig', sealed: 'new.copy' }]);
+    expect(await store.list()).toMatchObject([
+      { id: 'kubeconfig:work', kind: 'kubeconfig', sealed: 'new.copy' },
+    ]);
   });
 
   it('reports the error when opening fails', async () => {
