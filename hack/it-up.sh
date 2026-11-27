@@ -49,8 +49,6 @@ container_running kubelook-it-vault || { remove_container kubelook-it-vault; doc
 if [ "$DATABASE" = postgres ]; then
   container_running kubelook-it-postgres || { remove_container kubelook-it-postgres; docker run -d --name kubelook-it-postgres --network kind \
     -p 127.0.0.1:15432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=kubelook postgres:18.7-trixie >/dev/null; }
-else
-  remove_container kubelook-it-postgres   # left over from a run in postgres mode
 fi
 "$ROOT/hack/it-chartrepo.sh"
 docker build -q -t kubelook-fakeidp:dev -f "$ROOT/test/integration/fakeidp/Dockerfile" "$ROOT" >/dev/null
