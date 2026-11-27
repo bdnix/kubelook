@@ -110,9 +110,9 @@ agreed in §5. Advisory-driven bumps stay allowed as before. Agreed so far: `@ma
 
 | Stage | Title | Kind | Depends on | Status | Pull request |
 | --- | --- | --- | --- | --- | --- |
-| 0 | Housekeeping: archive plan 1, the local demo, this plan | code + docs | – | in review | [#42](https://github.com/bdnix/kubelook/pull/42) |
+| 0 | Housekeeping: archive plan 1, the local demo, this plan | code + docs | – | done | [#42](https://github.com/bdnix/kubelook/pull/42) |
 | 1 | Finish what is half done, remove leftovers | code | 0 | todo | – |
-| 2 | UI design in Figma and its specification | **gate** (design + document) | 0 | todo | – |
+| 2 | UI design in Figma and its specification | **gate** (design + document) | 0 | in progress | – |
 | 3 | UI foundation: tokens, base styles, the shell, screenshot tests | code | 2 | todo | – |
 | 4 | Lists and tables | code | 3 | todo | – |
 | 5 | Details drawer, dialogs and forms | code | 4 | todo | – |
@@ -165,7 +165,7 @@ defect of the stage that owns that screen.
 
 # Stage 0 — Housekeeping
 
-**Status:** in review · **Pull request:** [#42](https://github.com/bdnix/kubelook/pull/42) · **Depends on:** –
+**Status:** done · **Pull request:** [#42](https://github.com/bdnix/kubelook/pull/42) · **Depends on:** –
 
 **Goal.** Close the first plan properly, commit the local demo, and put this plan in place.
 
@@ -176,7 +176,7 @@ defect of the stage that owns that screen.
 | U0.3 | This plan as `PLAN.md` | done |
 | U0.4 | `docs/development.md`: remove the package `internal/overview`, which does not exist, list `certs`, `apperr` and `version`; describe `PLAN.md` and `docs/plans/` | done |
 | U0.5 | `AGENTS.md`: "the next pull request" is the first stage of §4 whose status is not `done`; keep the status board up to date as §2 says | done |
-| U0.6 | Commit on a branch, push, open the pull request, CI green | in review |
+| U0.6 | Commit on a branch, push, open the pull request, CI green | done |
 
 **Acceptance.** `make verify` → `VERIFY OK`; `hack/docs-check.sh` → `DOCS OK`; `devbox --name kubelook-demo up` on the
 branch brings the demo up and the walkthrough steps 1–4 work (as far as the current interface allows); CI green.
@@ -204,7 +204,7 @@ wiring check holds for the pending-credentials endpoints.
 
 # Stage 2 — UI design in Figma and its specification (gate)
 
-**Status:** todo · **Pull request:** – · **Depends on:** 0 · **Needs:** D1, D3, D8, D8a, D8b
+**Status:** in progress · **Pull request:** – · **Depends on:** 0 · **Needs:** D1, D3, D8, D8a, D8b
 
 **Goal.** A design the owner approves in Figma before any styling is built, so the stages after it build the same thing
 (§3.4). Output: the Figma file, `docs/ui-spec.md` (the written companion with the frame links), referenced from
