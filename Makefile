@@ -12,12 +12,19 @@ FILE ?=
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X github.com/bdnix/kubelook/internal/version.Version=$(VERSION) -X github.com/bdnix/kubelook/internal/version.Commit=$(COMMIT)
+IT_DATABASE ?= sqlite
+export IT_DATABASE
 COVER_TOOL := github.com/vladopajic/go-test-coverage/v2@v2.23.0
 
-.PHONY: docs-check chart-test it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
+.PHONY: docs-check chart-test it-tools it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
 
+# The developer tools: golangci-lint and govulncheck, built from Go source. `make verify` needs nothing else installed.
 tools:
 	hack/install-tools.sh
+
+# kind, kubectl and Helm: only for the integration environment and the chart tests, never for everyday development.
+it-tools:
+	hack/install-it-tools.sh
 
 fmt:
 	golangci-lint fmt
@@ -81,14 +88,16 @@ verify: lint coverage build
 # Integration environment: two kind clusters under test, a host cluster running Kubelook from its Helm chart, Vault,
 # PostgreSQL and an identity stand-in. Needs Docker and a cgroup v2 host. KUBELOOK_IMAGE_ARCHIVE names an image
 # archive to test instead of building kubelook:dev.
-it-up: tools
+it-up: it-tools
 	hack/it-up.sh
 
 it-down:
 	hack/it-down.sh
 
+# IT_DATABASE=postgres runs the tests of the two replicas on PostgreSQL as well (they carry the build tag itpostgres); it
+# must be the value `make it-up` was started with.
 it:
-	go test -tags integration -count=1 -p 1 -timeout 30m -v ./test/integration/...
+	go test -tags "integration$(if $(filter postgres,$(IT_DATABASE)), itpostgres)" -count=1 -p 1 -timeout 30m -v ./test/integration/...
 	@echo "INTEGRATION OK"
 
 e2e:
@@ -96,7 +105,7 @@ e2e:
 	@echo "E2E OK"
 
 # Lint, render and assert the Helm chart (Step 8.2); needs no cluster.
-chart-test:
+chart-test: it-tools
 	hack/chart-test.sh
 
 clean:

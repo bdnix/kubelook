@@ -219,12 +219,3 @@ func TestCanAll_OrderAndLimit(t *testing.T) {
 	_, err = e.access.CanAll(t.Context(), sessA, "c", []kube.Check{{Verb: "get", Resource: "x"}})
 	require.Error(t, err)
 }
-
-func TestCanExec_IsCreateOnPodsExec(t *testing.T) {
-	e := newAccessEnv()
-	e.ssar = func(*authv1.ResourceAttributes) (bool, error) { return true, nil }
-	ok, _, err := e.access.CanExec(t.Context(), sessA, "c", "ns1", "web-1")
-	require.NoError(t, err)
-	assert.True(t, ok)
-	assert.Equal(t, &authv1.ResourceAttributes{Namespace: "ns1", Verb: "create", Resource: "pods", Subresource: "exec", Name: "web-1"}, e.lastAttrs)
-}

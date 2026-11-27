@@ -73,18 +73,11 @@ Every action that changes something is written to the audit log with your accoun
 
 ## Try it on your machine
 
-The quickest way to see it: the [local demo](docs/demo.md) runs the console, Vault, PostgreSQL and a kind cluster with
-[devbox](https://github.com/pilat/devbox).
+The integration environment is the way to run the whole stack locally, against real systems.
+It needs Docker on a cgroup v2 host, and Go.
 
 ```bash
-devbox init https://github.com/bdnix/kubelook.git --name kubelook-demo
-devbox --name kubelook-demo up   # then open http://localhost:8080
-```
-
-The integration environment needs Docker on a cgroup v2 host, and Go.
-
-```bash
-make it-up        # two kind clusters, Vault, PostgreSQL, a sign-in stand-in and the console at http://localhost:18080
+make it-up        # two kind clusters, Vault, a sign-in stand-in and the console at http://localhost:18080 (IT_DATABASE=postgres: two replicas on PostgreSQL)
 make it           # the integration tests
 make it-down
 ```
@@ -96,7 +89,6 @@ make it-down
 - [Vault policy](docs/vault-policy.md): what users' tokens and Vault roles need
 - [PostgreSQL](docs/postgres.md): roles, migrations and the audit tamper resistance
 - [Operations](docs/operations.md): key rotation, restarts, metrics, logs, the audit record and known limits
-- [Local demo](docs/demo.md): try it on your machine with devbox
 - [Running with `docker run`](docs/docker-run.md) (documented, not supported)
 - [Development](docs/development.md)
 - [Security review](docs/security-review.md), [CI](docs/ci.md), [releasing](docs/releasing.md), [spike findings](docs/spike-findings.md)

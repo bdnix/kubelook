@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # Helpers for the integration environment scripts. Source this file; do not run it.
 
+# it_database: the database of the Kubelook release in the integration environment, from IT_DATABASE.
+#   sqlite    (default) one replica on SQLite: what every pull request runs.
+#   postgres  two replicas on PostgreSQL: the tests of what the replicas share (docs/ci.md says when CI runs them).
+it_database() {
+  case "${IT_DATABASE:-sqlite}" in
+    sqlite|postgres) echo "${IT_DATABASE:-sqlite}" ;;
+    *) echo "IT_DATABASE must be sqlite or postgres, not ${IT_DATABASE}" >&2; return 1 ;;
+  esac
+}
+
 # wait_http <url> <seconds>: a bounded retry on a condition, not a fixed sleep. Each attempt is bounded too: without
 # --connect-timeout, a connection to a pod that has just gone away waits for the kernel's SYN retries (about 127 s
 # with Linux's default tcp_syn_retries=6) before curl retries.

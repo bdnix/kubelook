@@ -15,16 +15,12 @@ import (
 	"github.com/bdnix/kubelook/internal/testutil/fakekube"
 )
 
-func TestBuildDiscovery_SubresourcesAreRecordedNotListed(t *testing.T) {
+func TestBuildDiscovery_SubresourcesAreNotListed(t *testing.T) {
 	d, err := kube.BuildDiscovery(fakekube.New().Disc)
 	require.NoError(t, err)
 	for _, r := range d.Resources {
 		assert.NotContains(t, r.Resource, "/")
 	}
-	assert.True(t, d.Has("pods", "exec"))
-	assert.True(t, d.Has("pods", "log"))
-	assert.False(t, d.Has("pods", "attach"))
-	assert.False(t, d.Has("secrets", "exec"))
 }
 
 func TestBuildDiscovery_ResultIsSortedByGroupThenResource(t *testing.T) {

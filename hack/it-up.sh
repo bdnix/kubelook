@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 # Creates the integration environment idempotently:
 #   - alpha (Kubernetes 1.35) and beta (1.37): the clusters Kubelook manages in the tests;
-#   - host: a third kind cluster that runs Kubelook from its Helm chart (two replicas on PostgreSQL);
-#   - Vault, PostgreSQL and the identity stand-in (which also serves the test chart repository) as containers.
+#   - host: a third kind cluster that runs Kubelook from its Helm chart: one replica on SQLite, or with IT_DATABASE=postgres
+#     two replicas on PostgreSQL (hack/it-lib.sh, it_database);
+#   - Vault, PostgreSQL (only with IT_DATABASE=postgres) and the identity stand-in (which also serves the test chart
+#     repository) as containers.
 # The image under test is the archive in KUBELOOK_IMAGE_ARCHIVE (CI passes the one its build job made), or else the
 # local kubelook:dev, built when missing.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; export PATH="$ROOT/bin:$PATH"
 source "$ROOT/hack/it-lib.sh"
+DATABASE="$(it_database)"
 mkdir -p "$ROOT/.it"
 
-if [ "$(stat -fc %T /sys/fs/cgroup 2>/dev/null || true)" != "cgroup2fs" ]; then
-  echo "This host does not use cgroup v2. The Kubernetes 1.35 node of kind never becomes ready on cgroup v1." >&2
-  echo "Run the integration environment on a cgroup v2 host (check: stat -fc %T /sys/fs/cgroup prints cgroup2fs)." >&2
+# Asked of the Docker daemon, whose host runs the kind nodes (on macOS and Windows that is a VM, not this machine).
+if [ "$(docker info --format '{{.CgroupVersion}}' 2>/dev/null || true)" != "2" ]; then
+  echo "The Docker host does not use cgroup v2. The Kubernetes 1.35 node of kind never becomes ready on cgroup v1." >&2
+  echo "Use a Docker host with cgroup v2 (check: docker info --format '{{.CgroupVersion}}' prints 2)." >&2
   exit 1
 fi
 
@@ -42,8 +46,10 @@ create_cluster beta & pids+=($!)
 container_running kubelook-it-vault || { remove_container kubelook-it-vault; docker run -d --name kubelook-it-vault --network kind --cap-add IPC_LOCK \
   -p 127.0.0.1:18200:8200 -e VAULT_DEV_ROOT_TOKEN_ID=root -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
   hashicorp/vault:2.2.2@sha256:dfa48c2fa2b0099ccb47681ec5c4804bf5aec9d6879ecfee07ad4b92a5427ad6 >/dev/null; }
-container_running kubelook-it-postgres || { remove_container kubelook-it-postgres; docker run -d --name kubelook-it-postgres --network kind \
-  -p 127.0.0.1:15432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=kubelook postgres:18.7-trixie >/dev/null; }
+if [ "$DATABASE" = postgres ]; then
+  container_running kubelook-it-postgres || { remove_container kubelook-it-postgres; docker run -d --name kubelook-it-postgres --network kind \
+    -p 127.0.0.1:15432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=kubelook postgres:18.7-trixie >/dev/null; }
+fi
 "$ROOT/hack/it-chartrepo.sh"
 docker build -q -t kubelook-fakeidp:dev -f "$ROOT/test/integration/fakeidp/Dockerfile" "$ROOT" >/dev/null
 remove_container kubelook-it-fakeidp   # always recreated: the charts mount and the image may have changed
@@ -53,7 +59,7 @@ for img in busybox:1.37 registry.k8s.io/pause:3.10; do
   docker image inspect "$img" >/dev/null 2>&1 || docker pull -q "$img" >/dev/null
 done
 wait_http http://127.0.0.1:18200/v1/sys/health 60
-wait_pg kubelook-it-postgres 60
+if [ "$DATABASE" = postgres ]; then wait_pg kubelook-it-postgres 60; fi
 wait_http http://127.0.0.1:8300/healthz 30
 
 for p in "${pids[@]}"; do

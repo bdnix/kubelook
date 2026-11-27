@@ -459,19 +459,6 @@ func (c *Credentials) RemoveVaultToken(ctx context.Context, sess session.Session
 	return c.d.Registry.CloseMatching(sess.Hash, func(name string) bool { return strings.HasPrefix(name, vaultClusterPrefix) })
 }
 
-// VaultToken returns the session's Vault token and what Vault says about it (for later steps).
-func (c *Credentials) VaultToken(ctx context.Context, sess session.Session) (string, vault.TokenInfo, error) {
-	vc, err := c.getVaultCred(ctx, sess)
-	if err != nil {
-		return "", vault.TokenInfo{}, err
-	}
-	info, err := c.d.Vault.LookupSelf(ctx, vc.Token)
-	if err != nil {
-		return "", vault.TokenInfo{}, fmt.Errorf("looking up vault token: %w", err)
-	}
-	return vc.Token, info, nil
-}
-
 // VaultStatus describes the session's Vault token, or returns nil when there is none.
 // A token Vault no longer accepts is reported as expired.
 func (c *Credentials) VaultStatus(ctx context.Context, sess session.Session) (*VaultStatus, error) {

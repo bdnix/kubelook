@@ -26,9 +26,10 @@ oneoff() {
   local cmd="$1"; shift
   local extra=()
   for kv in "$@"; do extra+=(-e "$kv"); done
-  mapfile -t env < <(base_env "$KUBELOOK_ENCRYPTION_KEY")
+  local env=()
+  while IFS= read -r line; do env+=("$line"); done < <(base_env "$KUBELOOK_ENCRYPTION_KEY")
   docker run --rm --network kind -v "$ROOT/test/integration/config/postgres.yaml:/etc/kubelook/config.yaml:ro" --tmpfs /tmp \
-    "${env[@]}" "${extra[@]}" kubelook:dev "$cmd"
+    "${env[@]}" ${extra[@]+"${extra[@]}"} kubelook:dev "$cmd"
 }
 
 case "${1:-}" in

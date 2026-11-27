@@ -8,12 +8,15 @@ How to build, test and change Kubelook. [`ci.md`](ci.md) says what each CI job p
 | --- | --- | --- |
 | Go | the `go` line of `go.mod` (1.27.4) | the server |
 | Node.js | `web/.nvmrc` (26.13.1) | the web app and its tests |
-| Docker | any recent | the image, and the integration environment |
-| A cgroup v2 host | `stat -fc %T /sys/fs/cgroup` prints `cgroup2fs` | only for the integration environment: the Kubernetes 1.35 node of kind does not start on cgroup v1 |
+| Docker | any recent | only for the image and the integration environment |
+| A Docker host with cgroup v2 | `docker info --format '{{.CgroupVersion}}'` prints `2` | only for the integration environment: the Kubernetes 1.35 node of kind does not start on cgroup v1 |
 | Chromium | Playwright's, or any build | only for the browser tests |
 
-`make tools` installs the pinned developer tools into `bin/` (golangci-lint, govulncheck, kind, kubectl, Helm 4, and Helm 3 for one
-integration test), each checked against a published checksum where one exists. Then install the web dependencies once:
+`make tools` installs the two pinned developer tools into `bin/`, golangci-lint and govulncheck, both built from Go source. That is all
+everyday development needs: no cluster, Vault, kind or Helm is installed on your machine. `make it-tools` installs kind, kubectl, Helm 4
+and Helm 3 (one integration test) into `bin/`, each checked against a published checksum where one exists. Only `make it-up` and
+`make chart-test` call it, so you meet it only when you run the integration environment or the chart tests. Then install the web
+dependencies once:
 
 ```bash
 make tools
@@ -32,9 +35,9 @@ cd web && npm ci
 | `make build` | web build, embed in the Go binary, `bin/kubelook` | `BUILD OK` |
 | `make test-ui` | browser tests of the built web app, with the API answered by the tests (`web/ui`) | `N passed` |
 | `make image` | the container image `kubelook:dev` | |
-| `make it-up` / `make it` / `make it-down` | the integration environment (two kind clusters under test, a host cluster running Kubelook from its Helm chart, Vault, PostgreSQL, a sign-in stand-in); the Go tests against it; remove it | `IT UP` / `INTEGRATION OK` / `IT DOWN` |
+| `make it-up` / `make it` / `make it-down` | the integration environment (two kind clusters under test, a host cluster running Kubelook from its Helm chart on SQLite, Vault, a sign-in stand-in; `IT_DATABASE=postgres` adds PostgreSQL and a second replica); the Go tests against it; remove it | `IT UP` / `INTEGRATION OK` / `IT DOWN` |
 | `make e2e` | the browser tests of the whole stack (`test/e2e`); needs `make it-up` | `E2E OK` |
-| `make chart-test` | lint, render and assert the Helm chart; needs no cluster | `CHART OK` |
+| `make chart-test` | lint, render and assert the Helm chart; needs no cluster, but installs Helm (`make it-tools`) | `CHART OK` |
 
 The web build rewrites `internal/webui/dist`, which the Go build embeds, so never run Make targets in parallel.
 
@@ -105,9 +108,11 @@ PLAN.md              the current implementation plan, with the status of every s
 
 `make it-up` builds the image (or loads the archive named by `KUBELOOK_IMAGE_ARCHIVE`) and starts everything the product talks
 to: two kind clusters under test (alpha on Kubernetes 1.35, beta on 1.37), Vault with cluster mounts, tokens and policies,
-PostgreSQL, and a stand-in for Google and GitHub sign-in. It installs Kubelook from its Helm chart into a third kind cluster, `host`,
-with two replicas on PostgreSQL, and makes it reachable at `http://localhost:18080` (either replica), `:18081` (replica 1) and
-`:18082` (replica 2). `hack/it-kubelook.sh` installs, upgrades, restarts, stops and kills those replicas for the tests.
+and a stand-in for Google and GitHub sign-in. It installs Kubelook from its Helm chart into a third kind cluster, `host`, with one
+replica on SQLite, and makes it reachable at `http://localhost:18080` and `:18081`. With `IT_DATABASE=postgres` (give the same value to
+`make it-up`, `make e2e` and `make it`) it also starts PostgreSQL and installs two replicas, reachable at `:18080` (either), `:18081`
+(replica 1) and `:18082` (replica 2), and `make it` runs the tests that need them (build tag `itpostgres`).
+`hack/it-kubelook.sh` installs, upgrades, restarts, stops and kills those replicas for the tests.
 Vault tokens for the test users are in `.it/tokens.env`; the Vault CLI runs inside the container `kubelook-it-vault`; kubeconfigs
 for the three clusters are in `.it/kubeconfig-<cluster>-host.yaml`. `make it-down` removes it all. The console of this environment
 admits the domain `corp.example` (Google) and the organisation `acme` (GitHub); the integration tests announce to the stand-in which

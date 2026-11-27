@@ -49,9 +49,6 @@ func (a *Adapter) WithRegistryHTTP(c *http.Client) *Adapter {
 	return a
 }
 
-// WorkDir is the directory set by WithWorkDir.
-func (a *Adapter) WorkDir() string { return a.workDir }
-
 const (
 	applyClientSide = "csa"
 	statusMatch     = action.ListAll

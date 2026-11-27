@@ -28,7 +28,8 @@ while IFS= read -r v; do
 done <<< "$vars"
 
 # Relative links. A link is [text](target) where the target is not a URL or an anchor of the same file.
-mapfile -t files < <(ls README.md docs/*.md deploy/helm/kubelook/README.md 2>/dev/null)
+files=()
+while IFS= read -r f; do files+=("$f"); done < <(ls README.md docs/*.md deploy/helm/kubelook/README.md 2>/dev/null)
 for f in "${files[@]}"; do
   dir="$(dirname "$f")"
   # Links inside code fences are examples, not links.

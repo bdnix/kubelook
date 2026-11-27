@@ -135,3 +135,32 @@ func TestRESTConfig_OIDC_NoStaticToken(t *testing.T) {
 	assert.Empty(t, cfg.BearerToken)
 	assert.NotNil(t, cfg.WrapTransport)
 }
+
+// A copy the browser got through the pending list restores in a later session and still opens the cluster: the identity
+// provider has retired the old refresh token, so only the rotated one in the copy works.
+func TestToken_OIDCPendingCopy_RestoresInANewSessionWithTheRotatedRefreshToken(t *testing.T) {
+	e := newOIDCEnv(t, true)
+	_, err := e.op.Open(t.Context(), e.sess, "k:work/ctx", "")
+	require.NoError(t, err)
+	_, err = e.op.Token(t.Context(), e.sess.Hash, "k:work/ctx")
+	require.NoError(t, err)
+	pending, err := e.op.Pending(t.Context(), e.sess)
+	require.NoError(t, err)
+	require.Len(t, pending, 1)
+
+	// The provider now accepts only the rotated token, and the session that rotated it is gone.
+	e.idp.RefreshToken = "refresh-2"
+	e.idp.NewRefreshToken = "refresh-3"
+	require.NoError(t, e.store().DeleteCredential(t.Context(), e.sess.Hash, "kubeconfig", "work"))
+
+	res := e.c.Restore(t.Context(), e.sess, []string{pending[0].Sealed})
+	require.Len(t, res, 1)
+	assert.Equal(t, "ok", res[0].Status)
+
+	e.clock.Advance(2 * time.Hour) // the ID token of the first refresh has expired by now
+	_, err = e.op.Open(t.Context(), e.sess, "k:work/ctx", "")
+	require.NoError(t, err)
+	tok, err := e.op.Token(t.Context(), e.sess.Hash, "k:work/ctx")
+	require.NoError(t, err)
+	assert.NotEmpty(t, tok)
+}

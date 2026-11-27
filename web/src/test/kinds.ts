@@ -1,5 +1,5 @@
 import { expect } from 'vitest';
-import type { KindDescriptor } from './types';
+import type { KindDescriptor } from '../kinds/types';
 
 export const NOW = Date.parse('2026-11-14T12:00:00Z');
 export const created = '2026-11-14T11:00:00Z'; // one hour before NOW

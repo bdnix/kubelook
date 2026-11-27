@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderApp } from '../../test/render';
-import { helmApi, release } from './fixtures';
+import { helmApi, release } from '../../test/helm';
 import { ReleasesPage } from './ReleasesPage';
 
 vi.mock('../../adapters/monaco/YamlEditor', () => ({

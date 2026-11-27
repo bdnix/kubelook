@@ -1,5 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import 'fake-indexeddb/auto';
 import { renderHook, waitFor } from '@testing-library/react';
+import { IDBFactory } from 'fake-indexeddb';
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { createClient } from './client';
@@ -7,6 +9,8 @@ import { ApiContext } from './context';
 import { useAccess } from './access';
 import { findResource, useDiscovery, type Discovery } from './discovery';
 import { useOpenCluster } from './open';
+import { VaultStoreContext } from '../features/credentials/context';
+import { openVaultStore, type VaultStore } from '../features/credentials/vaultStore';
 import { jsonResponse } from '../test/render';
 
 const discovery: Discovery = {
@@ -45,7 +49,7 @@ const discovery: Discovery = {
   ],
 };
 
-function wrap(routes: Record<string, () => Response>) {
+function wrap(routes: Record<string, () => Response>, vaultStore: VaultStore | null = null) {
   const calls: string[] = [];
   const fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
     const key = `${init?.method ?? 'GET'} ${String(input).replace('/api/v1', '')}`;
@@ -57,7 +61,9 @@ function wrap(routes: Record<string, () => Response>) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>
-      <ApiContext.Provider value={client}>{children}</ApiContext.Provider>
+      <ApiContext.Provider value={client}>
+        <VaultStoreContext.Provider value={vaultStore}>{children}</VaultStoreContext.Provider>
+      </ApiContext.Provider>
     </QueryClientProvider>
   );
   return { Wrapper, calls };
@@ -143,6 +149,30 @@ describe('useOpenCluster', () => {
     expect(result.current.status).toBe('opening');
     await waitFor(() => expect(result.current.status).toBe('open'));
     expect(calls.filter((c) => c === 'GET /clusters').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('saves the re-sealed copies the server prepared after opening a cluster, then acknowledges them', async () => {
+    globalThis.indexedDB = new IDBFactory();
+    const store = openVaultStore('u1');
+    let state = 'closed';
+    const { Wrapper, calls } = wrap(
+      {
+        'GET /clusters': () => jsonResponse(sources(state)),
+        'POST /clusters/v%3Aprod/open': () => {
+          state = 'open';
+          return jsonResponse({ state: 'open' });
+        },
+        'GET /credentials/pending': () => jsonResponse({ items: [{ label: 'work', sealed: 'new.copy' }] }),
+        'POST /credentials/pending/ack': () => jsonResponse({}),
+      },
+      store,
+    );
+    const { result } = renderHook(() => useOpenCluster('v:prod'), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.status).toBe('open'));
+    await waitFor(() => expect(calls).toContain('POST /credentials/pending/ack'));
+    expect(await store.list()).toMatchObject([
+      { id: 'kubeconfig:work', kind: 'kubeconfig', sealed: 'new.copy' },
+    ]);
   });
 
   it('reports the error when opening fails', async () => {

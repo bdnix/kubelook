@@ -35,6 +35,8 @@ type Access interface {
 // Conn is the part of the WebSocket connection the channel uses (`*ws.Conn`).
 type Conn interface {
 	Send(ch int, typ string, d any) error
+	// SendDroppable queues a frame a slow browser may skip: each graph replaces the whole map, so an older one is worth nothing.
+	SendDroppable(ch int, typ string, d any)
 	Session() session.Session
 	Hidden() bool
 	CloseChannel(ch int, reason string)
@@ -281,7 +283,7 @@ func (c *channel) flush() {
 	g.LeftOutNamespaces = append([]string(nil), c.leftOut...)
 	c.sent = true
 	c.mu.Unlock()
-	_ = c.conn.Send(c.ch, "graph", g)
+	c.conn.SendDroppable(c.ch, "graph", g)
 }
 
 // Handle refuses every op: a map channel is driven by the server.

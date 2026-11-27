@@ -1,5 +1,5 @@
 name: Set up the toolchains
-description: Go from go.mod, Node.js from web/.nvmrc with the npm cache, and the pinned developer tools in bin/.
+description: Go from go.mod, Node.js from web/.nvmrc with the npm cache, and, when asked, the pinned integration tools (kind, kubectl, helm) in bin/.
 inputs:
   go:
     description: Set up Go.
@@ -8,7 +8,7 @@ inputs:
     description: Set up Node.js and the npm cache.
     default: "false"
   tools:
-    description: Install the pinned tools (kind, kubectl, helm) into bin/. Implies Go. Steps call them as bin/<tool>.
+    description: Install the pinned integration tools (kind, kubectl, helm) into bin/ with `make it-tools`. Implies Go. Steps call them as bin/<tool>.
     default: "false"
   go-cache:
     description: |
@@ -60,7 +60,7 @@ runs:
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: bin
-        key: tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('hack/install-tools.sh') }}
+        key: tools-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('hack/install-it-tools.sh') }}
     - if: ${{ inputs.tools == 'true' }}
       shell: bash
-      run: make tools
+      run: make it-tools

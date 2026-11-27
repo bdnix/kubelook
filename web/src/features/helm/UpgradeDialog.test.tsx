@@ -2,7 +2,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { renderApp } from '../../test/render';
-import { detail, helmApi } from './fixtures';
+import { detail, helmApi } from '../../test/helm';
 import { InstallDialog } from './InstallDialog';
 import { UpgradeDialog } from './UpgradeDialog';
 

@@ -1,6 +1,5 @@
-import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import { createThemeStore, themeStore, useTheme } from './theme';
+import { createThemeStore, themeStore } from './theme';
 
 function fakeStorage(initial: Record<string, string> = {}) {
   const data = { ...initial };
@@ -71,14 +70,13 @@ describe('theme store', () => {
   });
 });
 
-describe('useTheme', () => {
-  it('reads and updates the shared store', () => {
-    const { result } = renderHook(() => useTheme());
-    expect(result.current.theme).toBe('system');
-    act(() => result.current.setTheme('dark'));
-    expect(result.current.theme).toBe('dark');
+describe('themeStore', () => {
+  it('is the shared store: setting the theme applies it to the page', () => {
+    expect(themeStore.getState().theme).toBe('system');
+    themeStore.getState().setTheme('dark');
+    expect(themeStore.getState().theme).toBe('dark');
     expect(document.documentElement.dataset['theme']).toBe('dark');
-    act(() => themeStore.getState().setTheme('system'));
+    themeStore.getState().setTheme('system');
     expect(document.documentElement.dataset['theme']).toBeUndefined();
   });
 });

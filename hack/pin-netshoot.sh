@@ -18,6 +18,9 @@ else
 fi
 [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "pin-netshoot: not a digest: $DIGEST" >&2; exit 1; }
 
-sed -i -E "s#^(  image: )ghcr\.io/bdnix/kubelook-netshoot[@:][^ ]+\$#\1ghcr.io/bdnix/kubelook-netshoot@$DIGEST#" "$VALUES"
+tmp="$(mktemp)"
+sed -E "s#^(  image: )ghcr\.io/bdnix/kubelook-netshoot[@:][^ ]+\$#\1ghcr.io/bdnix/kubelook-netshoot@$DIGEST#" "$VALUES" >"$tmp"
+cat "$tmp" >"$VALUES"   # not mv: keeps the mode and any link of the file
+rm -f "$tmp"
 grep -qx "  image: ghcr.io/bdnix/kubelook-netshoot@$DIGEST" "$VALUES" || { echo "pin-netshoot: debug.image not found in $VALUES" >&2; exit 1; }
 echo "debug.image is ghcr.io/bdnix/kubelook-netshoot@$DIGEST (from tag $TAG)"
