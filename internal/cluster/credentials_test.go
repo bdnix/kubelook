@@ -278,10 +278,11 @@ func TestRestore_VaultDown_UnreachableAndTokenKept(t *testing.T) {
 	assert.Equal(t, 1, e.count(t, "vault_token"), "kept so discovery can be retried")
 
 	e.vault.HangUp(false)
-	tok, info, err := e.c.VaultToken(t.Context(), e.sess)
+	st, err := e.c.VaultStatus(t.Context(), e.sess)
 	require.NoError(t, err)
-	assert.Equal(t, vaultTok, tok)
-	assert.Equal(t, "ent-1", info.EntityID)
+	require.NotNil(t, st, "the kept token is still the session's token")
+	assert.False(t, st.Expired, "and Vault still accepts it")
+	assert.Equal(t, "ent-1", st.EntityID)
 }
 
 func TestRestore_DiscoveryUnreachable_TokenKept(t *testing.T) {
@@ -360,12 +361,10 @@ func TestRenew_ExpiredToken_Conflict(t *testing.T) {
 	require.ErrorIs(t, err, apperr.ErrConflict)
 }
 
-func TestVaultToken_StatusAndDiscoveryNeverRenew(t *testing.T) {
+func TestVaultStatus_AndDiscoveryNeverRenew(t *testing.T) {
 	e := newEnv(t)
 	e.add(t)
-	_, _, err := e.c.VaultToken(t.Context(), e.sess)
-	require.NoError(t, err)
-	_, err = e.c.VaultStatus(t.Context(), e.sess)
+	_, err := e.c.VaultStatus(t.Context(), e.sess)
 	require.NoError(t, err)
 	e.c.Restore(t.Context(), e.sess, []string{e.add(t)})
 	assert.Equal(t, 0, e.vault.Calls("renew-self"))
@@ -472,7 +471,7 @@ func TestVaultIdentity_FromTheStoredCredential(t *testing.T) {
 	assert.Equal(t, "oidc-ada", name)
 }
 
-func TestVaultToken_SessionCredentialSealedWithAnotherKey_EndsSessionAnd401KeyChanged(t *testing.T) {
+func TestVaultStatus_SessionCredentialSealedWithAnotherKey_EndsSessionAnd401KeyChanged(t *testing.T) {
 	e := newEnv(t)
 	other, err := crypto.NewSealer(bytes.Repeat([]byte{9}, 32), testutil.Rand("o"))
 	require.NoError(t, err)
@@ -481,7 +480,7 @@ func TestVaultToken_SessionCredentialSealedWithAnotherKey_EndsSessionAnd401KeyCh
 	require.NoError(t, store.NewSessions(e.db).PutCredential(t.Context(), e.sess.Hash,
 		store.CredentialRow{Kind: "vault_token", Sealed: sealed}, e.clock.Now()))
 
-	_, _, err = e.c.VaultToken(t.Context(), e.sess)
+	_, err = e.c.VaultStatus(t.Context(), e.sess)
 	a := apiErr(t, err)
 	assert.Equal(t, 401, a.Status)
 	assert.Equal(t, "key_changed", a.Code)
@@ -489,11 +488,11 @@ func TestVaultToken_SessionCredentialSealedWithAnotherKey_EndsSessionAnd401KeyCh
 	require.ErrorIs(t, gerr, store.ErrNotFound, "the session was ended")
 }
 
-func TestVaultToken_CorruptSessionCredential_Error(t *testing.T) {
+func TestVaultStatus_CorruptSessionCredential_Error(t *testing.T) {
 	e := newEnv(t)
 	require.NoError(t, store.NewSessions(e.db).PutCredential(t.Context(), e.sess.Hash,
 		store.CredentialRow{Kind: "vault_token", Sealed: "garbage"}, e.clock.Now()))
-	_, _, err := e.c.VaultToken(t.Context(), e.sess)
+	_, err := e.c.VaultStatus(t.Context(), e.sess)
 	require.Error(t, err)
 	var a *apperr.APIError
 	assert.NotErrorAs(t, err, &a, "corruption is an internal error, not a key change")
