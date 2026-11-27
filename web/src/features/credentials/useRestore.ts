@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useApi } from '../../api/context';
 import { vaultStatusStore, type VaultStatus } from '../../state/vaultStatus';
 import { useVaultStore } from './context';
+import { syncPending } from './pending';
 
 export const KEY_CHANGED_NOTICE =
   "Kubelook's encryption key was changed, so your saved Vault token and kubeconfigs can't be used anymore. Please paste your token and upload your kubeconfigs again.";
@@ -63,6 +64,7 @@ export function useRestore(): RestoreState {
             }
           }
           await queryClient.invalidateQueries({ queryKey: ['clusters'] });
+          await syncPending(api, store);
         }
       } catch {
         // The copies stay where they are; the user can still add credentials by hand.
