@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Kubelook in the integration environment: installed from its Helm chart into the host cluster, two replicas on
-# PostgreSQL, reachable at http://localhost:18080 (both replicas), :18081 (replica 1) and :18082 (replica 2).
+# Kubelook in the integration environment: installed from its Helm chart into the host cluster, reachable at
+# http://localhost:18080 (all replicas), :18081 (replica 1) and, with two replicas, :18082 (replica 2).
+# IT_DATABASE (hack/it-lib.sh) chooses: sqlite (default) is one replica on SQLite; postgres is two replicas on PostgreSQL.
 #
 #   it-kubelook.sh install          install or upgrade the release, then expose
 #   it-kubelook.sh expose           (re)label the pods as replica 1 and 2 and wait until all three addresses answer
@@ -11,6 +12,8 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; export PATH="$ROOT/bin:$PATH"
 source "$ROOT/hack/it-lib.sh"
+DATABASE="$(it_database)"
+if [ "$DATABASE" = postgres ]; then REPLICAS=2; else REPLICAS=1; fi
 mkdir -p "$ROOT/.it"
 KC="$ROOT/.it/kubeconfig-host-host.yaml"
 NS=kubelook
@@ -32,20 +35,31 @@ install() {
   K get namespace "$NS" >/dev/null 2>&1 || kubectl --kubeconfig "$KC" create namespace "$NS" >/dev/null
   secret kubelook-key --from-literal=key="$KUBELOOK_ENCRYPTION_KEY"
   secret kubelook-oauth --from-literal=google=it-secret --from-literal=github=it-secret
-  secret kubelook-db --from-literal=url="postgres://kubelook_app:app@$DB:5432/kubelook"
-  secret kubelook-db-migrate --from-literal=url="postgres://postgres:postgres@$DB:5432/kubelook"
-  secret kubelook-db-roles --from-literal=appPassword=app --from-literal=cleanupPassword=cleanup
-  secret kubelook-db-cleanup --from-literal=url="postgres://kubelook_cleanup:cleanup@$DB:5432/kubelook"
-  cat > "$ROOT/.it/kubelook-values.yaml" <<VALUES
-image: {repository: kubelook, tag: dev, pullPolicy: Never}
-replicaCount: 2
-encryption: {keySecret: kubelook-key}
-server: {publicURL: "http://localhost:18080"}
-database:
+  local database_values audit_values db_alias=""
+  if [ "$DATABASE" = postgres ]; then
+    secret kubelook-db --from-literal=url="postgres://kubelook_app:app@$DB:5432/kubelook"
+    secret kubelook-db-migrate --from-literal=url="postgres://postgres:postgres@$DB:5432/kubelook"
+    secret kubelook-db-roles --from-literal=appPassword=app --from-literal=cleanupPassword=cleanup
+    secret kubelook-db-cleanup --from-literal=url="postgres://kubelook_cleanup:cleanup@$DB:5432/kubelook"
+    database_values='database:
   driver: postgres
   existingSecret: kubelook-db
   migrationSecret: kubelook-db-migrate
-  rolesSecret: kubelook-db-roles
+  rolesSecret: kubelook-db-roles'
+    audit_values='audit:
+  retentionDays: 1
+  cleanup: {credentialsSecret: kubelook-db-cleanup}'
+    db_alias="  - {ip: \"$(ip $DB)\", hostnames: [$DB]}"
+  else
+    database_values='database: {driver: sqlite}'
+    audit_values='audit: {retentionDays: 0}'
+  fi
+  cat > "$ROOT/.it/kubelook-values.yaml" <<VALUES
+image: {repository: kubelook, tag: dev, pullPolicy: Never}
+replicaCount: $REPLICAS
+encryption: {keySecret: kubelook-key}
+server: {publicURL: "http://localhost:18080"}
+$database_values
 auth:
   restrictSignIn: true
   google:
@@ -66,15 +80,13 @@ vault:
   remintBefore: 9m50s
 debug: {image: "busybox:1.37", shell: /bin/sh}
 fileBrowser: {maxTransferBytes: 1048576}
-audit:
-  retentionDays: 1
-  cleanup: {credentialsSecret: kubelook-db-cleanup}
+$audit_values
 maintenance: {banner: "integration test banner"}
 helm: {version: 4, maxChartBytes: 1048576}
 hostAliases:
   - {ip: "$(ip kubelook-it-vault)", hostnames: [kubelook-it-vault]}
   - {ip: "$(ip kubelook-it-fakeidp)", hostnames: [kubelook-it-fakeidp]}
-  - {ip: "$(ip $DB)", hostnames: [$DB]}
+$db_alias
   - {ip: "$(ip kubelook-it-alpha-control-plane)", hostnames: [kubelook-it-alpha-control-plane]}
   - {ip: "$(ip kubelook-it-beta-control-plane)", hostnames: [kubelook-it-beta-control-plane]}
 VALUES
@@ -90,19 +102,19 @@ VALUES
 expose() {
   step "rollout status"
   K rollout status deployment/kubelook --timeout=300s >/dev/null
-  step "rollout done; waiting for two live pods"
+  step "rollout done; waiting for $REPLICAS live pod(s)"
   local n pod num rows
   # live = Running and not being deleted; columns: name, replica number (or <none>), deletion time (or <none>)
   live() { K get pods -l "$PODS" --field-selector=status.phase=Running --no-headers \
              -o custom-columns=NAME:.metadata.name,N:.metadata.labels.it-replica,DEL:.metadata.deletionTimestamp | awk '$3 == "<none>"'; }
-  for _ in $(seq 1 120); do [ "$(live | wc -l)" = 2 ] && break; sleep 1; done
+  for _ in $(seq 1 120); do [ "$(live | wc -l | tr -d ' ')" = "$REPLICAS" ] && break; sleep 1; done
   rows="$(live)"
-  [ "$(wc -l <<<"$rows")" = 2 ] || { echo "expected two running Kubelook pods, got:" >&2; K get pods -o wide >&2; exit 1; }
+  [ "$(wc -l <<<"$rows" | tr -d ' ')" = "$REPLICAS" ] || { echo "expected $REPLICAS running Kubelook pod(s), got:" >&2; K get pods -o wide >&2; exit 1; }
   local used
   used=" $(awk '$2 != "<none>" {printf "%s ", $2}' <<<"$rows")"
   while read -r pod num _; do
     [ "$num" = "<none>" ] || continue
-    for n in 1 2; do
+    for n in $(seq 1 "$REPLICAS"); do
       if [[ "$used" != *" $n "* ]]; then
         K label pod "$pod" "it-replica=$n" --overwrite >/dev/null
         used="$used$n "
@@ -127,7 +139,10 @@ spec:
   type: NodePort
   selector: {app.kubernetes.io/name: kubelook, app.kubernetes.io/instance: kubelook, it-replica: "1"}
   ports: [{port: 80, targetPort: http, nodePort: 30081}]
----
+SERVICES
+  local ports=(18080 18081)
+  if [ "$REPLICAS" = 2 ]; then
+    K apply -f - >/dev/null <<SERVICES
 apiVersion: v1
 kind: Service
 metadata: {name: kubelook-it-2}
@@ -136,8 +151,10 @@ spec:
   selector: {app.kubernetes.io/name: kubelook, app.kubernetes.io/instance: kubelook, it-replica: "2"}
   ports: [{port: 80, targetPort: http, nodePort: 30082}]
 SERVICES
-  for n in 18080 18081 18082; do wait_http "http://127.0.0.1:$n/readyz" 90; step "$n answers"; done
-  step "all three addresses answer"
+    ports+=(18082)
+  fi
+  for n in "${ports[@]}"; do wait_http "http://127.0.0.1:$n/readyz" 90; step "$n answers"; done
+  step "all ${#ports[@]} addresses answer"
 }
 
 delete_replica() {

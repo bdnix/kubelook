@@ -77,7 +77,7 @@ The integration environment is the way to run the whole stack locally, against r
 It needs Docker on a cgroup v2 host, and Go.
 
 ```bash
-make it-up        # two kind clusters, Vault, PostgreSQL, a sign-in stand-in and the console at http://localhost:18080
+make it-up        # two kind clusters, Vault, a sign-in stand-in and the console at http://localhost:18080 (IT_DATABASE=postgres: two replicas on PostgreSQL)
 make it           # the integration tests
 make it-down
 ```

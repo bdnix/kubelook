@@ -107,7 +107,7 @@ func TryDocker(args ...string) {
 // ClusterPath is the percent-encoded cluster ID for a URL path ("k:a/b" contains a slash).
 func ClusterPath(id string) string { return url.PathEscape(id) }
 
-// Replica1URL and Replica2URL reach one replica each (hack/it-kubelook.sh labels the pods and points a Service at each).
+// Replica1URL and Replica2URL (the second exists only with IT_DATABASE=postgres) reach one replica each (hack/it-kubelook.sh labels the pods and points a Service at each).
 // Both replicas are configured with the public URL of BaseURL, as replicas behind one name are in production.
 const (
 	Replica1URL = "http://localhost:18081"

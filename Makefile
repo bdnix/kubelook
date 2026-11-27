@@ -12,6 +12,8 @@ FILE ?=
 VERSION ?= dev
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 LDFLAGS := -s -w -X github.com/bdnix/kubelook/internal/version.Version=$(VERSION) -X github.com/bdnix/kubelook/internal/version.Commit=$(COMMIT)
+IT_DATABASE ?= sqlite
+export IT_DATABASE
 COVER_TOOL := github.com/vladopajic/go-test-coverage/v2@v2.23.0
 
 .PHONY: docs-check ci-select-test chart-test it-tools it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
@@ -95,8 +97,10 @@ it-up: it-tools
 it-down:
 	hack/it-down.sh
 
+# IT_DATABASE=postgres runs the tests of the two replicas on PostgreSQL as well (they carry the build tag itpostgres); it
+# must be the value `make it-up` was started with.
 it:
-	go test -tags integration -count=1 -p 1 -timeout 30m -v ./test/integration/...
+	go test -tags "integration$(if $(filter postgres,$(IT_DATABASE)), itpostgres)" -count=1 -p 1 -timeout 30m -v ./test/integration/...
 	@echo "INTEGRATION OK"
 
 e2e:
