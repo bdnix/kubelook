@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
-import { createClient, type ApiClient } from '../../api/client';
-import { jsonResponse } from '../../test/render';
+import { createClient, type ApiClient } from '../api/client';
+import { jsonResponse } from './render';
 
 export const release = (over: Record<string, unknown> = {}) => ({
   name: 'web',

@@ -2,7 +2,7 @@ import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { renderApp } from '../../test/render';
-import { helmApi } from './fixtures';
+import { helmApi } from '../../test/helm';
 import { RepositoriesPanel } from './RepositoriesPanel';
 
 describe('RepositoriesPanel', () => {

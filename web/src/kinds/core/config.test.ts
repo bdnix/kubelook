@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { expectToleratesMissingFields, meta, row } from '../testing';
+import { expectToleratesMissingFields, meta, row } from '../../test/kinds';
 import {
   configMapsKind,
   hpaKind,
