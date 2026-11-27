@@ -10,9 +10,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"; export PATH="$ROOT/bin:$PATH"
 source "$ROOT/hack/it-lib.sh"
 mkdir -p "$ROOT/.it"
 
-if [ "$(stat -fc %T /sys/fs/cgroup 2>/dev/null || true)" != "cgroup2fs" ]; then
-  echo "This host does not use cgroup v2. The Kubernetes 1.35 node of kind never becomes ready on cgroup v1." >&2
-  echo "Run the integration environment on a cgroup v2 host (check: stat -fc %T /sys/fs/cgroup prints cgroup2fs)." >&2
+# Asked of the Docker daemon, whose host runs the kind nodes (on macOS and Windows that is a VM, not this machine).
+if [ "$(docker info --format '{{.CgroupVersion}}' 2>/dev/null || true)" != "2" ]; then
+  echo "The Docker host does not use cgroup v2. The Kubernetes 1.35 node of kind never becomes ready on cgroup v1." >&2
+  echo "Use a Docker host with cgroup v2 (check: docker info --format '{{.CgroupVersion}}' prints 2)." >&2
   exit 1
 fi
 
