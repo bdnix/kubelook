@@ -16,7 +16,7 @@ IT_DATABASE ?= sqlite
 export IT_DATABASE
 COVER_TOOL := github.com/vladopajic/go-test-coverage/v2@v2.23.0
 
-.PHONY: docs-check ci-select-test chart-test it-tools it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
+.PHONY: docs-check chart-test it-tools it-up it-down it e2e tools fmt lint lint-backend lint-frontend test test-backend test-frontend test-ui coverage coverage-backend coverage-frontend build build-frontend build-backend image verify clean
 
 # The developer tools: golangci-lint and govulncheck, built from Go source. `make verify` needs nothing else installed.
 tools:
@@ -39,10 +39,7 @@ lint-frontend:
 docs-check:
 	hack/docs-check.sh
 
-ci-select-test:
-	hack/ci-select-postgres-test.sh
-
-lint: lint-backend lint-frontend docs-check ci-select-test
+lint: lint-backend lint-frontend docs-check
 	@echo "LINT OK"
 
 test-backend:

@@ -253,34 +253,6 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
-  # Which integration tests a change needs. Pushes to main and the release pull request always run all of them; any
-  # other change runs the PostgreSQL and two-replica ones only when it touches something the replicas share or how
-  # Kubelook is deployed (hack/ci-select-postgres.sh, docs/ci.md).
-  changes:
-    name: Select the integration tests
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      postgres: ${{ steps.select.outputs.postgres }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - id: select
-        run: |
-          if [ "$EVENT" = push ] || [[ "$HEAD_REF" == release-please--* ]]; then
-            result=true
-          else
-            result="$(git diff --name-only "$BASE_SHA...$HEAD_SHA" | hack/ci-select-postgres.sh)"
-          fi
-          echo "postgres=$result" >> "$GITHUB_OUTPUT"
-        env:
-          EVENT: ${{ github.event_name }}
-          HEAD_REF: ${{ github.head_ref }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
-
   # Real Vault, real Kubernetes: Kubelook is installed from its Helm chart (one replica on SQLite) into a host kind
   # cluster and manages two more (Kubernetes 1.35 and 1.37). The Go suite, the browser suite and the chart's life cycle
   # (upgrade, uninstall) all run against that one release of the image the build job made.
@@ -299,12 +271,12 @@ jobs:
           go-cache: test-e2e
 
   # The same, with real PostgreSQL and two replicas, plus the tests of what the replicas share: sessions, watches, jobs,
-  # the audit roles, a replica that stops or dies, the key change. Skipped (and so not blocking) when the change cannot
-  # affect them.
+  # the audit roles, a replica that stops or dies, the key change. Only on pushes to main and on the release pull request
+  # (a branch named release-please--...), so a release candidate is tested on it; skipped on other pull requests.
   test-e2e-postgres:
     name: Integration & e2e tests (PostgreSQL, two replicas)
-    needs: [build-image, changes]
-    if: ${{ needs.changes.outputs.postgres == 'true' }}
+    needs: [build-image]
+    if: ${{ github.event_name == 'push' || startsWith(github.head_ref, 'release-please--') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:

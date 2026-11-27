@@ -14,9 +14,8 @@ pull request / merge queue / main
 ├── test-ui-browser ─┤
 ├── lint-chart ──────┤
 ├── review-dependencies (pull requests and merge queue)
-├── changes ─────────────────────────────┐
-└── build-image (amd64 + arm64, native) ─┴─► test-e2e (SQLite, one replica)
-                                             test-e2e-postgres (PostgreSQL, two replicas; only when selected)
+└── build-image (amd64 + arm64, native) ──► test-e2e (SQLite, one replica)
+                                            test-e2e-postgres (PostgreSQL, two replicas; main and the release PR only)
                                                         │
 main only, after every check above passed:              ▼
 release ──► publish-image ──► publish-chart
@@ -32,13 +31,8 @@ release ──► publish-image ──► publish-chart
   one replica on SQLite (`IT_DATABASE=sqlite`) and is what every pull request runs. `test-e2e-postgres` runs two replicas on
   PostgreSQL (`IT_DATABASE=postgres`) and adds the tests of what the replicas share (the Go tests with the build tag
   `itpostgres`: sessions and opened clusters across replicas, a replica that stops or dies, the audit roles, the key change).
-- **When the PostgreSQL job runs.** The `changes` job decides. The job always runs on pushes to `main` and on the release pull
-  request (a branch named `release-please--…`, so it is tested before a release candidate). On other pull requests and in the merge
-  queue it runs when a changed file is in what the replicas share or how Kubelook is deployed: `internal/store`, `session`,
-  `watch`, `ws`, `jobs`, `audit`, `config` and `app`; `deploy/`, `Dockerfile`, `go.mod`, `go.sum`; `test/integration`, the
-  `hack/it-*.sh` scripts and `hack/vault-setup.sh`; `.github/workflows/ci.yml` and `.github/actions/`. The rule is
-  `hack/ci-select-postgres.sh`, tested by `hack/ci-select-postgres-test.sh` (part of `make lint`). When no changed file is in that
-  list the job is skipped, and a skipped job does not block merging.
+- **When the PostgreSQL job runs.** On pushes to `main` and on the release pull request (a branch named `release-please--…`, so a
+  release candidate is tested on it). Other pull requests and the merge queue skip it, and a skipped job does not block merging.
 - **Verified publishing.** After pushing, the publishing jobs verify the signature and the attestations from the registry, run the
   published image, and pull the published chart back and render it.
 
@@ -52,7 +46,6 @@ release ──► publish-image ──► publish-chart
 | `test-ui-browser` | UI tests in Chrome | The built web app works in a real browser, with the API answered by the tests (`web/ui`) |
 | `lint-chart` | Lint & render Helm chart | The chart lints and renders with every values file in `deploy/helm/kubelook/ci`; the rendered objects have the required properties; the rendered `config.yaml` loads with the application's strict loader; invalid combinations fail; `ct lint` is clean |
 | `build-image` | Build & scan image (amd64), Build & scan image (arm64) | The image builds for the architecture, runs `version`, runs as `65532:65532`, has no shell, and has no fixable HIGH or CRITICAL vulnerability (Trivy) |
-| `changes` | Select the integration tests | Decides whether `test-e2e-postgres` runs (see above) |
 | `test-e2e` | Integration & e2e tests | Kubelook (one replica on SQLite) installed from its chart works against real Vault and two real Kubernetes clusters: sign-in, the Vault path, kubeconfig clusters, live data and day-2 operations, the browser suite, and the chart upgrade and uninstall |
 | `test-e2e-postgres` | Integration & e2e tests (PostgreSQL, two replicas) | The same against real PostgreSQL with two replicas, plus: sessions and opened clusters shared by both replicas, a replica that stops or dies, the audit roles, the key change |
 | `review-dependencies` | Review dependency changes | The change adds no dependency with a high-severity advisory (pull requests and the merge queue; not on pushes to `main`) |
